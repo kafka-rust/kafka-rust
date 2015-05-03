@@ -48,6 +48,81 @@ pub struct MetadataResponse {
     pub topics: Vec<TopicMetadata>
 }
 
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct ProduceRequest {
+    pub header: HeaderRequest,
+    pub required_acks: i16,
+    pub timeout: i32,
+    pub topic: String,
+    pub partition: i32,
+    pub messageset_size: i32,
+    pub messageset: Vec<MessageSet>
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct ProduceResponse {
+    pub header: HeaderResponse,
+    pub topic: String,
+    pub partition: i32,
+    pub error: i16,
+    pub offset: i64
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct OffsetRequest {
+    pub header: HeaderRequest,
+    pub replica: i32,
+    pub topic: String,
+    pub partition: i32,
+    pub time: i64,
+    pub max_offsets: i32
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct OffsetResponse {
+    pub header: HeaderResponse,
+    pub topic: String,
+    pub partition: i32,
+    pub error: i16,
+    pub offset: i64
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct FetchRequest {
+    pub header: HeaderRequest,
+    pub replica: i32,
+    pub max_wait_time: i32,
+    pub min_bytes: i32,
+    pub topic: String,
+    pub partition: i32,
+    pub offset: i64,
+    pub max_bytes: i32
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct FetchResponse {
+    pub header: HeaderResponse,
+    pub topic: String,
+    pub partition: i32,
+    pub error: i16,
+    pub offset: i64,
+    pub messageset_size: i32,
+    pub messageset: Vec<MessageSet>
+}
+
+// Helper Structs
 
 #[derive(Default)]
 #[derive(Debug)]
@@ -86,6 +161,27 @@ pub struct TopicPartition {
     pub topic: String
 }
 
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct MessageSet {
+    pub offset: i64,
+    pub messagesize: i32,
+    pub message: Message
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct Message {
+    pub crc: i32,
+    pub magic: i8,
+    pub attributes: i8,
+    pub key: Vec<u8>,
+    pub value: Vec<u8>
+}
+
+// Constructors for Requests
 impl MetadataRequest {
     pub fn new(correlation: i32, clientid: &String, topics: Vec<String>) -> MetadataRequest{
         MetadataRequest{
@@ -96,6 +192,30 @@ impl MetadataRequest {
     }
 }
 
+impl OffsetRequest {
+    pub fn new(topic: &String, partition: i32, time: i64,
+               correlation: i32, clientid: &String) -> OffsetRequest{
+        OffsetRequest{
+            header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
+                                  clientid: clientid.clone(), version: VERSION},
+            topic: topic.clone(),
+            partition: partition,
+            time: time,
+            max_offsets: 1
+        }
+    }
+    pub fn new_latest(topic: &String, partition: i32,
+                      correlation: i32, clientid: &String) -> OffsetRequest{
+        OffsetRequest::new(topic, partition, -1, correlation, clientid)
+    }
+
+    pub fn new_earliest(topic: &String, partition: i32, time: i64,
+                        correlation: i32, clientid: &String) -> OffsetRequest{
+        OffsetRequest::new(topic, partition, -2, correlation, clientid)
+    }
+}
+
+// Encoder and Decoder implementations
 impl ToByte for HeaderRequest {
     fn encode<T:Write>(&self, buffer: &mut T) {
         self.key.encode(buffer);
@@ -107,11 +227,35 @@ impl ToByte for HeaderRequest {
 
 impl ToByte for MetadataRequest {
     fn encode<T:Write>(&self, buffer: &mut T) {
-        println!("Encoding");
         self.header.encode(buffer);
         self.topics.encode(buffer);
     }
 }
+
+impl ToByte for OffsetRequest {
+    fn encode<T:Write>(&self, buffer: &mut T) {
+        self.header.encode(buffer);
+        self.replica.encode(buffer);
+        self.topic.encode(buffer);
+        self.partition.encode(buffer);
+        self.time.encode(buffer);
+        self.max_offsets.encode(buffer);
+    }
+}
+
+impl ToByte for FetchRequest {
+    fn encode<T:Write>(&self, buffer: &mut T) {
+        self.header.encode(buffer);
+        self.replica.encode(buffer);
+        self.max_wait_time.encode(buffer);
+        self.min_bytes.encode(buffer);
+        self.topic.encode(buffer);
+        self.partition.encode(buffer);
+        self.offset.encode(buffer);
+        self.max_bytes.encode(buffer);
+    }
+}
+
 
 impl FromByte for HeaderResponse {
     type R = HeaderResponse;
@@ -130,6 +274,34 @@ impl FromByte for MetadataResponse {
         self.topics.decode(buffer);
     }
 }
+
+impl FromByte for OffsetResponse {
+    type R = OffsetResponse;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
+        self.header.decode(buffer);
+        self.topic.decode(buffer);
+        self.partition.decode(buffer);
+        self.error.decode(buffer);
+        self.offset.decode(buffer);
+    }
+}
+
+impl FromByte for FetchResponse {
+    type R = FetchResponse;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
+        self.header.decode(buffer);
+        self.topic.decode(buffer);
+        self.partition.decode(buffer);
+        self.error.decode(buffer);
+        self.offset.decode(buffer);
+        self.messageset_size.decode(buffer);
+        self.messageset.decode(buffer);
+    }
+}
+
+// For Helper Structs
 
 impl FromByte for BrokerMetadata {
     type R = BrokerMetadata;
@@ -162,107 +334,43 @@ impl FromByte for PartitionMetadata {
         self.isr.decode(buffer);
     }
 }
-/*
 
-impl <T: Read> FromByte<T> for HeaderRequest {
-    fn decode(&mut self, buffer: &mut T) {
+impl ToByte for MessageSet {
+    fn encode<T:Write>(&self, buffer: &mut T) {
+        self.offset.encode(buffer);
+        self.messagesize.encode(buffer);
+        self.message.encode(buffer);
+    }
+}
+
+impl FromByte for MessageSet {
+    type R = MessageSet;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
+        self.offset.decode(buffer);
+        self.messagesize.decode(buffer);
+        self.message.decode(buffer);
+    }
+}
+
+impl ToByte for Message {
+    fn encode<T:Write>(&self, buffer: &mut T) {
+        self.crc.encode(buffer);
+        self.magic.encode(buffer);
+        self.attributes.encode(buffer);
+        self.key.encode(buffer);
+        self.value.encode(buffer);
+    }
+}
+
+impl FromByte for Message {
+    type R = MessageSet;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
+        self.crc.decode(buffer);
+        self.magic.decode(buffer);
+        self.attributes.decode(buffer);
         self.key.decode(buffer);
-        self.version.decode(buffer);
-        self.correlation.decode(buffer);
-        self.clientid.decode(buffer);
+        self.value.decode(buffer);
     }
 }
-
-impl <T: Read> FromByte<T> for MetadataRequest {
-    fn decode(&mut self, buffer: &mut T) {
-        self.topics.decode(buffer);
-    }
-}
-impl <T:Write> ToByte<T> for MetadataRequest {
-    fn encode(&self, buffer: &mut T) {
-        let size = self.topics.len() as i32;
-        size.encode(buffer);
-        for s in self.topics {
-            s.encode(buffer);
-        }
-    }
-}
-
-impl <T: Read> FromByte<T> for MetadataRequest {
-    fn decode(&mut self, buffer: &mut T) {
-        let length = buffer.read_i16::<BigEndian>().unwrap();
-        for n in 0..length {
-            let topic = String::new();
-            topic.decode(buffer);
-            self.topics.push(topic);
-        }
-    }
-}
-
-impl <T: Read> FromByte<T> for MetadataResponse {
-    fn decode(&mut self, buffer: &mut T) {
-        let num_brokers = buffer.read_i16::<BigEndian>().unwrap();
-        for n in 0..length {
-            let broker = BrokerMetadata{nodeid:0, host:"".to_string(), port:0};
-            broker.decode(buffer);
-            self.brokers.push(broker);
-        }
-
-        let num_topics = buffer.read_i16::<BigEndian>().unwrap();
-        for n in 0..length {
-            let topic = TopicMetadata{topic:0, partition:"".to_string(), error:0};
-            topic.decode(buffer);
-            self.topics.push(topic);
-        }
-
-    }
-}
-
-impl <T: Read> FromByte<T> for BrokerMetadata {
-    fn decode(&mut self, buffer: &mut T) {
-        self.nodeid.decode(buffer);
-        self.host.decode(buffer);
-        self.port.decode(buffer);
-    }
-}
-
-impl <T: Read> FromByte<T> for TopicMetadata {
-    fn decode(&mut self, buffer: &mut T) {
-        self.error.decode(buffer);
-        self.topic.decode(buffer);
-
-        let num_partitions = buffer.read_i16::<BigEndian>().unwrap();
-        for n in 0..length {
-            let topic = PartitionMetadata{topic:0, partition:"".to_string(), error:0};
-            topic.decode(buffer);
-            self.topics.push(topic);
-        }
-        self.partition.decode(buffer);
-    }
-}
-
-impl <T: Read> FromByte<T> for PartitionMetadata {
-    fn decode(&mut self, buffer: &mut T) {
-        self.error.decode(buffer);
-        self.id.decode(buffer);
-        self.leader.decode(buffer);
-
-    }
-}
-*/
-
-
-pub fn encode_message_header<T: Write>(request: HeaderRequest, buffer: &mut T) {
-    request.encode(buffer);
-    /*buffer.write_i16::<BigEndian>(request.key);
-    buffer.write_i16::<BigEndian>(request.version);
-    buffer.write_i32::<BigEndian>(request.correlation);
-    buffer.write_i16::<BigEndian>(request.clientid.len().to_i16().unwrap());
-    buffer.write_all(request.clientid.as_bytes());*/
-}
-
-/*pub fn decode_message_header<T: Read>(response: &mut T) -> HeaderRequest{
-    let mut h: HeaderRequest = Default::default();
-    h.decode(response);
-    h
-}*/

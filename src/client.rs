@@ -18,8 +18,8 @@ pub struct KafkaClient {
     pub hosts: Vec<String>,
     pub correlation: i32,
     pub conns: HashMap<String, KafkaConnection>,
-    pub brokers: Vec<BrokerMetadata>,
-    pub topics: Vec<TopicMetadata>
+    pub topic_partitions: HashMap<String, Vec<i32>>,
+    pub topic_broker: HashMap<String, String>
 }
 
 impl KafkaClient {
@@ -33,19 +33,47 @@ impl KafkaClient {
             Some (conn) => return conn.clone(),
             None => {}
         }
+        // TODO
+        // Keeping this out here since get is causing ownership issues
+        // Will refactor once I know better
         self.conns.insert(host.clone(), KafkaConnection::new(host, self.timeout));
         self.get_conn(host)
     }
 
+    fn next_id(&mut self) -> i32{
+        self.correlation = (self.correlation + 1) % (1i32 << 30);
+        self.correlation
+    }
+
+
     pub fn load_metadata(&mut self, topics: &Vec<String>) {
         let resp = self.get_metadata(topics);
-        self.brokers = resp.brokers.to_vec();
-        self.topics = resp.topics.to_vec();
+        let brokers: HashMap<i32, BrokerMetadata> = HashMap::new()
+        for broker in resp.brokers {
+            brokers.insert(broker.nodeid, format!("{}:{}", broker.host, broker.port));
+        }
+
+        self.topic_brokers.clear();
+        for topic in topics {
+            self.topic_partitions[topic] = Vec::new();
+            for partition in topic.partitions {
+                match brokers.get(partition.leader) {
+                    Some(& broker) => {
+                        self.topic_partitions[topic].push(partition.id);
+                        self.topic_broker.insert(
+                            format!("{}-{}", topic.topic, partition.id, broker)
+                            broker)
+                    },
+                    None => {}
+                }
+
+            }
+        }
     }
 
     pub fn reset_metadata(&mut self) {
-        self.topics.clear();
-        self.brokers.clear();
+        self.topic_partitions.clear();
+        self.topic_broker.clear();
     }
 
     fn get_metadata(&mut self, topics: &Vec<String>) -> MetadataResponse {
@@ -61,9 +89,8 @@ impl KafkaClient {
         panic!("All Brokers failes to process request!");
     }
 
-    fn next_id(&mut self) -> i32{
-        self.correlation = (self.correlation + 1) % (1i32 << 30);
-        self.correlation
+    pub fn fetch_offset(& self, topic: String) {
+
     }
 
     fn send_request<T: ToByte>(&self, conn: &mut KafkaConnection, request: T) -> bool{
