@@ -12,9 +12,11 @@ const METADATA_KEY: i16 = 3;
 const OFFSET_COMMIT_KEY: i16 = 8;
 const OFFSET_FETCH_KEY: i16 = 9;
 
+const VERSION: i16 = 0;
 
 #[derive(Default)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct HeaderRequest {
     pub key: i16,
     pub version: i16,
@@ -24,12 +26,14 @@ pub struct HeaderRequest {
 
 #[derive(Default)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct HeaderResponse {
     pub correlation: i32
 }
 
 #[derive(Default)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct MetadataRequest {
     pub header: HeaderRequest,
     pub topics: Vec<String>
@@ -37,6 +41,7 @@ pub struct MetadataRequest {
 
 #[derive(Default)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct MetadataResponse {
     pub header: HeaderResponse,
     pub brokers: Vec<BrokerMetadata>,
@@ -46,6 +51,7 @@ pub struct MetadataResponse {
 
 #[derive(Default)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct BrokerMetadata {
     pub nodeid: i32,
     pub host: String,
@@ -54,6 +60,7 @@ pub struct BrokerMetadata {
 
 #[derive(Default)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct TopicMetadata {
     pub error: i16,
     pub topic: String,
@@ -62,6 +69,7 @@ pub struct TopicMetadata {
 
 #[derive(Default)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct PartitionMetadata {
     pub error: i16,
     pub id: i32,
@@ -72,6 +80,7 @@ pub struct PartitionMetadata {
 
 #[derive(Default)]
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct TopicPartition {
     pub id: i32,
     pub topic: String
@@ -81,7 +90,7 @@ impl MetadataRequest {
     pub fn new(correlation: i32, clientid: String, topics: Vec<String>) -> MetadataRequest{
         MetadataRequest{
             header: HeaderRequest{key: METADATA_KEY, correlation: correlation,
-                                  clientid: clientid, version: version},
+                                  clientid: clientid, version: VERSION},
             topics: topics.to_vec()
         }
     }

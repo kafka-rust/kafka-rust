@@ -1,14 +1,23 @@
 
 use std::io::prelude::*;
 use std::net::TcpStream;
+use std::io::Result;
+use std::fmt;
 
 pub struct KafkaConnection {
     stream: TcpStream
 }
 
+impl fmt::Debug for KafkaConnection {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+
+        write!(f, "KafkaConnection")
+    }
+}
+
 impl KafkaConnection {
 
-    pub fn send(&mut self, msg: & Vec<u8>) -> Result<usize>{
+    pub fn send(&mut self, msg: & Vec<u8>) -> Result<usize> {
         println!("{:?}", &msg[..]);
         self.stream.write(&msg[..])
     }
@@ -29,9 +38,8 @@ impl KafkaConnection {
 
     }
 
-    pub fn new(host: &str) -> KafkaConnection {
-        let _host = host.to_string();
-        let stream = TcpStream::connect(host).unwrap();
+    pub fn new(host: String, timeout: i32) -> KafkaConnection {
+        let stream = TcpStream::connect(host.as_str()).unwrap();
         KafkaConnection{stream: stream}
 
     }
