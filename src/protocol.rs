@@ -96,8 +96,8 @@ impl MetadataRequest {
     }
 }
 
-impl <T:Write> ToByte<T> for HeaderRequest {
-    fn encode(&self, buffer: &mut T) {
+impl ToByte for HeaderRequest {
+    fn encode<T:Write>(&self, buffer: &mut T) {
         self.key.encode(buffer);
         self.version.encode(buffer);
         self.correlation.encode(buffer);
@@ -105,54 +105,54 @@ impl <T:Write> ToByte<T> for HeaderRequest {
     }
 }
 
-impl <T:Write> ToByte<T> for MetadataRequest {
-    fn encode(&self, buffer: &mut T) {
+impl <T:Write> ToByte for MetadataRequest {
+    fn encode<T:Write>(&self, buffer: &mut T) {
         self.topics.encode(buffer);
     }
 }
 
-impl <T: Read> FromByte<T> for HeaderResponse {
+impl FromByte for HeaderResponse {
     type R = HeaderResponse;
 
-    fn decode(&mut self, buffer: &mut T) {
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
         self.correlation.decode(buffer);
     }
 }
 
-impl <T: Read> FromByte<T> for MetadataResponse {
+impl FromByte for MetadataResponse {
     type R = MetadataResponse;
 
-    fn decode(&mut self, buffer: &mut T) {
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
         self.header.decode(buffer);
         self.brokers.decode(buffer);
         self.topics.decode(buffer);
     }
 }
 
-impl <T: Read> FromByte<T> for BrokerMetadata {
+impl FromByte for BrokerMetadata {
     type R = BrokerMetadata;
 
-    fn decode(&mut self, buffer: &mut T) {
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
         self.nodeid.decode(buffer);
         self.host.decode(buffer);
         self.port.decode(buffer);
     }
 }
 
-impl <T: Read> FromByte<T> for TopicMetadata {
+impl FromByte for TopicMetadata {
     type R = TopicMetadata;
 
-    fn decode(&mut self, buffer: &mut T) {
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
         self.error.decode(buffer);
         self.topic.decode(buffer);
         self.partitions.decode(buffer);
     }
 }
 
-impl <T: Read> FromByte<T> for PartitionMetadata {
+impl FromByte for PartitionMetadata {
     type R = PartitionMetadata;
 
-    fn decode(&mut self, buffer: &mut T) {
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
         self.error.decode(buffer);
         self.id.decode(buffer);
         self.leader.decode(buffer);
