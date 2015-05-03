@@ -6,11 +6,9 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::io::Read;
 
-const CLIENTID: String = String::from_str("kafka-rust");
+const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_TIMEOUT: i32 = 120; // seconds
 
-type Readable = Cursor<Vec<u8>>;
-type Writable = Cursor<Vec<u8>>;
 
 #[derive(Default)]
 #[derive(Debug)]
@@ -26,19 +24,17 @@ pub struct KafkaClient {
 
 impl KafkaClient {
     pub fn new(hosts: &Vec<String>) -> KafkaClient {
-        KafkaClient { hosts: hosts.to_vec(), clientid: CLIENTID,
+        KafkaClient { hosts: hosts.to_vec(), clientid: CLIENTID.to_string(),
                       timeout: DEFAULT_TIMEOUT, ..KafkaClient::default()}
     }
 
-    fn get_conn(&mut self, host: String) -> KafkaConnection {
-        match self.conns.get(&host) {
-            Some(conn) => *conn,
-            None => {
-                let conn = KafkaConnection::new(host, self.timeout);
-                self.conns.insert(host, conn);
-                conn
-            }
+    fn get_conn(& mut self, host: &String) -> KafkaConnection {
+        match self.conns.get(host) {
+            Some (conn) => return conn.clone(),
+            None => {}
         }
+        self.conns.insert(host.clone(), KafkaConnection::new(host, self.timeout));
+        self.get_conn(host)
     }
 
     pub fn load_metadata(&mut self, topics: &Vec<String>) {
@@ -53,12 +49,13 @@ impl KafkaClient {
     }
 
     fn get_metadata(&mut self, topics: &Vec<String>) -> MetadataResponse {
-        for host in self.hosts {
+        for host in self.hosts.to_vec() {
             let correlation = self.next_id();
-            let req = MetadataRequest::new(correlation, self.clientid, topics.to_vec());
-            let conn = self.get_conn(host);
-            if (self.send_request(conn, req)) {
-                return self.get_response::<MetadataResponse>(conn);
+            let req = MetadataRequest::new(correlation, &self.clientid, topics.to_vec());
+            let mut conn = self.get_conn(&host);
+            let sent = self.send_request(&mut conn, req);
+            if (sent) {
+                return self.get_response::<MetadataResponse>(&mut conn);
             }
         }
         panic!("All Brokers failes to process request!");
@@ -69,7 +66,7 @@ impl KafkaClient {
         self.correlation
     }
 
-    fn send_request<T: FromByte>(&self, conn: KafkaConnection, request: T) -> bool{
+    fn send_request<T: ToByte>(&self, conn: &mut KafkaConnection, request: T) -> bool{
         let mut buffer = vec!();
         request.encode(&mut buffer);
 
@@ -84,7 +81,7 @@ impl KafkaClient {
         }
     }
 
-    fn get_response<T>(&self, conn: KafkaConnection) -> T{
+    fn get_response<T: FromByte>(&self, conn:&mut KafkaConnection) -> T::R{
         let mut v: Vec<u8> = vec!();
         conn.read(4, &mut v);
         let size = i32::decode_new(&mut Cursor::new(v));

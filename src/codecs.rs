@@ -28,7 +28,7 @@ impl ToByte for i32 {
         buffer.write_i32::<BigEndian>(*self);
     }
 }
-impl <T:Write> ToByte for i64 {
+impl ToByte for i64 {
     fn encode<T:Write>(&self, buffer: &mut T) {
         buffer.write_i64::<BigEndian>(*self);
     }

@@ -5,6 +5,8 @@ use std::io::Result;
 use std::fmt;
 
 pub struct KafkaConnection {
+    host: String,
+    timeout: i32,
     stream: TcpStream
 }
 
@@ -38,9 +40,14 @@ impl KafkaConnection {
 
     }
 
-    pub fn new(host: String, timeout: i32) -> KafkaConnection {
-        let stream = TcpStream::connect(host.as_str()).unwrap();
-        KafkaConnection{stream: stream}
+    pub fn clone(&self) -> KafkaConnection {
+        KafkaConnection{stream: self.stream.try_clone().unwrap(), host: self.host.clone(), timeout:self.timeout}
+    }
+
+    pub fn new(host: &String, timeout: i32) -> KafkaConnection {
+        let s: &str = &host;
+        let stream = TcpStream::connect(s).unwrap();
+        KafkaConnection{host: s.to_string(), timeout: timeout, stream: stream}
 
     }
 }

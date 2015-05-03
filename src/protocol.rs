@@ -87,10 +87,10 @@ pub struct TopicPartition {
 }
 
 impl MetadataRequest {
-    pub fn new(correlation: i32, clientid: String, topics: Vec<String>) -> MetadataRequest{
+    pub fn new(correlation: i32, clientid: &String, topics: Vec<String>) -> MetadataRequest{
         MetadataRequest{
             header: HeaderRequest{key: METADATA_KEY, correlation: correlation,
-                                  clientid: clientid, version: VERSION},
+                                  clientid: clientid.clone(), version: VERSION},
             topics: topics.to_vec()
         }
     }
@@ -105,8 +105,10 @@ impl ToByte for HeaderRequest {
     }
 }
 
-impl <T:Write> ToByte for MetadataRequest {
+impl ToByte for MetadataRequest {
     fn encode<T:Write>(&self, buffer: &mut T) {
+        println!("Encoding");
+        self.header.encode(buffer);
         self.topics.encode(buffer);
     }
 }
