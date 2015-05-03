@@ -1,0 +1,9 @@
+[package]
+name = "kafka"
+version = "0.1.0"
+authors = ["Yousuf Fauzan <yousuffauzan@gmail.com>"]
+
+
+[dependencies]
+num = "*"
+byteorder = "*"
