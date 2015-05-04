@@ -19,7 +19,7 @@ pub struct KafkaClient {
     pub correlation: i32,
     pub conns: HashMap<String, KafkaConnection>,
     pub topic_partitions: HashMap<String, Vec<i32>>,
-    pub topic_broker: HashMap<String, String>
+    pub topic_brokers: HashMap<String, String>
 }
 
 impl KafkaClient {
@@ -48,32 +48,32 @@ impl KafkaClient {
 
     pub fn load_metadata(&mut self, topics: &Vec<String>) {
         let resp = self.get_metadata(topics);
-        let brokers: HashMap<i32, BrokerMetadata> = HashMap::new()
+        let mut brokers: HashMap<i32, String> = HashMap::new();
         for broker in resp.brokers {
             brokers.insert(broker.nodeid, format!("{}:{}", broker.host, broker.port));
         }
 
         self.topic_brokers.clear();
-        for topic in topics {
-            self.topic_partitions[topic] = Vec::new();
-            for partition in topic.partitions {
-                match brokers.get(partition.leader) {
-                    Some(& broker) => {
-                        self.topic_partitions[topic].push(partition.id);
-                        self.topic_broker.insert(
-                            format!("{}-{}", topic.topic, partition.id, broker)
-                            broker)
+        for topic in resp.topics.iter() {
+            self.topic_partitions.insert(topic.topic.clone(), Vec::new());
+
+            for partition in &topic.partitions {
+                match brokers.get(&partition.leader) {
+                    Some(broker) => {
+                        self.topic_partitions.get_mut(&topic.topic).unwrap().push(partition.id);
+                        self.topic_brokers.insert(
+                            format!("{}-{}", topic.topic, partition.id),
+                            broker.clone());
                     },
                     None => {}
                 }
-
             }
         }
     }
 
     pub fn reset_metadata(&mut self) {
         self.topic_partitions.clear();
-        self.topic_broker.clear();
+        self.topic_brokers.clear();
     }
 
     fn get_metadata(&mut self, topics: &Vec<String>) -> MetadataResponse {
@@ -89,7 +89,55 @@ impl KafkaClient {
         panic!("All Brokers failes to process request!");
     }
 
-    pub fn fetch_offset(& self, topic: String) {
+    pub fn fetch_offsets(&mut self) {
+
+    }
+    pub fn fetch_topic_offset(&mut self, topic: &String) -> Vec<(String, i32, i64)> {
+        let partitions = match self.topic_partitions.get(topic) {
+            Some(partitions) => partitions.clone(),
+            None => vec!()
+        };
+        let mut brokers: HashMap<String, Vec<i32>> = HashMap:: new();
+        for p in partitions {
+            let key = format!("{}-{}", topic, p);
+            match self.topic_brokers.get(&key) {
+                Some(broker) => {
+                    if (! brokers.contains_key(broker) ){brokers.insert(broker.clone(), Vec::new());}
+                    brokers.get_mut(broker).unwrap().push(p);
+                },
+                None => {}
+            }
+        }
+
+        println!("{:?}", brokers);
+        let mut res: Vec<(String, i32, i64)> = Vec::new();
+        for (host, partitions) in brokers.iter() {
+            let v = vec!((topic.clone(), partitions.to_vec()));
+            for e in self.fetch_offset(v, host) {
+                res.push(e);
+            }
+        }
+        res
+
+    }
+
+    fn fetch_offset(&mut self, topic_partitions: Vec<(String, Vec<i32>)>, host: &String)
+                            -> Vec<(String, i32, i64)> {
+        let correlation = self.next_id();
+        let req = OffsetRequest::new_latest(&topic_partitions, correlation, &self.clientid);
+        println!("{:?}", req);
+        let mut conn = self.get_conn(&host);
+        let sent = self.send_request(&mut conn, req);
+        let mut res: Vec<(String, i32, i64)> = Vec::new();
+        if (sent) {
+            let resp = self.get_response::<OffsetResponse>(&mut conn);
+            for tp in resp.topic_partitions.iter() {
+                for p in tp.partitions.iter() {
+                    res.push((tp.topic.clone(), p.partition.clone(), p.offset[0]));
+                }
+            }
+        }
+        res
 
     }
 

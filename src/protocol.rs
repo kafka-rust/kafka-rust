@@ -78,22 +78,52 @@ pub struct ProduceResponse {
 pub struct OffsetRequest {
     pub header: HeaderRequest,
     pub replica: i32,
+    pub topic_partitions: Vec<TopicPartitionRequest>
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct TopicPartitionRequest {
     pub topic: String,
+    pub partitions: Vec<PartitionRequest>
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct PartitionRequest {
     pub partition: i32,
     pub time: i64,
     pub max_offsets: i32
 }
+
 
 #[derive(Default)]
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct OffsetResponse {
     pub header: HeaderResponse,
+    pub topic_partitions: Vec<TopicPartitionResponse>,
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct TopicPartitionResponse {
     pub topic: String,
+    pub partitions: Vec<PartitionResponse>,
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct PartitionResponse {
     pub partition: i32,
     pub error: i16,
-    pub offset: i64
+    pub offset: Vec<i64>
 }
+
 
 #[derive(Default)]
 #[derive(Debug)]
@@ -156,14 +186,6 @@ pub struct PartitionMetadata {
 #[derive(Default)]
 #[derive(Debug)]
 #[derive(Clone)]
-pub struct TopicPartition {
-    pub id: i32,
-    pub topic: String
-}
-
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
 pub struct MessageSet {
     pub offset: i64,
     pub messagesize: i32,
@@ -193,28 +215,49 @@ impl MetadataRequest {
 }
 
 impl OffsetRequest {
-    pub fn new(topic: &String, partition: i32, time: i64,
+    pub fn new(topic_partitions: &Vec<(String, Vec<i32>)>, time: i64,
                correlation: i32, clientid: &String) -> OffsetRequest{
         OffsetRequest{
             header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
                                   clientid: clientid.clone(), version: VERSION},
-            topic: topic.clone(),
-            partition: partition,
-            time: time,
-            max_offsets: 1
+            replica: -1,
+            topic_partitions: topic_partitions.iter()
+                                .map(|&(ref topic, ref partitions)|
+                                    TopicPartitionRequest::new(topic, partitions.to_vec(), &time))
+                                .collect()
         }
     }
-    pub fn new_latest(topic: &String, partition: i32,
+    pub fn new_latest(topic_partitions: &Vec<(String, Vec<i32>)>,
                       correlation: i32, clientid: &String) -> OffsetRequest{
-        OffsetRequest::new(topic, partition, -1, correlation, clientid)
+        OffsetRequest::new(topic_partitions, -1, correlation, clientid)
     }
 
-    pub fn new_earliest(topic: &String, partition: i32, time: i64,
-                        correlation: i32, clientid: &String) -> OffsetRequest{
-        OffsetRequest::new(topic, partition, -2, correlation, clientid)
+    pub fn new_earliest(topic_partitions: &Vec<(String, Vec<i32>)>,
+                      correlation: i32, clientid: &String) -> OffsetRequest{
+        OffsetRequest::new(topic_partitions, -2, correlation, clientid)
     }
 }
 
+impl TopicPartitionRequest {
+    pub fn new(topic: &String, partitions: Vec<i32>, time: &i64) -> TopicPartitionRequest{
+        TopicPartitionRequest {
+            topic: topic.clone(),
+            partitions: partitions.iter()
+                                  .map(|&partition| PartitionRequest:: new(partition, time))
+                                  .collect()
+        }
+    }
+}
+
+impl PartitionRequest {
+    pub fn new(partition: i32, time: &i64) -> PartitionRequest {
+        PartitionRequest{
+            partition: partition,
+            time: *time,
+            max_offsets: 1
+        }
+    }
+}
 // Encoder and Decoder implementations
 impl ToByte for HeaderRequest {
     fn encode<T:Write>(&self, buffer: &mut T) {
@@ -236,10 +279,7 @@ impl ToByte for OffsetRequest {
     fn encode<T:Write>(&self, buffer: &mut T) {
         self.header.encode(buffer);
         self.replica.encode(buffer);
-        self.topic.encode(buffer);
-        self.partition.encode(buffer);
-        self.time.encode(buffer);
-        self.max_offsets.encode(buffer);
+        self.topic_partitions.encode(buffer);
     }
 }
 
@@ -280,7 +320,23 @@ impl FromByte for OffsetResponse {
 
     fn decode<T: Read>(&mut self, buffer: &mut T) {
         self.header.decode(buffer);
+        self.topic_partitions.decode(buffer);
+    }
+}
+
+impl FromByte for TopicPartitionResponse {
+    type R = TopicPartitionResponse;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
         self.topic.decode(buffer);
+        self.partitions.decode(buffer);
+    }
+}
+
+impl FromByte for PartitionResponse {
+    type R = PartitionResponse;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
         self.partition.decode(buffer);
         self.error.decode(buffer);
         self.offset.decode(buffer);
@@ -332,6 +388,21 @@ impl FromByte for PartitionMetadata {
         self.leader.decode(buffer);
         self.replicas.decode(buffer);
         self.isr.decode(buffer);
+    }
+}
+
+impl ToByte for TopicPartitionRequest {
+    fn encode<T: Write>(&self, buffer: &mut T) {
+        self.topic.encode(buffer);
+        self.partitions.encode(buffer);
+    }
+}
+
+impl ToByte for PartitionRequest {
+    fn encode<T: Write>(&self, buffer: &mut T) {
+        self.partition.encode(buffer);
+        self.time.encode(buffer);
+        self.max_offsets.encode(buffer);
     }
 }
 

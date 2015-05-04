@@ -18,6 +18,12 @@ pub trait FromByte {
     }
 }
 
+impl ToByte for i8 {
+    fn encode<T:Write>(&self, buffer: &mut T) {
+        buffer.write_i8(*self);
+    }
+}
+
 impl ToByte for i16 {
     fn encode<T:Write>(&self, buffer: &mut T) {
         buffer.write_i16::<BigEndian>(*self);
@@ -49,6 +55,21 @@ impl <V:ToByte> ToByte for Vec<V> {
     }
 }
 
+impl ToByte for Vec<u8>{
+    fn encode<T: Write>(&self, buffer: &mut T) {
+        buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
+        buffer.write_all(self);
+    }
+}
+
+
+impl FromByte for i8 {
+    type R = i8;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
+        *self = buffer.read_i8().unwrap();
+    }
+}
 
 impl FromByte for i16 {
     type R = i16;
@@ -89,5 +110,16 @@ impl <V: FromByte + Default> FromByte for Vec<V>{
             e.decode(buffer);
             self.push(e);
         }
+    }
+}
+
+impl FromByte for Vec<u8>{
+    type R = Vec<u8>;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) {
+        let length = buffer.read_i32::<BigEndian>().unwrap();
+
+        let mut s = buffer.take(length as u64);
+        s.read_to_end(self);
     }
 }
