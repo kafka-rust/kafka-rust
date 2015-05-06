@@ -7,6 +7,7 @@
 extern crate num;
 extern crate byteorder;
 
+pub mod snappy;
 pub mod codecs;
 pub mod connection;
 pub mod protocol;

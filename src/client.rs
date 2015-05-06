@@ -92,7 +92,7 @@ impl KafkaClient {
     pub fn fetch_offsets(&mut self) {
 
     }
-    pub fn fetch_topic_offset(&mut self, topic: &String) -> Vec<(String, i32, i64)> {
+    pub fn fetch_topic_offset(&mut self, topic: &String) -> Vec<(String, Vec<(i32, i64)>)> {
         let partitions = match self.topic_partitions.get(topic) {
             Some(partitions) => partitions.clone(),
             None => vec!()
@@ -109,23 +109,22 @@ impl KafkaClient {
             }
         }
 
-        println!("{:?}", brokers);
-        let mut res: Vec<(String, i32, i64)> = Vec::new();
+        let mut res: Vec<(i32, i64)> = Vec::new();
         for (host, partitions) in brokers.iter() {
             let v = vec!((topic.clone(), partitions.to_vec()));
-            for e in self.fetch_offset(v, host) {
-                res.push(e);
+            for (topic, partition, offset) in self.fetch_offset(v, host) {
+                res.push((partition, offset));
             }
         }
-        res
+        vec!((topic.clone(), res))
 
     }
 
     fn fetch_offset(&mut self, topic_partitions: Vec<(String, Vec<i32>)>, host: &String)
                             -> Vec<(String, i32, i64)> {
         let correlation = self.next_id();
-        let req = OffsetRequest::new_latest(&topic_partitions, correlation, &self.clientid);
-        println!("{:?}", req);
+        let req = OffsetRequest::new_earliest(&topic_partitions, correlation, &self.clientid);
+
         let mut conn = self.get_conn(&host);
         let sent = self.send_request(&mut conn, req);
         let mut res: Vec<(String, i32, i64)> = Vec::new();
@@ -138,6 +137,34 @@ impl KafkaClient {
             }
         }
         res
+
+    }
+
+    fn get_broker(&mut self, topic: &String, partition: i32) -> Option<String> {
+        let key = format!("{}-{}", topic, partition);
+        match self.topic_brokers.get(&key) {
+            Some(broker) => {
+                Some(broker.clone())
+            },
+            None => None
+        }
+    }
+    pub fn fetch_messages(&mut self, topic: &String, partition: i32, offset: i64) {
+
+        let host = self.get_broker(topic, partition).unwrap();
+
+        let correlation = self.next_id();
+        let req = FetchRequest::new_single(topic, partition, offset, correlation, &self.clientid);
+
+        let mut conn = self.get_conn(&host);
+        let sent = self.send_request(&mut conn, req);
+        if (sent) {
+            let resp = self.get_response::<FetchResponse>(&mut conn);
+            for (off, msg) in resp.get_messages() {
+                println!("Offset = {}, Message = {}", off, msg);
+            }
+
+        }
 
     }
 
@@ -159,11 +186,11 @@ impl KafkaClient {
     fn get_response<T: FromByte>(&self, conn:&mut KafkaConnection) -> T::R{
         let mut v: Vec<u8> = vec!();
         conn.read(4, &mut v);
-        let size = i32::decode_new(&mut Cursor::new(v));
+        let size = i32::decode_new(&mut Cursor::new(v)).unwrap();
 
         let mut resp: Vec<u8> = vec!();
         conn.read(size as u64, &mut resp);
-        T::decode_new(&mut Cursor::new(resp))
+        T::decode_new(&mut Cursor::new(resp)).unwrap()
     }
 
 }

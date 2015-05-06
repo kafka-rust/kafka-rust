@@ -20,7 +20,7 @@ impl fmt::Debug for KafkaConnection {
 impl KafkaConnection {
 
     pub fn send(&mut self, msg: & Vec<u8>) -> Result<usize> {
-        println!("{:?}", &msg[..]);
+        //println!("{:?}", &msg[..]);
         self.stream.write(&msg[..])
     }
 

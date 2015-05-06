@@ -7,3 +7,4 @@ authors = ["Yousuf Fauzan <yousuffauzan@gmail.com>"]
 [dependencies]
 num = "*"
 byteorder = "*"
+libc="*"
