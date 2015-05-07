@@ -28,6 +28,9 @@ impl KafkaClient {
                       timeout: DEFAULT_TIMEOUT, ..KafkaClient::default()}
     }
 
+    pub fn init(&mut self) {
+
+    }
     fn get_conn(& mut self, host: &String) -> KafkaConnection {
         match self.conns.get(host) {
             Some (conn) => return conn.clone(),
@@ -46,18 +49,29 @@ impl KafkaClient {
     }
 
 
-    pub fn load_metadata(&mut self, topics: &Vec<String>) {
+    pub fn loca_metadaata_all(&mut self) {
+        self.reset_metadata();
+        self.load_metadata(&vec!());
+    }
+
+    pub fn load_metadata (&mut self, topics: &Vec<String>) {
         let resp = self.get_metadata(topics);
+        if (resp.is_none()) {
+            return;
+        }
+
+        let r = resp.unwrap();
+
         let mut brokers: HashMap<i32, String> = HashMap::new();
-        for broker in resp.brokers {
+        for broker in r.brokers {
             brokers.insert(broker.nodeid, format!("{}:{}", broker.host, broker.port));
         }
 
         self.topic_brokers.clear();
-        for topic in resp.topics.iter() {
-            self.topic_partitions.insert(topic.topic.clone(), Vec::new());
+        for topic in r.topics {
+            self.topic_partitions.insert(topic.topic.clone(), vec!());
 
-            for partition in &topic.partitions {
+            for partition in topic.partitions {
                 match brokers.get(&partition.leader) {
                     Some(broker) => {
                         self.topic_partitions.get_mut(&topic.topic).unwrap().push(partition.id);
@@ -76,22 +90,23 @@ impl KafkaClient {
         self.topic_brokers.clear();
     }
 
-    fn get_metadata(&mut self, topics: &Vec<String>) -> MetadataResponse {
+    fn get_metadata(&mut self, topics: &Vec<String>) -> Option<MetadataResponse> {
         for host in self.hosts.to_vec() {
             let correlation = self.next_id();
             let req = MetadataRequest::new(correlation, &self.clientid, topics.to_vec());
             let mut conn = self.get_conn(&host);
-            let sent = self.send_request(&mut conn, req);
-            if (sent) {
-                return self.get_response::<MetadataResponse>(&mut conn);
+            if (self.send_request(&mut conn, req)) {
+                return Some(self.get_response::<MetadataResponse>(&mut conn));
             }
         }
-        panic!("All Brokers failes to process request!");
+        None
     }
 
     pub fn fetch_offsets(&mut self) {
+        // TODO - Implement method to fetch offsets for more than 1 topic
 
     }
+    
     pub fn fetch_topic_offset(&mut self, topic: &String) -> Vec<(String, Vec<(i32, i64)>)> {
         let partitions = match self.topic_partitions.get(topic) {
             Some(partitions) => partitions.clone(),
