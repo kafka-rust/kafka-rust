@@ -1,4 +1,5 @@
 
+use super::utils::*;
 use super::protocol::*;
 use super::connection::*;
 use super::codecs::*;
@@ -49,7 +50,7 @@ impl KafkaClient {
     }
 
 
-    pub fn loca_metadaata_all(&mut self) {
+    pub fn load_metadata_all(&mut self) {
         self.reset_metadata();
         self.load_metadata(&vec!());
     }
@@ -106,7 +107,7 @@ impl KafkaClient {
         // TODO - Implement method to fetch offsets for more than 1 topic
 
     }
-    
+
     pub fn fetch_topic_offset(&mut self, topic: &String) -> Vec<(String, Vec<(i32, i64)>)> {
         let partitions = match self.topic_partitions.get(topic) {
             Some(partitions) => partitions.clone(),
@@ -164,7 +165,7 @@ impl KafkaClient {
             None => None
         }
     }
-    pub fn fetch_messages(&mut self, topic: &String, partition: i32, offset: i64) {
+    pub fn fetch_messages(&mut self, topic: &String, partition: i32, offset: i64) -> Vec<OffsetMessage>{
 
         let host = self.get_broker(topic, partition).unwrap();
 
@@ -175,12 +176,9 @@ impl KafkaClient {
         let sent = self.send_request(&mut conn, req);
         if (sent) {
             let resp = self.get_response::<FetchResponse>(&mut conn);
-            for om in resp.get_messages() {
-                println!("{:?}", om);
-            }
-
+            return resp.get_messages()
         }
-
+        vec!()
     }
 
     pub fn send_message(&mut self, topic: &String, partition: i32, required_acks: i16,
