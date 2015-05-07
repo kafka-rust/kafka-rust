@@ -1,7 +1,5 @@
 extern crate kafka;
 use kafka::client::KafkaClient;
-use kafka::protocol::*;
-use kafka::codecs::*;
 
 fn main() {
 
