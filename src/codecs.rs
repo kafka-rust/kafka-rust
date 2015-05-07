@@ -5,6 +5,9 @@ use std::default::Default;
 
 pub trait ToByte {
     fn encode<T: Write>(&self, buffer: &mut T);
+    fn encode_nolen<T: Write>(&self, buffer: &mut T) {
+        self.encode(buffer);
+    }
 }
 
 pub trait FromByte {
@@ -55,11 +58,19 @@ impl <V:ToByte> ToByte for Vec<V> {
             e.encode(buffer);
         }
     }
+    fn encode_nolen<T:Write>(&self, buffer: &mut T) {
+        for e in self {
+            e.encode(buffer);
+        }
+    }
 }
 
 impl ToByte for Vec<u8>{
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
+        buffer.write_all(self);
+    }
+    fn encode_nolen<T: Write>(&self, buffer: &mut T) {
         buffer.write_all(self);
     }
 }

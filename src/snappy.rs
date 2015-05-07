@@ -27,6 +27,7 @@ extern {
 #[derive(Clone)]
 pub struct SnappyHeader {
     pub marker: i8,
+    // TODO - Its a c-string of 6 bytes not 6 independent chars
     pub c1: i8,
     pub c2: i8,
     pub c3: i8,
@@ -50,6 +51,7 @@ impl FromByte for SnappyHeader {
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.marker.decode(buffer);
+        // TODO - decode a fixed size array instead of byte by byte. I mean, make it elegant
         self.c1.decode(buffer);
         self.c2.decode(buffer);
         self.c3.decode(buffer);
@@ -96,13 +98,11 @@ pub fn compress(src: &[u8]) -> Vec<u8> {
 pub fn uncompress(src: &Vec<u8>) -> Option<Vec<u8>> {
     unsafe {
 
-        let (t, x) = src.split_at(0);
+        let (_, x) = src.split_at(0);
         let srclen = x.len() as size_t;
         let psrc = x.as_ptr();
-        println!("{:?}", t);
         let mut dstlen: size_t = 0;
         snappy_uncompressed_length(psrc, srclen, &mut dstlen);
-        println!("{}, {}", srclen, &dstlen);
         let mut dst = Vec::with_capacity(dstlen as usize);
         let pdst = dst.as_mut_ptr();
 

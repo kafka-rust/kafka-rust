@@ -161,9 +161,27 @@ impl KafkaClient {
         if (sent) {
             let resp = self.get_response::<FetchResponse>(&mut conn);
             for (off, msg) in resp.get_messages() {
-                println!("Offset = {}, Message = {}", off, msg);
+                println!("Offset = {}, Message = {:?}", off, msg);
             }
 
+        }
+
+    }
+
+    pub fn send_message(&mut self, topic: &String, partition: i32, required_acks: i16,
+                      timeout: i32, message: &Vec<u8>) {
+
+        let host = self.get_broker(topic, partition).unwrap();
+
+        let correlation = self.next_id();
+        let req = ProduceRequest::new_single(topic, partition, required_acks,
+            timeout, message, correlation, &self.clientid);
+            println!("Req = {:?}", req);
+        let mut conn = self.get_conn(&host);
+        let sent = self.send_request(&mut conn, req);
+        if (sent) {
+            let resp = self.get_response::<ProduceResponse>(&mut conn);
+            println!("Message = {:?}", resp);
         }
 
     }
@@ -175,6 +193,7 @@ impl KafkaClient {
         let mut s = vec!();
         (buffer.len() as i32).encode(&mut s);
         for byte in buffer.iter() { s.push(*byte); }
+        println!("Sent = {:?}", s);
         let bytes_to_send = s.len();
 
         match conn.send(&s) {
@@ -190,6 +209,7 @@ impl KafkaClient {
 
         let mut resp: Vec<u8> = vec!();
         conn.read(size as u64, &mut resp);
+        println!("Received = {:?}", resp);
         T::decode_new(&mut Cursor::new(resp)).unwrap()
     }
 

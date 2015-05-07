@@ -1,4 +1,5 @@
 
+use super::crc32::*;
 use super::codecs::*;
 use super::snappy;
 use num::traits::ToPrimitive;
@@ -64,10 +65,24 @@ pub struct ProduceRequest {
     pub header: HeaderRequest,
     pub required_acks: i16,
     pub timeout: i32,
+    pub topic_partitions: Vec<TopicPartitionProduceRequest>,
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct TopicPartitionProduceRequest {
     pub topic: String,
+    pub partitions: Vec<PartitionProduceRequest>,
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct PartitionProduceRequest {
     pub partition: i32,
     pub messageset_size: i32,
-    pub messageset: Vec<MessageSet>
+    pub messageset: MessageSet
 }
 
 #[derive(Default)]
@@ -75,9 +90,23 @@ pub struct ProduceRequest {
 #[derive(Clone)]
 pub struct ProduceResponse {
     pub header: HeaderResponse,
+    pub topic_partitions: Vec<TopicPartitionProduceResponse>
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct TopicPartitionProduceResponse {
     pub topic: String,
+    pub partitions: Vec<PartitionProduceResponse>,
+}
+
+#[derive(Default)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct PartitionProduceResponse {
     pub partition: i32,
-    pub error: i16,
+    pub error: i32,
     pub offset: i64
 }
 
@@ -303,6 +332,39 @@ impl PartitionOffsetRequest {
     }
 }
 
+impl ProduceRequest {
+    pub fn new_single(topic: &String, partition: i32, required_acks: i16,
+                      timeout: i32, message: &Vec<u8>,
+                      correlation: i32, clientid: &String) -> ProduceRequest{
+        ProduceRequest{
+            header: HeaderRequest{key: PRODUCE_KEY, correlation: correlation,
+                                  clientid: clientid.clone(), version: VERSION},
+            required_acks: required_acks,
+            timeout: timeout,
+            topic_partitions: vec!(TopicPartitionProduceRequest::new_single(topic, partition, message))
+        }
+    }
+}
+
+impl TopicPartitionProduceRequest {
+    pub fn new_single(topic: &String, partition: i32, message: &Vec<u8>) -> TopicPartitionProduceRequest{
+        TopicPartitionProduceRequest {
+            topic: topic.clone(),
+            partitions: vec!(PartitionProduceRequest:: new(&partition, message))
+        }
+    }
+}
+
+impl PartitionProduceRequest {
+    pub fn new(partition: &i32, message: &Vec<u8>) -> PartitionProduceRequest {
+        PartitionProduceRequest{
+            partition: *partition,
+            messageset_size: 0,
+            messageset: MessageSet::new(message)
+        }
+    }
+}
+
 impl FetchRequest {
     pub fn new(topic_partitions: &Vec<(String, Vec<(i32, i64)>)>,
                correlation: i32, clientid: &String) -> FetchRequest{
@@ -361,13 +423,13 @@ impl PartitionFetchRequest {
 }
 
 impl FetchResponse {
-    pub fn get_messages(& self) -> Vec<(i64, String)>{
-        let mut x: Vec<(i64, String)> = vec!();
+    pub fn get_messages(& self) -> Vec<(i64, Vec<u8>)>{
+        let mut x: Vec<(i64, Vec<u8>)> = vec!();
         for tp in self.topic_partitions.iter() { // MessageSetInner
             for p in tp.partitions.iter(){
                 for mi in p.clone().messageset.message {
                     for (o, m) in mi.message.get_messages(mi.offset) {
-                        x.push((o, String::from_utf8(m).unwrap()));
+                        x.push((o, m));
                     }
                 }
             }
@@ -376,7 +438,32 @@ impl FetchResponse {
     }
 }
 
+
+impl MessageSet {
+    pub fn new(message: &Vec<u8>) -> MessageSet {
+        MessageSet{message: vec!(MessageSetInner::new(message))}
+    }
+    fn get_messages(& self, res: &mut Vec<(i64, Vec<u8>)>){
+        //let mut x: Vec<(i64, Vec<u8>)> = vec!();
+        for mi in self.message.iter() { // MessageSetInner
+            for (o, m) in mi.message.get_messages(mi.offset) {
+                res.push((o, m));
+            }
+        }
+    }
+}
+
+impl MessageSetInner {
+    fn new(message: &Vec<u8>) -> MessageSetInner {
+        MessageSetInner{offset:0, messagesize:0, message: Message::new(message)}
+    }
+}
+
 impl Message {
+    pub fn new(message: &Vec<u8>) -> Message {
+        Message{crc: 0, value: message.clone(), ..Default::default()}
+    }
+
     fn get_messages(& self, offset: i64) -> Vec<(i64, Vec<u8>)>{
         let mut res: Vec<(i64, Vec<u8>)> = vec!();
         match self.attributes {
@@ -429,16 +516,6 @@ impl Message {
     }
 }
 
-impl MessageSet {
-    fn get_messages(& self, res: &mut Vec<(i64, Vec<u8>)>){
-        //let mut x: Vec<(i64, Vec<u8>)> = vec!();
-        for mi in self.message.iter() { // MessageSetInner
-            for (o, m) in mi.message.get_messages(mi.offset) {
-                res.push((o, m));
-            }
-        }
-    }
-}
 
 // Encoder and Decoder implementations
 impl ToByte for HeaderRequest {
@@ -462,6 +539,31 @@ impl ToByte for OffsetRequest {
         self.header.encode(buffer);
         self.replica.encode(buffer);
         self.topic_partitions.encode(buffer);
+    }
+}
+
+impl ToByte for ProduceRequest {
+    fn encode<T:Write>(&self, buffer: &mut T) {
+        self.header.encode(buffer);
+        self.required_acks.encode(buffer);
+        self.timeout.encode(buffer);
+        self.topic_partitions.encode(buffer);
+    }
+}
+
+impl ToByte for TopicPartitionProduceRequest {
+    fn encode<T:Write>(&self, buffer: &mut T) {
+        self.topic.encode(buffer);
+        self.partitions.encode(buffer);
+    }
+}
+
+impl ToByte for PartitionProduceRequest {
+    fn encode<T:Write>(&self, buffer: &mut T) {
+        self.partition.encode(buffer);
+        let mut buf = vec!();
+        self.messageset.encode(&mut buf);
+        buf.encode(buffer);
     }
 }
 
@@ -542,6 +644,38 @@ impl FromByte for PartitionOffsetResponse {
     }
 }
 
+impl FromByte for ProduceResponse {
+    type R = ProduceResponse;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        self.header.decode(buffer);
+        self.topic_partitions.decode(buffer);
+        Ok(())
+    }
+}
+
+impl FromByte for TopicPartitionProduceResponse {
+    type R = TopicPartitionProduceResponse;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        self.topic.decode(buffer);
+        self.partitions.decode(buffer);
+        Ok(())
+    }
+}
+
+impl FromByte for PartitionProduceResponse {
+    type R = PartitionProduceResponse;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        self.partition.decode(buffer);
+        self.error.decode(buffer);
+        self.offset.decode(buffer);
+        Ok(())
+    }
+}
+
+
 impl FromByte for FetchResponse {
     type R = FetchResponse;
 
@@ -569,7 +703,6 @@ impl FromByte for PartitionFetchResponse {
         self.partition.decode(buffer);
         self.error.decode(buffer);
         self.offset.decode(buffer);
-        println!("1");
         self.messageset.decode(buffer);
         Ok(())
     }
@@ -628,7 +761,7 @@ impl ToByte for PartitionOffsetRequest {
 
 impl ToByte for MessageSet {
     fn encode<T:Write>(&self, buffer: &mut T) {
-        self.message.encode(buffer);
+        self.message.encode_nolen(buffer);
     }
 }
 
@@ -657,8 +790,9 @@ impl FromByte for MessageSet {
 impl ToByte for MessageSetInner {
     fn encode<T:Write>(&self, buffer: &mut T) {
         self.offset.encode(buffer);
-        self.messagesize.encode(buffer);
-        self.message.encode(buffer);
+        let mut buf = vec!();
+        self.message.encode(&mut buf);
+        buf.encode(buffer);
     }
 }
 
@@ -679,11 +813,22 @@ impl FromByte for MessageSetInner {
 
 impl ToByte for Message {
     fn encode<T:Write>(&self, buffer: &mut T) {
-        self.crc.encode(buffer);
-        self.magic.encode(buffer);
-        self.attributes.encode(buffer);
-        self.key.encode(buffer);
-        self.value.encode(buffer);
+        let mut buf = vec!();
+        self.magic.encode(&mut buf);
+        self.attributes.encode(&mut buf);
+        if self.key.len() == 0 {
+            let a: i32 = -1;
+            a.encode(&mut buf);
+        } else {
+            self.key.encode(&mut buf);
+        }
+
+        self.value.encode(&mut buf);
+        let (_, x) = buf.split_at(0);
+        let crc = Crc32::tocrc(x) as i32;
+        println!("{:?}", crc);
+        crc.encode(buffer);
+        buf.encode_nolen(buffer);
     }
 }
 
