@@ -1,4 +1,4 @@
-# Rust client for Apache Kafka
+# Kafka Rust Client
 
 
 #### Usage:
@@ -59,3 +59,4 @@
 * Tests
 * Missing functions for the implemented methods (eg. Fetch Message by multiple topic/partition)
 * Offset Management functions
+* Documentation
