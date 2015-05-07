@@ -425,7 +425,7 @@ impl PartitionFetchRequest {
 impl FetchResponse {
     pub fn get_messages(& self) -> Vec<(i64, Vec<u8>)>{
         let mut x: Vec<(i64, Vec<u8>)> = vec!();
-        for tp in self.topic_partitions.iter() { // MessageSetInner
+        for tp in self.topic_partitions.iter() {
             for p in tp.partitions.iter(){
                 for mi in p.clone().messageset.message {
                     for (o, m) in mi.message.get_messages(mi.offset) {
@@ -444,8 +444,7 @@ impl MessageSet {
         MessageSet{message: vec!(MessageSetInner::new(message))}
     }
     fn get_messages(& self, res: &mut Vec<(i64, Vec<u8>)>){
-        //let mut x: Vec<(i64, Vec<u8>)> = vec!();
-        for mi in self.message.iter() { // MessageSetInner
+        for mi in self.message.iter() {
             for (o, m) in mi.message.get_messages(mi.offset) {
                 res.push((o, m));
             }
@@ -473,40 +472,40 @@ impl Message {
                 // SNAPPY
                 let mut buffer = Cursor::new(self.value.to_vec());
                 let header = snappy::SnappyHeader::decode_new(&mut buffer);
-                println!("Header = {:?}", header);
+
                 let mut count = 0;
                 loop {
                     count = count+1;
-                    println!("Count = {}", count);
+
                     match snappy::SnappyMessage::decode_new(&mut buffer) {
                         Ok(x) => {
                             match snappy::uncompress(&x.message) {
                                 Some(m) => {
-                                    println!("{}. Uncompressed message. Decoding to Messageset", count);
+
                                     match MessageSet::decode_new(&mut Cursor::new(m)) {
                                         Ok(ms) => {
-                                            //println!("{}. Got MS {:?}", count, ms);
+                                            //
                                             ms.get_messages(&mut res);
                                         },
                                         Err(e) => {
-                                            println!("{}. Uncompressed message. Error decoding to Messageset", count);
+
                                             break;
                                         }
                                     }
                                 },
                                 None => {
-                                    println! ("{}. Error with snappy::uncompress", count);
+
                                     break
                                 }
                             }
                         },
                         Err(e) => {
-                            println!("SnappyMessage decode error {:?}", e);
+
                             break;
                         }
                     }
                 }
-                //println!("Message = {:?}", res);
+                //
 
                 res
 
@@ -800,12 +799,12 @@ impl FromByte for MessageSetInner {
     type R = MessageSetInner;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        println!("MessageSetInner");
+
         self.offset.decode(buffer);
-        println!("offset = {}", self.offset);
+
 
         self.messagesize.decode(buffer);
-        println!("messagesize = {}", self.messagesize);
+
         try!(self.message.decode(buffer));
         Ok(())
     }
@@ -826,7 +825,7 @@ impl ToByte for Message {
         self.value.encode(&mut buf);
         let (_, x) = buf.split_at(0);
         let crc = Crc32::tocrc(x) as i32;
-        println!("{:?}", crc);
+
         crc.encode(buffer);
         buf.encode_nolen(buffer);
     }
@@ -836,15 +835,15 @@ impl FromByte for Message {
     type R = Message;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        println!("\tMessage");
+
         try!(self.crc.decode(buffer));
-        println!("\tcrc = {}", self.crc);
+
         try!(self.magic.decode(buffer));
-        println!("\tmagic = {}", self.magic);
+
         try!(self.attributes.decode(buffer));
-        println!("\tattributes = {}", self.attributes);
+
         try!(self.key.decode(buffer));
-        println!("\tkey = {}", 1);
+
         try!(self.value.decode(buffer));
         Ok(())
     }

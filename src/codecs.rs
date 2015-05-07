@@ -129,7 +129,7 @@ impl FromByte for String {
     type R = String;
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i16 = 0;
-        try!(decode!(buffer, read_i16, &mut length));// = buffer.read_i16::<BigEndian>().unwrap();
+        try!(decode!(buffer, read_i16, &mut length));
         let mut client = String::new();
         let _ = buffer.take(length as u64).read_to_string(self);
         if (self.len() != length as usize) {
@@ -144,14 +144,12 @@ impl <V: FromByte + Default> FromByte for Vec<V>{
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i32 = 0;
-        try!(decode!(buffer, read_i32, &mut length));// = buffer.read_i32::<BigEndian>().unwrap();
-        println!("Length = {}", length);
+        try!(decode!(buffer, read_i32, &mut length));
         for i in 0..length {
             let mut e: V = Default::default();
             try!(e.decode(buffer));
             self.push(e);
         }
-        println!("Got Length = {}", length);
         Ok(())
     }
 }
@@ -161,8 +159,7 @@ impl FromByte for Vec<u8>{
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i32 = 0;
-        try!(decode!(buffer, read_i32, &mut length));// = buffer.read_i32::<BigEndian>().unwrap();
-        println!("\tLength = {}", length);
+        try!(decode!(buffer, read_i32, &mut length));
         if (length <= 0) {return Ok(());}
         match buffer.take(length as u64).read_to_end(self) {
             Ok(size) => {
