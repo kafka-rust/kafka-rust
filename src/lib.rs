@@ -7,6 +7,7 @@
 extern crate num;
 extern crate byteorder;
 
+pub mod utils;
 pub mod crc32;
 pub mod snappy;
 pub mod codecs;

@@ -1,4 +1,5 @@
 
+use super::utils::*;
 use super::crc32::*;
 use super::codecs::*;
 use super::snappy;
@@ -423,18 +424,26 @@ impl PartitionFetchRequest {
 }
 
 impl FetchResponse {
-    pub fn get_messages(& self) -> Vec<(i64, Vec<u8>)>{
-        let mut x: Vec<(i64, Vec<u8>)> = vec!();
-        for tp in self.topic_partitions.iter() {
-            for p in tp.partitions.iter(){
-                for mi in p.clone().messageset.message {
-                    for (o, m) in mi.message.get_messages(mi.offset) {
-                        x.push((o, m));
-                    }
-                }
-            }
-        }
-        x
+    pub fn get_messages(& self) -> Vec<OffsetMessage>{
+        self.topic_partitions
+            .iter()
+            .flat_map(|ref tp| tp.get_messages())
+            .collect()
+    }
+}
+
+impl TopicPartitionFetchResponse {
+    pub fn get_messages(& self) -> Vec<OffsetMessage>{
+        self.partitions
+            .iter()
+            .flat_map(|ref p| p.get_messages())
+            .collect()
+    }
+}
+
+impl PartitionFetchResponse {
+    pub fn get_messages(& self) -> Vec<OffsetMessage>{
+        self.messageset.get_messages()
     }
 }
 
@@ -443,18 +452,20 @@ impl MessageSet {
     pub fn new(message: &Vec<u8>) -> MessageSet {
         MessageSet{message: vec!(MessageSetInner::new(message))}
     }
-    fn get_messages(& self, res: &mut Vec<(i64, Vec<u8>)>){
-        for mi in self.message.iter() {
-            for (o, m) in mi.message.get_messages(mi.offset) {
-                res.push((o, m));
-            }
-        }
+    fn get_messages(& self) -> Vec<OffsetMessage>{
+        self.message
+            .iter()
+            .flat_map(|ref m| m.get_messages())
+            .collect()
     }
 }
 
 impl MessageSetInner {
     fn new(message: &Vec<u8>) -> MessageSetInner {
         MessageSetInner{offset:0, messagesize:0, message: Message::new(message)}
+    }
+    fn get_messages(& self) -> Vec<OffsetMessage>{
+        self.message.get_messages(self.offset)
     }
 }
 
@@ -463,59 +474,40 @@ impl Message {
         Message{crc: 0, value: message.clone(), ..Default::default()}
     }
 
-    fn get_messages(& self, offset: i64) -> Vec<(i64, Vec<u8>)>{
-        let mut res: Vec<(i64, Vec<u8>)> = vec!();
+    fn get_messages(& self, offset: i64) -> Vec<OffsetMessage>{
         match self.attributes {
-            0 => vec!((offset, self.value.to_vec())),
-            1 => vec!((offset, self.value.to_vec())),
-            2 => {
-                // SNAPPY
-                let mut buffer = Cursor::new(self.value.to_vec());
-                let header = snappy::SnappyHeader::decode_new(&mut buffer);
-
-                let mut count = 0;
-                loop {
-                    count = count+1;
-
-                    match snappy::SnappyMessage::decode_new(&mut buffer) {
-                        Ok(x) => {
-                            match snappy::uncompress(&x.message) {
-                                Some(m) => {
-
-                                    match MessageSet::decode_new(&mut Cursor::new(m)) {
-                                        Ok(ms) => {
-                                            //
-                                            ms.get_messages(&mut res);
-                                        },
-                                        Err(e) => {
-
-                                            break;
-                                        }
-                                    }
-                                },
-                                None => {
-
-                                    break
-                                }
-                            }
-                        },
-                        Err(e) => {
-
-                            break;
-                        }
-                    }
-                }
-                //
-
-                res
-
-            },
+            0 => vec!(OffsetMessage{offset:offset, message: self.value.clone()}),
+            // TODO - Handle Gzip
+            1 => vec!(OffsetMessage{offset:offset, message: self.value.clone()}),
+            2 => message_decode_snappy(&self.value),
             _ => vec!()
         }
     }
 }
 
+fn message_decode_snappy(value: & Vec<u8>) -> Vec<OffsetMessage>{
+    // SNAPPY
+    let mut buffer = Cursor::new(value.to_vec());
+    let header = snappy::SnappyHeader::decode_new(&mut buffer);
+    //if (!snappy::check_header(&header)) return;
 
+    let mut v = vec!();
+    loop {
+        match message_decode_loop(&mut buffer) {
+            Ok(x) => v.push(x),
+            Err(e) => break
+        }
+    }
+    v.iter().flat_map(|ref x| x.into_iter().cloned()).collect()
+}
+
+fn message_decode_loop<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
+    let sms = try!(snappy::SnappyMessage::decode_new(buffer));
+    let msg = try!(snappy::uncompress(&sms.message));
+    let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
+    Ok(mset.get_messages())
+
+}
 // Encoder and Decoder implementations
 impl ToByte for HeaderRequest {
     fn encode<T:Write>(&self, buffer: &mut T) {

@@ -1,7 +1,8 @@
 extern crate libc;
 use self::libc::{c_int, size_t};
 use std::io::{Read, Write};
-use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt, Result, Error};
+use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt, Error};
+use std::result::Result;
 use super::codecs::*;
 
 #[link(name = "snappy")]
@@ -49,7 +50,7 @@ pub struct SnappyMessage {
 impl FromByte for SnappyHeader {
     type R = SnappyHeader;
 
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<(), Error> {
         self.marker.decode(buffer);
         // TODO - decode a fixed size array instead of byte by byte. I mean, make it elegant
         self.c1.decode(buffer);
@@ -68,7 +69,7 @@ impl FromByte for SnappyHeader {
 impl FromByte for SnappyMessage {
     type R = SnappyMessage;
 
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<(), Error> {
         try!(self.message.decode(buffer));
         Ok(())
     }
@@ -95,7 +96,7 @@ pub fn compress(src: &[u8]) -> Vec<u8> {
     }
 }
 
-pub fn uncompress(src: &Vec<u8>) -> Option<Vec<u8>> {
+pub fn uncompress(src: &Vec<u8>) -> Result<Vec<u8>, Error> {
     unsafe {
 
         let (_, x) = src.split_at(0);
@@ -108,9 +109,9 @@ pub fn uncompress(src: &Vec<u8>) -> Option<Vec<u8>> {
 
         if snappy_uncompress(psrc, srclen, pdst, &mut dstlen) == 0 {
             dst.set_len(dstlen as usize);
-            Some(dst)
+            Ok(dst)
         } else {
-            None // SNAPPY_INVALID_INPUT
+            Err(Error::UnexpectedEOF) // SNAPPY_INVALID_INPUT
         }
     }
 }
