@@ -17,8 +17,8 @@ fn main() {
     client.send_message(&"my-topic".to_string(), 0, 1,
                       100, &"b".to_string().into_bytes());*/
 
-    for om in client.fetch_messages(&"my-topic".to_string(), 0, 0) {
-        println!("{:?}", om);
-    };
+    //for om in client.fetch_messages(&"my-topic".to_string(), 0, 0) {
+    //    println!("{:?}", om);
+    //};
 
 }

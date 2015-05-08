@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt, Result, Error};
 use std::default::Default;
 
+
 pub trait ToByte {
     fn encode<T: Write>(&self, buffer: &mut T);
     fn encode_nolen<T: Write>(&self, buffer: &mut T) {

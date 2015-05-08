@@ -24,6 +24,25 @@ const FETCH_MIN_BYTES: i32 = 4096;
 const FETCH_BUFFER_SIZE_BYTES: i32 = 4096;
 const MAX_FETCH_BUFFER_SIZE_BYTES: i32 = FETCH_BUFFER_SIZE_BYTES * 8;
 
+pub enum KafKaError {
+    Unknown = -1,
+    NoError = 0,
+    OffsetOutOfRange = 1,
+    InvalidMessage = 2,
+    UnknownTopicOrPartition = 3,
+    InvalidMessageSize = 4,
+    LeaderNotAvailable = 5,
+    NotLeaderForPartition = 6,
+    RequestTimedOut = 7,
+    BrokerNotAvailable = 8,
+    ReplicaNotAvailable = 9,
+    MessageSizeTooLarge = 10,
+    StaleControllerEpochCode = 11,
+    OffsetMetadataTooLargeCode = 12,
+    OffsetsLoadInProgressCode = 14,
+    ConsumerCoordinatorNotAvailableCode = 15,
+    NotCoordinatorForConsumerCode = 16
+}
 
 #[derive(Default)]
 #[derive(Debug)]
@@ -279,7 +298,7 @@ pub struct Message {
 
 // Constructors for Requests
 impl MetadataRequest {
-    pub fn new(correlation: i32, clientid: &String, topics: Vec<String>) -> MetadataRequest{
+    pub fn new(correlation: i32, clientid: &String, topics: &Vec<String>) -> MetadataRequest{
         MetadataRequest{
             header: HeaderRequest{key: METADATA_KEY, correlation: correlation,
                                   clientid: clientid.clone(), version: VERSION},
@@ -289,7 +308,7 @@ impl MetadataRequest {
 }
 
 impl OffsetRequest {
-    pub fn new(topic_partitions: &Vec<(String, Vec<i32>)>, time: i64,
+    pub fn new(topic_partitions: &Vec<(String, &Vec<i32>)>, time: i64,
                correlation: i32, clientid: &String) -> OffsetRequest{
         OffsetRequest{
             header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
@@ -301,12 +320,12 @@ impl OffsetRequest {
                                 .collect()
         }
     }
-    pub fn new_latest(topic_partitions: &Vec<(String, Vec<i32>)>,
+    pub fn new_latest(topic_partitions: &Vec<(String, &Vec<i32>)>,
                       correlation: i32, clientid: &String) -> OffsetRequest{
         OffsetRequest::new(topic_partitions, -1, correlation, clientid)
     }
 
-    pub fn new_earliest(topic_partitions: &Vec<(String, Vec<i32>)>,
+    pub fn new_earliest(topic_partitions: &Vec<(String, &Vec<i32>)>,
                       correlation: i32, clientid: &String) -> OffsetRequest{
         OffsetRequest::new(topic_partitions, -2, correlation, clientid)
     }
