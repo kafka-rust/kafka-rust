@@ -1,8 +1,8 @@
 use error::{Result, Error};
 use utils;
 use protocol;
-use super::connection::KafkaConnection;
-use super::codecs::*;
+use connection::KafkaConnection;
+use codecs::{ToByte, FromByte};
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::io::Read;
