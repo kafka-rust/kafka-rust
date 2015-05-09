@@ -29,16 +29,23 @@ const DEFAULT_TIMEOUT: i32 = 120; // seconds
 /// You will have to load metadata before making any other request.
 #[derive(Default, Debug)]
 pub struct KafkaClient {
-    pub clientid: String,
-    pub timeout: i32,
-    pub hosts: Vec<String>,
-    pub correlation: i32,
-    pub conns: HashMap<String, KafkaConnection>,
+    clientid: String,
+    timeout: i32,
+    hosts: Vec<String>,
+    correlation: i32,
+    conns: HashMap<String, KafkaConnection>,
     pub topic_partitions: HashMap<String, Vec<i32>>,
-    pub topic_brokers: HashMap<String, String>
+    topic_brokers: HashMap<String, String>
 }
 
 impl KafkaClient {
+    /// Create a new instance of KafkaClient
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// ```
     pub fn new(hosts: &Vec<String>) -> KafkaClient {
         KafkaClient { hosts: hosts.to_vec(), clientid: CLIENTID.to_string(),
                       timeout: DEFAULT_TIMEOUT, ..KafkaClient::default()}
