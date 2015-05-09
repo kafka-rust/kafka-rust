@@ -6,8 +6,8 @@ pub struct Crc32 {
 impl Crc32 {
     pub fn tocrc(buf: &[u8]) -> u32 {
         let mut crc = Crc32 { table: [0; 256], value: 0xffffffff };
-        (0..256).map(|x| crc.table[x as usize] = Crc32::calc_table(x as u32));
-        buf.iter().map(|&x| crc.value = crc.calc_value(x as u32));
+        let _ = (0..256).map(|x| crc.table[x as usize] = Crc32::calc_table(x as u32));
+        let _ = buf.iter().map(|&x| crc.value = crc.calc_value(x as u32));
         crc.value ^ 0xffffffff
     }
 
