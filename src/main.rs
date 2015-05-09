@@ -5,7 +5,7 @@ fn main() {
 
 
     let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
-    client.load_metadata_all();
+    println!("{:?}", client.load_metadata_all());
     println!("{:?}", client.fetch_topic_offset(&"my-topic".to_string()));
     /*let p = ProduceRequest::new_single(&"my-topic".to_string(), 0, 1,
                       100, &"b".to_string().into_bytes(),

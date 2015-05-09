@@ -1,13 +1,17 @@
-
-use super::utils::*;
-use super::crc32::*;
-use super::codecs::*;
-use super::snappy;
-use num::traits::ToPrimitive;
-use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt, Result, Error};
 use std::io::{Read, Write};
 use std::fmt;
 use std::io::Cursor;
+
+use num::traits::ToPrimitive;
+use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt};
+
+use error::{Result, Error};
+use utils::{OffsetMessage, TopicPartitions};
+use crc32::Crc32;
+use codecs::{ToByte, FromByte};
+use snappy;
+
+
 
 const PRODUCE_KEY: i16 = 0;
 const FETCH_KEY: i16 = 1;
@@ -44,9 +48,7 @@ pub enum KafKaError {
     NotCoordinatorForConsumerCode = 16
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct HeaderRequest {
     pub key: i16,
     pub version: i16,
@@ -54,33 +56,25 @@ pub struct HeaderRequest {
     pub clientid: String
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct HeaderResponse {
     pub correlation: i32
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct MetadataRequest {
     pub header: HeaderRequest,
     pub topics: Vec<String>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct MetadataResponse {
     pub header: HeaderResponse,
     pub brokers: Vec<BrokerMetadata>,
     pub topics: Vec<TopicMetadata>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ProduceRequest {
     pub header: HeaderRequest,
     pub required_acks: i16,
@@ -88,68 +82,52 @@ pub struct ProduceRequest {
     pub topic_partitions: Vec<TopicPartitionProduceRequest>,
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TopicPartitionProduceRequest {
     pub topic: String,
     pub partitions: Vec<PartitionProduceRequest>,
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct PartitionProduceRequest {
     pub partition: i32,
     pub messageset_size: i32,
     pub messageset: MessageSet
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ProduceResponse {
     pub header: HeaderResponse,
     pub topic_partitions: Vec<TopicPartitionProduceResponse>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TopicPartitionProduceResponse {
     pub topic: String,
     pub partitions: Vec<PartitionProduceResponse>,
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct PartitionProduceResponse {
     pub partition: i32,
     pub error: i32,
     pub offset: i64
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct OffsetRequest {
     pub header: HeaderRequest,
     pub replica: i32,
     pub topic_partitions: Vec<TopicPartitionOffsetRequest>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TopicPartitionOffsetRequest {
     pub topic: String,
     pub partitions: Vec<PartitionOffsetRequest>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct PartitionOffsetRequest {
     pub partition: i32,
     pub time: i64,
@@ -157,25 +135,19 @@ pub struct PartitionOffsetRequest {
 }
 
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct OffsetResponse {
     pub header: HeaderResponse,
     pub topic_partitions: Vec<TopicPartitionOffsetResponse>,
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TopicPartitionOffsetResponse {
     pub topic: String,
     pub partitions: Vec<PartitionOffsetResponse>,
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct PartitionOffsetResponse {
     pub partition: i32,
     pub error: i16,
@@ -183,9 +155,7 @@ pub struct PartitionOffsetResponse {
 }
 
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct FetchRequest {
     pub header: HeaderRequest,
     pub replica: i32,
@@ -194,17 +164,13 @@ pub struct FetchRequest {
     pub topic_partitions: Vec<TopicPartitionFetchRequest>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TopicPartitionFetchRequest {
     pub topic: String,
     pub partitions: Vec<PartitionFetchRequest>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct PartitionFetchRequest {
     pub partition: i32,
     pub offset: i64,
@@ -212,25 +178,19 @@ pub struct PartitionFetchRequest {
 }
 
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct FetchResponse {
     pub header: HeaderResponse,
     pub topic_partitions: Vec<TopicPartitionFetchResponse>,
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TopicPartitionFetchResponse {
     pub topic: String,
     pub partitions: Vec<PartitionFetchResponse>,
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct PartitionFetchResponse {
     pub partition: i32,
     pub error: i16,
@@ -240,27 +200,21 @@ pub struct PartitionFetchResponse {
 
 // Helper Structs
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct BrokerMetadata {
     pub nodeid: i32,
     pub host: String,
     pub port: i32
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TopicMetadata {
     pub error: i16,
     pub topic: String,
     pub partitions: Vec<PartitionMetadata>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct PartitionMetadata {
     pub error: i16,
     pub id: i32,
@@ -269,25 +223,19 @@ pub struct PartitionMetadata {
     pub isr: Vec<i32>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct MessageSet {
     pub message: Vec<MessageSetInner>
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct MessageSetInner {
     pub offset: i64,
     pub messagesize: i32,
     pub message: Message
 }
 
-#[derive(Default)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Message {
     pub crc: i32,
     pub magic: i8,
@@ -308,24 +256,24 @@ impl MetadataRequest {
 }
 
 impl OffsetRequest {
-    pub fn new(topic_partitions: &Vec<(String, &Vec<i32>)>, time: i64,
+    pub fn new(topic_partitions: &Vec<TopicPartitions>, time: i64,
                correlation: i32, clientid: &String) -> OffsetRequest{
         OffsetRequest{
             header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
                                   clientid: clientid.clone(), version: VERSION},
             replica: -1,
             topic_partitions: topic_partitions.iter()
-                                .map(|&(ref topic, ref partitions)|
-                                    TopicPartitionOffsetRequest::new(topic, partitions.to_vec(), &time))
+                                .map(|ref tp|
+                                    TopicPartitionOffsetRequest::new(&tp.topic, tp.partitions.to_vec(), &time))
                                 .collect()
         }
     }
-    pub fn new_latest(topic_partitions: &Vec<(String, &Vec<i32>)>,
+    pub fn new_latest(topic_partitions: &Vec<TopicPartitions>,
                       correlation: i32, clientid: &String) -> OffsetRequest{
         OffsetRequest::new(topic_partitions, -1, correlation, clientid)
     }
 
-    pub fn new_earliest(topic_partitions: &Vec<(String, &Vec<i32>)>,
+    pub fn new_earliest(topic_partitions: &Vec<TopicPartitions>,
                       correlation: i32, clientid: &String) -> OffsetRequest{
         OffsetRequest::new(topic_partitions, -2, correlation, clientid)
     }
@@ -848,13 +796,9 @@ impl FromByte for Message {
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
 
         try!(self.crc.decode(buffer));
-
         try!(self.magic.decode(buffer));
-
         try!(self.attributes.decode(buffer));
-
         try!(self.key.decode(buffer));
-
         try!(self.value.decode(buffer));
         Ok(())
     }

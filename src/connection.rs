@@ -1,9 +1,8 @@
-
 use std::io::prelude::*;
 use std::net::TcpStream;
-use std::io::Result;
-
 use std::fmt;
+
+use error::Result;
 
 pub struct KafkaConnection {
     host: String,
@@ -20,22 +19,23 @@ impl fmt::Debug for KafkaConnection {
 impl KafkaConnection {
 
     pub fn send(&mut self, msg: & Vec<u8>) -> Result<usize> {
-        self.stream.write(&msg[..])
+        self.stream.write(&msg[..]).map_err(From::from)
     }
 
-    pub fn read(&mut self, size: u64, buffer: &mut Vec<u8>) {
-        println!("Reading {} bytes", size);
+    pub fn read(&mut self, size: u64, buffer: &mut Vec<u8>) -> Result<usize>{
         let mut buffer_: Vec<u8> = Vec::new();
         let mut s = (&self.stream).take(size);
+        let mut total_bytes_read: usize = 0;
         match s.read_to_end(&mut buffer_) {
-            Err(_) => return,
+            Err(err) => return Err(From::from(err)),
             Ok(bytes_read) => {
-                println!("Read {} bytes", bytes_read);
+                total_bytes_read += bytes_read;
                 for b in buffer_.iter() {
                     buffer.push(*b);
                 }
             }
         }
+        Ok(total_bytes_read)
 
     }
 

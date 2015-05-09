@@ -1,12 +1,12 @@
-
-use super::utils::*;
-use super::protocol::*;
-use super::connection::*;
+use error::{Result, Error};
+use utils;
+use protocol;
+use super::connection::KafkaConnection;
 use super::codecs::*;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::io::Read;
-use std::io::{Result, Error, ErrorKind};
+use std::io::ErrorKind;
 
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_TIMEOUT: i32 = 120; // seconds
@@ -30,9 +30,6 @@ impl KafkaClient {
                       timeout: DEFAULT_TIMEOUT, ..KafkaClient::default()}
     }
 
-    pub fn init(&mut self) {
-
-    }
     fn get_conn(& mut self, host: &str) -> Result<KafkaConnection> {
         match self.conns.get(host) {
             Some (conn) => return conn.clone(),
@@ -52,26 +49,22 @@ impl KafkaClient {
     }
 
 
-    pub fn load_metadata_all(&mut self) {
+    pub fn load_metadata_all(&mut self) -> Result<()>{
         self.reset_metadata();
-        self.load_metadata(&vec!());
+        self.load_metadata(&vec!())
     }
 
-    pub fn load_metadata (&mut self, topics: &Vec<String>) {
-        let resp = self.get_metadata(topics);
-        if (resp.is_err()) {
-            return;
-        }
+    pub fn load_metadata (&mut self, topics: &Vec<String>) -> Result<()>{
+        let resp = try!(self.get_metadata(topics));
 
-        let r = resp.unwrap();
 
         let mut brokers: HashMap<i32, String> = HashMap::new();
-        for broker in r.brokers {
+        for broker in resp.brokers {
             brokers.insert(broker.nodeid, format!("{}:{}", broker.host, broker.port));
         }
 
         self.topic_brokers.clear();
-        for topic in r.topics {
+        for topic in resp.topics {
             self.topic_partitions.insert(topic.topic.clone(), vec!());
 
             for partition in topic.partitions {
@@ -86,6 +79,7 @@ impl KafkaClient {
                 }
             }
         }
+        Ok(())
     }
 
     pub fn reset_metadata(&mut self) {
@@ -93,17 +87,19 @@ impl KafkaClient {
         self.topic_brokers.clear();
     }
 
-    fn get_metadata(&mut self, topics: &Vec<String>) -> Result<MetadataResponse> {
+    fn get_metadata(&mut self, topics: &Vec<String>) -> Result<protocol::MetadataResponse> {
         let correlation = self.next_id();
         for host in self.hosts.to_vec() {
-            let req = MetadataRequest::new(correlation, &self.clientid, topics);
-            let mut conn = try!(self.get_conn(&host));
-            if (self.send_request(&mut conn, req).is_ok()) {
-                return self.get_response::<MetadataResponse>(&mut conn);
+            let req = protocol::MetadataRequest::new(correlation, &self.clientid, topics);
+            match self.get_conn(&host) {
+                Ok(mut conn) => if (self.send_request(&mut conn, req).is_ok()) {
+                    return self.get_response::<protocol::MetadataResponse>(&mut conn);
+                },
+                Err(_) => {}
             }
         }
-        // I still need a better Error handling.
-        Err(Error::new(ErrorKind::Other, "Unable to connect to any host"))
+
+        Err(Error::NoHostReachable)
     }
 
     pub fn fetch_offsets(&mut self) {
@@ -111,7 +107,7 @@ impl KafkaClient {
 
     }
 
-    pub fn fetch_topic_offset(&mut self, topic: &String) -> Vec<(String, Vec<PartitionOffset>)> {
+    pub fn fetch_topic_offset(&mut self, topic: &String) -> Result<Vec<(String, Vec<utils::PartitionOffset>)>> {
         // Doing it like this because HashMap will not return borrow of self otherwise
         let partitions = self.topic_partitions
                              .get(topic)
@@ -131,35 +127,32 @@ impl KafkaClient {
             }
         }
 
-        let mut res: Vec<PartitionOffset> = Vec::new();
+        let mut res: Vec<utils::PartitionOffset> = vec!();
         for (host, partitions) in brokers.iter() {
-            let v = vec!((topic.clone(), partitions));
-            for tpo in self.fetch_offset(&v, host).unwrap_or(vec!()) {
-                res.push(PartitionOffset{partition: tpo.partition, offset: tpo.offset});
+            let v = vec!(utils::TopicPartitions{
+                topic: topic.clone(),
+                partitions: partitions.to_vec()
+                });
+            for tpo in try!(self.fetch_offset(&v, host)) {
+                res.push(utils::PartitionOffset{partition: tpo.partition, offset: tpo.offset});
             }
         }
-        vec!((topic.clone(), res))
-
+        Ok(vec!((topic.clone(), res)))
     }
 
-    fn fetch_offset(&mut self, topic_partitions: &Vec<(String, &Vec<i32>)>, host: &String)
-                            -> Result<Vec<TopicPartitionOffset>> {
+    fn fetch_offset(&mut self, topic_partitions: &Vec<utils::TopicPartitions>, host: &String)
+                            -> Result<Vec<utils::TopicPartitionOffset>> {
         let correlation = self.next_id();
-        let req = OffsetRequest::new_latest(topic_partitions, correlation, &self.clientid);
+        let req = protocol::OffsetRequest::new_latest(topic_partitions, correlation, &self.clientid);
 
-        let mut conn = try!(self.get_conn(&host));
-        let mut res: Vec<TopicPartitionOffset> = Vec::new();
-        if (self.send_request(&mut conn, req).is_ok()) {
-            println!("Got response111: ",);
-            let resp = try!(self.get_response::<OffsetResponse>(&mut conn));
-            println!("Got response: {:?}", resp);
-            for tp in resp.topic_partitions.iter() {
-                for p in tp.partitions.iter() {
-                    res.push(TopicPartitionOffset{
-                        topic: tp.topic.clone(),
-                        partition: p.partition.clone(),
-                        offset:p.offset[0]});
-                }
+        let resp = try!(self.send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&host, req));
+        let mut res: Vec<utils::TopicPartitionOffset> = Vec::new();
+        for tp in resp.topic_partitions.iter() {
+            for p in tp.partitions.iter() {
+                res.push(utils::TopicPartitionOffset{
+                    topic: tp.topic.clone(),
+                    partition: p.partition.clone(),
+                    offset:p.offset[0]});
             }
         }
         Ok(res)
@@ -175,40 +168,36 @@ impl KafkaClient {
             None => None
         }
     }
-    /*
-    pub fn fetch_messages(&mut self, topic: &String, partition: i32, offset: i64) -> Vec<OffsetMessage>{
+
+    pub fn fetch_messages(&mut self, topic: &String, partition: i32, offset: i64) -> Result<Vec<utils::OffsetMessage>>{
 
         let host = self.get_broker(topic, partition).unwrap();
 
         let correlation = self.next_id();
-        let req = FetchRequest::new_single(topic, partition, offset, correlation, &self.clientid);
+        let req = protocol::FetchRequest::new_single(topic, partition, offset, correlation, &self.clientid);
 
-        let mut conn = self.get_conn(&host);
-        let sent = self.send_request(&mut conn, req);
-        if (sent) {
-            let resp = self.get_response::<FetchResponse>(&mut conn);
-            return resp.get_messages()
-        }
-        vec!()
+        let resp = try!(self.send_receive::<protocol::FetchRequest, protocol::FetchResponse>(&host, req));
+        Ok(resp.get_messages())
     }
 
     pub fn send_message(&mut self, topic: &String, partition: i32, required_acks: i16,
-                      timeout: i32, message: &Vec<u8>) {
+                      timeout: i32, message: &Vec<u8>) -> Result<protocol::ProduceResponse> {
 
         let host = self.get_broker(topic, partition).unwrap();
 
         let correlation = self.next_id();
-        let req = ProduceRequest::new_single(topic, partition, required_acks,
+        let req = protocol::ProduceRequest::new_single(topic, partition, required_acks,
             timeout, message, correlation, &self.clientid);
 
-        let mut conn = self.get_conn(&host);
-        let sent = self.send_request(&mut conn, req);
-        if (sent) {
-            let resp = self.get_response::<ProduceResponse>(&mut conn);
+        self.send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req)
 
-        }
+    }
 
-    }*/
+    fn send_receive<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<V::R> {
+        let mut conn = try!(self.get_conn(&host));
+        let sent = try!(self.send_request(&mut conn, req));
+        self.get_response::<V>(&mut conn)
+    }
 
     fn send_request<T: ToByte>(&self, conn: &mut KafkaConnection, request: T) -> Result<usize>{
         let mut buffer = vec!();
@@ -218,16 +207,7 @@ impl KafkaClient {
         (buffer.len() as i32).encode(&mut s);
         for byte in buffer.iter() { s.push(*byte); }
 
-        let bytes_to_send = s.len();
-
-        match conn.send(&s) {
-            Ok(num) => if num == bytes_to_send {
-                return Ok(num)
-                } else {
-                return Err(Error::new(ErrorKind::Other, "Unable to send all data!"))
-                },
-            Err(e) => return Err(e)
-        }
+        conn.send(&s)
     }
 
     fn get_response<T: FromByte>(&self, conn:&mut KafkaConnection) -> Result<T::R>{
@@ -236,10 +216,9 @@ impl KafkaClient {
         let size = i32::decode_new(&mut Cursor::new(v)).unwrap();
 
         let mut resp: Vec<u8> = vec!();
-        conn.read(size as u64, &mut resp);
-        println!("{:?}", resp);
+        let _ = try!(conn.read(size as u64, &mut resp));
 
-        Ok(try!(T::decode_new(&mut Cursor::new(resp))))
+        T::decode_new(&mut Cursor::new(resp))
     }
 
 }
