@@ -1,12 +1,8 @@
 use std::io::{Read, Write};
-use std::fmt;
 use std::io::Cursor;
 
-use num::traits::ToPrimitive;
-use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt};
-
 use error::{Result, Error};
-use utils::{OffsetMessage, TopicPartitions};
+use utils::{OffsetMessage, TopicPartitions, TopicPartitionOffset};
 use crc32::Crc32;
 use codecs::{ToByte, FromByte};
 use snappy;
@@ -17,36 +13,13 @@ const PRODUCE_KEY: i16 = 0;
 const FETCH_KEY: i16 = 1;
 const OFFSET_KEY: i16 = 2;
 const METADATA_KEY: i16 = 3;
-const OFFSET_COMMIT_KEY: i16 = 8;
-const OFFSET_FETCH_KEY: i16 = 9;
 
 const VERSION: i16 = 0;
 
-const FETCH_DEFAULT_BLOCK_TIMEOUT: i32 = 1;
 const FETCH_MAX_WAIT_TIME: i32 = 100;
 const FETCH_MIN_BYTES: i32 = 4096;
 const FETCH_BUFFER_SIZE_BYTES: i32 = 4096;
 const MAX_FETCH_BUFFER_SIZE_BYTES: i32 = FETCH_BUFFER_SIZE_BYTES * 8;
-
-pub enum KafKaError {
-    Unknown = -1,
-    NoError = 0,
-    OffsetOutOfRange = 1,
-    InvalidMessage = 2,
-    UnknownTopicOrPartition = 3,
-    InvalidMessageSize = 4,
-    LeaderNotAvailable = 5,
-    NotLeaderForPartition = 6,
-    RequestTimedOut = 7,
-    BrokerNotAvailable = 8,
-    ReplicaNotAvailable = 9,
-    MessageSizeTooLarge = 10,
-    StaleControllerEpochCode = 11,
-    OffsetMetadataTooLargeCode = 12,
-    OffsetsLoadInProgressCode = 14,
-    ConsumerCoordinatorNotAvailableCode = 15,
-    NotCoordinatorForConsumerCode = 16
-}
 
 #[derive(Default, Debug, Clone)]
 pub struct HeaderRequest {
@@ -272,11 +245,6 @@ impl OffsetRequest {
                       correlation: i32, clientid: &String) -> OffsetRequest{
         OffsetRequest::new(topic_partitions, -1, correlation, clientid)
     }
-
-    pub fn new_earliest(topic_partitions: &Vec<TopicPartitions>,
-                      correlation: i32, clientid: &String) -> OffsetRequest{
-        OffsetRequest::new(topic_partitions, -2, correlation, clientid)
-    }
 }
 
 impl TopicPartitionOffsetRequest {
@@ -292,6 +260,7 @@ impl TopicPartitionOffsetRequest {
 
 impl PartitionOffsetRequest {
     pub fn new(partition: i32, time: &i64) -> PartitionOffsetRequest {
+
         PartitionOffsetRequest{
             partition: partition,
             time: *time,
@@ -299,6 +268,36 @@ impl PartitionOffsetRequest {
         }
     }
 }
+
+impl OffsetResponse {
+    pub fn get_offsets(& self) -> Vec<TopicPartitionOffset>{
+        self.topic_partitions
+            .iter()
+            .flat_map(|ref tp| tp.get_offsets(&tp.topic))
+            .collect()
+    }
+}
+
+impl TopicPartitionOffsetResponse {
+    pub fn get_offsets(& self, topic: &String) -> Vec<TopicPartitionOffset>{
+        self.partitions
+            .iter()
+            .map(|ref p| p.get_offsets(topic))
+            .collect()
+    }
+}
+
+impl PartitionOffsetResponse {
+    pub fn get_offsets(& self, topic: &String) -> TopicPartitionOffset{
+        TopicPartitionOffset{
+            topic: topic.clone(),
+            partition: self.partition,
+            offset:self.offset[0],
+            error: self.error
+        }
+    }
+}
+
 
 impl ProduceRequest {
     pub fn new_single(topic: &String, partition: i32, required_acks: i16,
@@ -334,20 +333,6 @@ impl PartitionProduceRequest {
 }
 
 impl FetchRequest {
-    pub fn new(topic_partitions: &Vec<(String, Vec<(i32, i64)>)>,
-               correlation: i32, clientid: &String) -> FetchRequest{
-        FetchRequest{
-            header: HeaderRequest{key: FETCH_KEY, correlation: correlation,
-                                  clientid: clientid.clone(), version: VERSION},
-            replica: -1,
-            max_wait_time: FETCH_MAX_WAIT_TIME,
-            min_bytes: FETCH_MIN_BYTES,
-            topic_partitions: topic_partitions.iter()
-                                .map(|&(ref topic, ref partitions)|
-                                TopicPartitionFetchRequest::new(topic, partitions.to_vec()))
-                                .collect()
-        }
-    }
 
     pub fn new_single(topic: &String, partition: i32, offset: i64,
                correlation: i32, clientid: &String) -> FetchRequest{
@@ -363,15 +348,6 @@ impl FetchRequest {
 }
 
 impl TopicPartitionFetchRequest {
-    pub fn new(topic: &String, partitions: Vec<(i32, i64)>) -> TopicPartitionFetchRequest{
-        TopicPartitionFetchRequest {
-            topic: topic.clone(),
-            partitions: partitions.iter()
-                                  .map(|&(ref partition, ref offset)| PartitionFetchRequest:: new(partition, offset))
-                                  .collect()
-        }
-    }
-
     pub fn new_single(topic: &String, partition: i32, offset: i64) -> TopicPartitionFetchRequest{
         TopicPartitionFetchRequest {
             topic: topic.clone(),
@@ -455,14 +431,14 @@ impl Message {
 fn message_decode_snappy(value: & Vec<u8>) -> Vec<OffsetMessage>{
     // SNAPPY
     let mut buffer = Cursor::new(value.to_vec());
-    let header = snappy::SnappyHeader::decode_new(&mut buffer);
+    let _ = snappy::SnappyHeader::decode_new(&mut buffer);
     //if (!snappy::check_header(&header)) return;
 
     let mut v = vec!();
     loop {
         match message_decode_loop(&mut buffer) {
             Ok(x) => v.push(x),
-            Err(e) => break
+            Err(_) => break
         }
     }
     v.iter().flat_map(|ref x| x.into_iter().cloned()).collect()
@@ -554,6 +530,7 @@ impl ToByte for PartitionFetchRequest {
 impl FromByte for HeaderResponse {
     type R = HeaderResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.correlation.decode(buffer);
         Ok(())
@@ -563,6 +540,7 @@ impl FromByte for HeaderResponse {
 impl FromByte for MetadataResponse {
     type R = MetadataResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.header.decode(buffer);
         self.brokers.decode(buffer);
@@ -574,6 +552,7 @@ impl FromByte for MetadataResponse {
 impl FromByte for OffsetResponse {
     type R = OffsetResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.header.decode(buffer);
         self.topic_partitions.decode(buffer);
@@ -584,6 +563,7 @@ impl FromByte for OffsetResponse {
 impl FromByte for TopicPartitionOffsetResponse {
     type R = TopicPartitionOffsetResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.topic.decode(buffer);
         self.partitions.decode(buffer);
@@ -594,6 +574,7 @@ impl FromByte for TopicPartitionOffsetResponse {
 impl FromByte for PartitionOffsetResponse {
     type R = PartitionOffsetResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.partition.decode(buffer);
         self.error.decode(buffer);
@@ -605,6 +586,7 @@ impl FromByte for PartitionOffsetResponse {
 impl FromByte for ProduceResponse {
     type R = ProduceResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.header.decode(buffer);
         self.topic_partitions.decode(buffer);
@@ -615,6 +597,7 @@ impl FromByte for ProduceResponse {
 impl FromByte for TopicPartitionProduceResponse {
     type R = TopicPartitionProduceResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.topic.decode(buffer);
         self.partitions.decode(buffer);
@@ -625,6 +608,7 @@ impl FromByte for TopicPartitionProduceResponse {
 impl FromByte for PartitionProduceResponse {
     type R = PartitionProduceResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.partition.decode(buffer);
         self.error.decode(buffer);
@@ -637,6 +621,7 @@ impl FromByte for PartitionProduceResponse {
 impl FromByte for FetchResponse {
     type R = FetchResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.header.decode(buffer);
         self.topic_partitions.decode(buffer);
@@ -647,6 +632,7 @@ impl FromByte for FetchResponse {
 impl FromByte for TopicPartitionFetchResponse {
     type R = TopicPartitionFetchResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.topic.decode(buffer);
         self.partitions.decode(buffer);
@@ -657,6 +643,7 @@ impl FromByte for TopicPartitionFetchResponse {
 impl FromByte for PartitionFetchResponse {
     type R = PartitionFetchResponse;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.partition.decode(buffer);
         self.error.decode(buffer);
@@ -670,6 +657,7 @@ impl FromByte for PartitionFetchResponse {
 impl FromByte for BrokerMetadata {
     type R = BrokerMetadata;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.nodeid.decode(buffer);
         self.host.decode(buffer);
@@ -681,6 +669,7 @@ impl FromByte for BrokerMetadata {
 impl FromByte for TopicMetadata {
     type R = TopicMetadata;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.error.decode(buffer);
         self.topic.decode(buffer);
@@ -692,6 +681,7 @@ impl FromByte for TopicMetadata {
 impl FromByte for PartitionMetadata {
     type R = PartitionMetadata;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         self.error.decode(buffer);
         self.id.decode(buffer);
@@ -735,7 +725,7 @@ impl FromByte for MessageSet {
         loop {
             match MessageSetInner::decode_new(buffer) {
                 Ok(mi) => temp.message.push(mi),
-                Err(e) => break
+                Err(_) => break
             }
         }
         if temp.message.len() == 0 {
@@ -757,13 +747,10 @@ impl ToByte for MessageSetInner {
 impl FromByte for MessageSetInner {
     type R = MessageSetInner;
 
+    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-
         self.offset.decode(buffer);
-
-
         self.messagesize.decode(buffer);
-
         try!(self.message.decode(buffer));
         Ok(())
     }

@@ -6,7 +6,6 @@ use super::codecs::*;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::io::Read;
-use std::io::ErrorKind;
 
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_TIMEOUT: i32 = 120; // seconds
@@ -92,7 +91,7 @@ impl KafkaClient {
         for host in self.hosts.to_vec() {
             let req = protocol::MetadataRequest::new(correlation, &self.clientid, topics);
             match self.get_conn(&host) {
-                Ok(mut conn) => if (self.send_request(&mut conn, req).is_ok()) {
+                Ok(mut conn) => if self.send_request(&mut conn, req).is_ok() {
                     return self.get_response::<protocol::MetadataResponse>(&mut conn);
                 },
                 Err(_) => {}
@@ -120,7 +119,7 @@ impl KafkaClient {
             let key = format!("{}-{}", topic, p);
             match self.topic_brokers.get(&key) {
                 Some(broker) => {
-                    if (!brokers.contains_key(broker) ){brokers.insert(broker.clone(), Vec::new());}
+                    if !brokers.contains_key(broker) {brokers.insert(broker.clone(), Vec::new());}
                     brokers.get_mut(broker).unwrap().push(p);
                 },
                 None => {}
@@ -146,16 +145,8 @@ impl KafkaClient {
         let req = protocol::OffsetRequest::new_latest(topic_partitions, correlation, &self.clientid);
 
         let resp = try!(self.send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&host, req));
-        let mut res: Vec<utils::TopicPartitionOffset> = Vec::new();
-        for tp in resp.topic_partitions.iter() {
-            for p in tp.partitions.iter() {
-                res.push(utils::TopicPartitionOffset{
-                    topic: tp.topic.clone(),
-                    partition: p.partition.clone(),
-                    offset:p.offset[0]});
-            }
-        }
-        Ok(res)
+
+        Ok(resp.get_offsets())
 
     }
 
@@ -195,7 +186,7 @@ impl KafkaClient {
 
     fn send_receive<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<V::R> {
         let mut conn = try!(self.get_conn(&host));
-        let sent = try!(self.send_request(&mut conn, req));
+        try!(self.send_request(&mut conn, req));
         self.get_response::<V>(&mut conn)
     }
 
@@ -212,7 +203,7 @@ impl KafkaClient {
 
     fn get_response<T: FromByte>(&self, conn:&mut KafkaConnection) -> Result<T::R>{
         let mut v: Vec<u8> = vec!();
-        conn.read(4, &mut v);
+        let _ = conn.read(4, &mut v);
         let size = i32::decode_new(&mut Cursor::new(v)).unwrap();
 
         let mut resp: Vec<u8> = vec!();

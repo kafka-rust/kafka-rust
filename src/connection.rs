@@ -12,7 +12,7 @@ pub struct KafkaConnection {
 
 impl fmt::Debug for KafkaConnection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "KafkaConnection")
+        write!(f, "KafkaConnection to {}", self.host)
     }
 }
 

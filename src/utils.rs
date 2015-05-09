@@ -15,7 +15,8 @@ pub struct PartitionOffset {
 pub struct TopicPartitionOffset {
     pub topic: String,
     pub partition: i32,
-    pub offset: i64
+    pub offset: i64,
+    pub error: i16
 }
 
 #[derive(Debug)]

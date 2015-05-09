@@ -9,6 +9,8 @@ use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt};
 use error::{Result, Error};
 
 
+// TODO - Remember to setup encode such that it returns Result<()>
+
 pub trait ToByte {
     fn encode<T: Write>(&self, buffer: &mut T);
     fn encode_nolen<T: Write>(&self, buffer: &mut T) {
@@ -31,35 +33,35 @@ pub trait FromByte {
 
 impl ToByte for i8 {
     fn encode<T:Write>(&self, buffer: &mut T) {
-        buffer.write_i8(*self);
+        let _ = buffer.write_i8(*self);
     }
 }
 
 impl ToByte for i16 {
     fn encode<T:Write>(&self, buffer: &mut T) {
-        buffer.write_i16::<BigEndian>(*self);
+        let _ = buffer.write_i16::<BigEndian>(*self);
     }
 }
 impl ToByte for i32 {
     fn encode<T:Write>(&self, buffer: &mut T) {
-        buffer.write_i32::<BigEndian>(*self);
+        let _ = buffer.write_i32::<BigEndian>(*self);
     }
 }
 impl ToByte for i64 {
     fn encode<T:Write>(&self, buffer: &mut T) {
-        buffer.write_i64::<BigEndian>(*self);
+        let _ = buffer.write_i64::<BigEndian>(*self);
     }
 }
 impl ToByte for String {
     fn encode<T:Write>(&self, buffer: &mut T) {
-        buffer.write_i16::<BigEndian>(self.len().to_i16().unwrap());
-        buffer.write_all(self.as_bytes());
+        let _ = buffer.write_i16::<BigEndian>(self.len().to_i16().unwrap());
+        let _ = buffer.write_all(self.as_bytes());
     }
 }
 
 impl <V:ToByte> ToByte for Vec<V> {
     fn encode<T:Write>(&self, buffer: &mut T) {
-        buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
+        let _ = buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
         for e in self {
             e.encode(buffer);
         }
@@ -73,11 +75,11 @@ impl <V:ToByte> ToByte for Vec<V> {
 
 impl ToByte for Vec<u8>{
     fn encode<T: Write>(&self, buffer: &mut T) {
-        buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
-        buffer.write_all(self);
+        let _ = buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
+        let _ = buffer.write_all(self);
     }
     fn encode_nolen<T: Write>(&self, buffer: &mut T) {
-        buffer.write_all(self);
+        let _ = buffer.write_all(self);
     }
 }
 
@@ -139,9 +141,8 @@ impl FromByte for String {
             Ok(_) => {},
             Err(e) => return Err(e)
         }
-        let mut client = String::new();
         let _ = buffer.take(length as u64).read_to_string(self);
-        if (self.len() != length as usize) {
+        if self.len() != length as usize {
             return Err(Error::UnexpectedEOF);
         }
         Ok(())
@@ -157,7 +158,7 @@ impl <V: FromByte + Default> FromByte for Vec<V>{
             Ok(_) => {},
             Err(e) => return Err(e)
         }
-        for i in 0..length {
+        for _ in 0..length {
             let mut e: V = Default::default();
             try!(e.decode(buffer));
             self.push(e);
@@ -175,7 +176,7 @@ impl FromByte for Vec<u8>{
             Ok(_) => {},
             Err(e) => return Err(e)
         }
-        if (length <= 0) {return Ok(());}
+        if length <= 0 {return Ok(());}
         match buffer.take(length as u64).read_to_end(self) {
             Ok(size) => {
                 if size < length as usize {
