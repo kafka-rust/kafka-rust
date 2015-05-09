@@ -83,7 +83,7 @@ pub struct TopicPartitionProduceResponse {
 #[derive(Default, Debug, Clone)]
 pub struct PartitionProduceResponse {
     pub partition: i32,
-    pub error: i32,
+    pub error: i16,
     pub offset: i64
 }
 
@@ -328,6 +328,35 @@ impl PartitionProduceRequest {
             partition: *partition,
             messageset_size: 0,
             messageset: MessageSet::new(message)
+        }
+    }
+}
+
+impl ProduceResponse {
+    pub fn get_response(& self) -> Vec<TopicPartitionOffset>{
+        self.topic_partitions
+            .iter()
+            .flat_map(|ref tp| tp.get_response(&tp.topic))
+            .collect()
+    }
+}
+
+impl TopicPartitionProduceResponse {
+    pub fn get_response(& self, topic: &String) -> Vec<TopicPartitionOffset>{
+        self.partitions
+            .iter()
+            .map(|ref p| p.get_response(topic))
+            .collect()
+    }
+}
+
+impl PartitionProduceResponse {
+    pub fn get_response(& self, topic: &String) -> TopicPartitionOffset{
+        TopicPartitionOffset{
+            topic: topic.clone(),
+            partition: self.partition,
+            offset:self.offset,
+            error: self.error
         }
     }
 }
