@@ -1,8 +1,8 @@
 extern crate num;
 extern crate byteorder;
 
-mod error;
-mod utils;
+pub mod error;
+pub mod utils;
 mod crc32;
 mod snappy;
 mod codecs;

@@ -1,3 +1,9 @@
+/// User facing module of this library.
+///
+/// Fetching message from multiple (topic, partition) pair or producing messages to multiple
+/// topics is not yet supported.
+/// It should be added very soon.
+
 use error::{Result, Error};
 use utils;
 use protocol;
@@ -11,19 +17,35 @@ const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_TIMEOUT: i32 = 120; // seconds
 
 
-#[derive(Default)]
-#[derive(Debug)]
+/// Client struct. It keeps track of brokers and topic metadata
+///
+/// # Examples
+///
+/// ```no_run
+/// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+/// let res = client.load_metadata_all();
+/// ```
+///
+/// You will have to load metadata before making any other request.
+#[derive(Default, Debug)]
 pub struct KafkaClient {
-    pub clientid: String,
-    pub timeout: i32,
-    pub hosts: Vec<String>,
-    pub correlation: i32,
-    pub conns: HashMap<String, KafkaConnection>,
+    clientid: String,
+    timeout: i32,
+    hosts: Vec<String>,
+    correlation: i32,
+    conns: HashMap<String, KafkaConnection>,
     pub topic_partitions: HashMap<String, Vec<i32>>,
-    pub topic_brokers: HashMap<String, String>
+    topic_brokers: HashMap<String, String>
 }
 
 impl KafkaClient {
+    /// Create a new instance of KafkaClient
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// ```
     pub fn new(hosts: &Vec<String>) -> KafkaClient {
         KafkaClient { hosts: hosts.to_vec(), clientid: CLIENTID.to_string(),
                       timeout: DEFAULT_TIMEOUT, ..KafkaClient::default()}
@@ -48,14 +70,17 @@ impl KafkaClient {
     }
 
 
+    /// Resets and loads metadata for all topics.
     pub fn load_metadata_all(&mut self) -> Result<()>{
         self.reset_metadata();
         self.load_metadata(&vec!())
     }
 
+    /// Reloads metadata for a list of supplied topics
+    ///
+    /// returns Result<(), error::Error>
     pub fn load_metadata (&mut self, topics: &Vec<String>) -> Result<()>{
         let resp = try!(self.get_metadata(topics));
-
 
         let mut brokers: HashMap<i32, String> = HashMap::new();
         for broker in resp.brokers {
@@ -81,6 +106,8 @@ impl KafkaClient {
         Ok(())
     }
 
+    /// Clears metadata stored in the client. You must load metadata after this call if you want
+    /// to use the client
     pub fn reset_metadata(&mut self) {
         self.topic_partitions.clear();
         self.topic_brokers.clear();
@@ -101,11 +128,25 @@ impl KafkaClient {
         Err(Error::NoHostReachable)
     }
 
-    pub fn fetch_offsets(&mut self) {
+    /// Fetch offsets for a list of topics
+    /// Not implemented as yet.
+    pub fn fetch_offsets(&mut self, _topics: &Vec<String>) {
         // TODO - Implement method to fetch offsets for more than 1 topic
 
     }
 
+    /// Fetch offset for a topic.
+    /// It gets the latest offset only. Support for getting earliest will be added soon
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let offsets = client.fetch_topic_offset(&"my-topic".to_string());
+    /// ```
+    /// Returns a vector of (topic, partition offset data).
+    /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
     pub fn fetch_topic_offset(&mut self, topic: &String) -> Result<Vec<(String, Vec<utils::PartitionOffset>)>> {
         // Doing it like this because HashMap will not return borrow of self otherwise
         let partitions = self.topic_partitions
@@ -160,6 +201,20 @@ impl KafkaClient {
         }
     }
 
+    /// Fetch messages from Kafka
+    ///
+    /// It takes a single topic, parition and offset and return a vector of messages
+    /// or error::Error
+    /// You can figure out the appropriate partition and offset using client's
+    /// client.topic_partitions and client.fetch_topic_offset(topic)
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let msgs = client.fetch_messages(&"my-topic".to_string(), 0, 0);
+    /// ```
     pub fn fetch_messages(&mut self, topic: &String, partition: i32, offset: i64) -> Result<Vec<utils::OffsetMessage>>{
 
         let host = self.get_broker(topic, partition).unwrap();
@@ -171,8 +226,36 @@ impl KafkaClient {
         Ok(resp.get_messages())
     }
 
+    /// Send a message to Kafka
+    ///
+    /// You can figure out the appropriate partition and offset using client's
+    /// client.topic_partitions and client.fetch_topic_offset(topic)
+    ///
+    /// `required_acks` - indicates how many acknowledgements the servers should receive before
+    /// responding to the request. If it is 0 the server will not send any response
+    /// (this is the only case where the server will not reply to a request).
+    /// If it is 1, the server will wait the data is written to the local log before sending
+    /// a response. If it is -1 the server will block until the message is committed by all
+    /// in sync replicas before sending a response. For any number > 1 the server will block
+    /// waiting for this number of acknowledgements to occur (but the server will never wait
+    /// for more acknowledgements than there are in-sync replicas).
+    ///
+    /// `timeout` - This provides a maximum time in milliseconds the server can await the
+    /// receipt of the number of acknowledgements in `required_acks`
+    /// `message` - A single message as a vector of u8s
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let msgs = client.send_message(&"my-topic".to_string(), 0, 1,
+    ///                  100, &"b".to_string().into_bytes());
+    /// ```
+    /// The return value will contain topic, partition, offset and error if any
+    /// OR error:Error
     pub fn send_message(&mut self, topic: &String, partition: i32, required_acks: i16,
-                      timeout: i32, message: &Vec<u8>) -> Result<protocol::ProduceResponse> {
+                      timeout: i32, message: &Vec<u8>) -> Result<Vec<utils::TopicPartitionOffset>> {
 
         let host = self.get_broker(topic, partition).unwrap();
 
@@ -180,7 +263,9 @@ impl KafkaClient {
         let req = protocol::ProduceRequest::new_single(topic, partition, required_acks,
             timeout, message, correlation, &self.clientid);
 
-        self.send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req)
+        let resp = try!(self.send_receive
+            ::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req));
+        Ok(resp.get_response())
 
     }
 
