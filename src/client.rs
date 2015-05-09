@@ -21,8 +21,8 @@ const DEFAULT_TIMEOUT: i32 = 120; // seconds
 ///
 /// # Examples
 ///
-/// ```
-/// let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+/// ```no_run
+/// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
 /// let res = client.load_metadata_all();
 /// ```
 ///
@@ -43,8 +43,8 @@ impl KafkaClient {
     ///
     /// # Examples
     ///
-    /// ```
-    /// let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
     /// ```
     pub fn new(hosts: &Vec<String>) -> KafkaClient {
         KafkaClient { hosts: hosts.to_vec(), clientid: CLIENTID.to_string(),
@@ -140,8 +140,8 @@ impl KafkaClient {
     ///
     /// # Examples
     ///
-    /// ```
-    /// let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
     /// let res = client.load_metadata_all();
     /// let offsets = client.fetch_topic_offset(&"my-topic".to_string());
     /// ```
@@ -210,8 +210,8 @@ impl KafkaClient {
     ///
     /// # Examples
     ///
-    /// ```
-    /// let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
     /// let res = client.load_metadata_all();
     /// let msgs = client.fetch_messages(&"my-topic".to_string(), 0, 0);
     /// ```
@@ -246,8 +246,8 @@ impl KafkaClient {
     ///
     /// # Example
     ///
-    /// ```
-    /// let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
     /// let res = client.load_metadata_all();
     /// let msgs = client.send_message(&"my-topic".to_string(), 0, 1,
     ///                  100, &"b".to_string().into_bytes());
