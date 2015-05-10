@@ -79,9 +79,6 @@ fn main() {
 
 #### TODO:
 
-* Test
-* Remove unnecessary imports and publics
 * Tests
 * Missing functions for the implemented methods (eg. Fetch Message by multiple topic/partition)
 * Offset Management functions
-* Documentation
