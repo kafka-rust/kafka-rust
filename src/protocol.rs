@@ -6,6 +6,7 @@ use utils::{OffsetMessage, TopicPartitions, TopicPartitionOffset};
 use crc32::Crc32;
 use codecs::{ToByte, FromByte};
 use snappy;
+use gzip;
 
 
 
@@ -449,8 +450,7 @@ impl Message {
     fn get_messages(& self, offset: i64) -> Vec<OffsetMessage>{
         match self.attributes {
             0 => vec!(OffsetMessage{offset:offset, message: self.value.clone()}),
-            // TODO - Handle Gzip
-            1 => vec!(OffsetMessage{offset:offset, message: self.value.clone()}),
+            1 => message_decode_gzip(&self.value),
             2 => message_decode_snappy(&self.value),
             _ => vec!()
         }
@@ -465,7 +465,7 @@ fn message_decode_snappy(value: & Vec<u8>) -> Vec<OffsetMessage>{
 
     let mut v = vec!();
     loop {
-        match message_decode_loop(&mut buffer) {
+        match message_decode_loop_snappy(&mut buffer) {
             Ok(x) => v.push(x),
             Err(_) => break
         }
@@ -473,13 +473,30 @@ fn message_decode_snappy(value: & Vec<u8>) -> Vec<OffsetMessage>{
     v.iter().flat_map(|ref x| x.into_iter().cloned()).collect()
 }
 
-fn message_decode_loop<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
+fn message_decode_loop_snappy<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
     let sms = try!(snappy::SnappyMessage::decode_new(buffer));
     let msg = try!(snappy::uncompress(&sms.message));
     let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
     Ok(mset.get_messages())
 
 }
+
+fn message_decode_gzip(value: & Vec<u8>) -> Vec<OffsetMessage>{
+    // Gzip
+    let mut buffer = Cursor::new(value.to_vec());
+    match message_decode_loop_gzip(&mut buffer) {
+        Ok(x) => x,
+        Err(_) => vec!()
+    }
+}
+
+fn message_decode_loop_gzip<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
+    let msg = try!(gzip::uncompress(buffer));
+    let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
+    Ok(mset.get_messages())
+
+}
+
 // Encoder and Decoder implementations
 impl ToByte for HeaderRequest {
     fn encode<T:Write>(&self, buffer: &mut T) {
