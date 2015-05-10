@@ -2,6 +2,22 @@
 
 [![Build Status](https://travis-ci.org/spicavigo/kafka-rust.svg?branch=master)](https://travis-ci.org/spicavigo/kafka-rust)
 
+### Documentation
+
+[Kafka Rust Client Documentation](http://fauzism.co/rustdoc/kafka/index.html)
+
+The documentation includes some examples too.
+
+
+### Installation
+
+This crate works with Cargo and is on [crates.io](https://crates.io/crates/kafka). I will be updating the package frequently till we move out of pre-release. So add this to your `Cargo.toml` (instead of a specific version):
+
+```toml
+[dependencies]
+kafka = "*"
+```
+
 #### Usage:
 
 ##### Load topic metadata:
