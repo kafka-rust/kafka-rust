@@ -223,7 +223,12 @@ impl KafkaClient {
         let req = protocol::FetchRequest::new_single(topic, partition, offset, correlation, &self.clientid);
 
         let resp = try!(self.send_receive::<protocol::FetchRequest, protocol::FetchResponse>(&host, req));
-        Ok(resp.get_messages())
+        Ok(resp.get_messages()
+                .iter()
+                .filter(|ref x| x.offset >= offset)
+                .cloned()
+                .collect()
+            )
     }
 
     /// Send a message to Kafka
