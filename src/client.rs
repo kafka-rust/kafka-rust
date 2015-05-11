@@ -277,10 +277,10 @@ impl KafkaClient {
 
     fn send_request<T: ToByte>(&self, conn: &mut KafkaConnection, request: T) -> Result<usize>{
         let mut buffer = vec!();
-        request.encode(&mut buffer);
+        try!(request.encode(&mut buffer));
 
         let mut s = vec!();
-        (buffer.len() as i32).encode(&mut s);
+        try!((buffer.len() as i32).encode(&mut s));
         for byte in buffer.iter() { s.push(*byte); }
 
         conn.send(&s)

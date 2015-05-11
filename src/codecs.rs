@@ -9,12 +9,10 @@ use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt};
 use error::{Result, Error};
 
 
-// TODO - Remember to setup encode such that it returns Result<()>
-
 pub trait ToByte {
-    fn encode<T: Write>(&self, buffer: &mut T);
-    fn encode_nolen<T: Write>(&self, buffer: &mut T) {
-        self.encode(buffer);
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()>;
+    fn encode_nolen<T: Write>(&self, buffer: &mut T)  -> Result<()> {
+        self.encode(buffer)
     }
 }
 
@@ -32,54 +30,66 @@ pub trait FromByte {
 }
 
 impl ToByte for i8 {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i8(*self);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_i8(*self).or_else(|e| Err(From::from(e)))
     }
 }
 
 impl ToByte for i16 {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i16::<BigEndian>(*self);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_i16::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
 impl ToByte for i32 {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i32::<BigEndian>(*self);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_i32::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
 impl ToByte for i64 {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i64::<BigEndian>(*self);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_i64::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
 impl ToByte for String {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i16::<BigEndian>(self.len().to_i16().unwrap());
-        let _ = buffer.write_all(self.as_bytes());
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        let l = try!(self.len()
+                        .to_i16()
+                        .ok_or(Error::CodecError));
+        try!(buffer.write_i16::<BigEndian>(l));
+        buffer.write_all(self.as_bytes())
+                             .or_else(|e| Err(From::from(e)))
     }
 }
 
 impl <V:ToByte> ToByte for Vec<V> {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        let l = try!(self.len()
+                        .to_i32()
+                        .ok_or(Error::CodecError));
+        try!(buffer.write_i32::<BigEndian>(l));
         for e in self {
-            e.encode(buffer);
+            try!(e.encode(buffer));
         }
+        Ok(())
     }
-    fn encode_nolen<T:Write>(&self, buffer: &mut T) {
+    fn encode_nolen<T:Write>(&self, buffer: &mut T) -> Result<()> {
         for e in self {
-            e.encode(buffer);
+            try!(e.encode(buffer));
         }
+        Ok(())
     }
 }
 
 impl ToByte for Vec<u8>{
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
-        let _ = buffer.write_all(self);
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        let l = try!(self.len()
+                        .to_i32()
+                        .ok_or(Error::CodecError));
+        try!(buffer.write_i32::<BigEndian>(l));
+        buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
-    fn encode_nolen<T: Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_all(self);
+    fn encode_nolen<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
 }
 
