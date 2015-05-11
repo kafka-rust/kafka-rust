@@ -9,12 +9,10 @@ use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt};
 use error::{Result, Error};
 
 
-// TODO - Remember to setup encode such that it returns Result<()>
-
 pub trait ToByte {
-    fn encode<T: Write>(&self, buffer: &mut T);
-    fn encode_nolen<T: Write>(&self, buffer: &mut T) {
-        self.encode(buffer);
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()>;
+    fn encode_nolen<T: Write>(&self, buffer: &mut T)  -> Result<()> {
+        self.encode(buffer)
     }
 }
 
@@ -32,54 +30,66 @@ pub trait FromByte {
 }
 
 impl ToByte for i8 {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i8(*self);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_i8(*self).or_else(|e| Err(From::from(e)))
     }
 }
 
 impl ToByte for i16 {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i16::<BigEndian>(*self);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_i16::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
 impl ToByte for i32 {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i32::<BigEndian>(*self);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_i32::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
 impl ToByte for i64 {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i64::<BigEndian>(*self);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_i64::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
 impl ToByte for String {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i16::<BigEndian>(self.len().to_i16().unwrap());
-        let _ = buffer.write_all(self.as_bytes());
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        let l = try!(self.len()
+                        .to_i16()
+                        .ok_or(Error::CodecError));
+        try!(buffer.write_i16::<BigEndian>(l));
+        buffer.write_all(self.as_bytes())
+                             .or_else(|e| Err(From::from(e)))
     }
 }
 
 impl <V:ToByte> ToByte for Vec<V> {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        let l = try!(self.len()
+                        .to_i32()
+                        .ok_or(Error::CodecError));
+        try!(buffer.write_i32::<BigEndian>(l));
         for e in self {
-            e.encode(buffer);
+            try!(e.encode(buffer));
         }
+        Ok(())
     }
-    fn encode_nolen<T:Write>(&self, buffer: &mut T) {
+    fn encode_nolen<T:Write>(&self, buffer: &mut T) -> Result<()> {
         for e in self {
-            e.encode(buffer);
+            try!(e.encode(buffer));
         }
+        Ok(())
     }
 }
 
 impl ToByte for Vec<u8>{
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_i32::<BigEndian>(self.len().to_i32().unwrap());
-        let _ = buffer.write_all(self);
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        let l = try!(self.len()
+                        .to_i32()
+                        .ok_or(Error::CodecError));
+        try!(buffer.write_i32::<BigEndian>(l));
+        buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
-    fn encode_nolen<T: Write>(&self, buffer: &mut T) {
-        let _ = buffer.write_all(self);
+    fn encode_nolen<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
 }
 
@@ -188,4 +198,124 @@ impl FromByte for Vec<u8>{
             Err(e) => Err(From::from(e))
         }
     }
+}
+
+#[test]
+fn codec_i8() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: i8 = 5;
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [5]);
+
+    // Read from buffer into existing variable
+    let mut dec1: i8 = 0;
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = i8::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_i16() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: i16 = 5;
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 5]);
+
+    // Read from buffer into existing variable
+    let mut dec1: i16 = 0;
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = i16::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_32() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: i32 = 5;
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 0, 0, 5]);
+
+    // Read from buffer into existing variable
+    let mut dec1: i32 = 0;
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = i32::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_i64() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: i64 = 5;
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 0, 0, 0, 0, 0, 0, 5]);
+
+    // Read from buffer into existing variable
+    let mut dec1: i64 = 0;
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = i64::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_string() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig = "test".to_string();
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 4, 116, 101, 115, 116]);
+
+    // Read from buffer into existing variable
+    let mut dec1 = String::new();
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = String::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_vec_u8() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: Vec<u8> = vec!(1, 2, 3);
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 0, 0, 3, 1, 2, 3]);
+
+    // Read from buffer into existing variable
+    let mut dec1: Vec<u8> = vec!();
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = Vec::<u8>::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
 }

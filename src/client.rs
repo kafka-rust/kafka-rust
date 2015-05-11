@@ -223,7 +223,12 @@ impl KafkaClient {
         let req = protocol::FetchRequest::new_single(topic, partition, offset, correlation, &self.clientid);
 
         let resp = try!(self.send_receive::<protocol::FetchRequest, protocol::FetchResponse>(&host, req));
-        Ok(resp.get_messages())
+        Ok(resp.get_messages()
+                .iter()
+                .filter(|ref x| x.offset >= offset)
+                .cloned()
+                .collect()
+            )
     }
 
     /// Send a message to Kafka
@@ -277,10 +282,10 @@ impl KafkaClient {
 
     fn send_request<T: ToByte>(&self, conn: &mut KafkaConnection, request: T) -> Result<usize>{
         let mut buffer = vec!();
-        request.encode(&mut buffer);
+        try!(request.encode(&mut buffer));
 
         let mut s = vec!();
-        (buffer.len() as i32).encode(&mut s);
+        try!((buffer.len() as i32).encode(&mut s));
         for byte in buffer.iter() { s.push(*byte); }
 
         conn.send(&s)

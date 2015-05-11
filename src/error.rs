@@ -25,6 +25,8 @@ pub type Result<T> = result::Result<T, Error>;
 ///
 /// `NoHostReachable` - Unable to reach any host.
 ///
+/// `CodecError` - Error while encoding or decoding request/response
+///
 /// Kafka Errors from https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol#AGuideToTheKafkaProtocol-ErrorCodes
 
 #[derive(Debug)]
@@ -32,6 +34,7 @@ pub enum Error {
     Io(io::Error),
     InvalidInputSnappy,
     UnexpectedEOF,
+    CodecError,
     NoHostReachable,
     Unknown,
     NoError,
@@ -108,6 +111,7 @@ impl error::Error for Error {
             Error::InvalidInputSnappy => "Snappy decode error. Invalid Input",
             Error::UnexpectedEOF => "Unexpected EOF",
             Error::NoHostReachable => "No Host Reachable",
+            Error::CodecError => "Encoding Decoding Error",
             _ => "Kafka Error" // TODO Add others
         }
     }
@@ -127,6 +131,7 @@ impl fmt::Display for Error {
             Error::InvalidInputSnappy => write!(f, "{}", "Snappy decode error. Invalid Input"),
             Error::UnexpectedEOF => write!(f, "Unexpected EOF"),
             Error::NoHostReachable => write!(f, "No Host Reachable"),
+            Error::CodecError => write!(f, "Encoding Decoding Error"),
             _ => write!(f, "Kafka Error") // TODO Add others
         }
     }

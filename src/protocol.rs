@@ -8,6 +8,17 @@ use codecs::{ToByte, FromByte};
 use snappy;
 use gzip;
 
+/// Macro to return Result<()> from multiple statements
+macro_rules! try_multi {
+    (
+        $($expr:expr),*
+    ) => ({
+        $(
+            try!($expr);
+        )*;
+        Ok(())
+    })
+}
 
 
 const PRODUCE_KEY: i16 = 0;
@@ -499,76 +510,94 @@ fn message_decode_loop_gzip<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>
 
 // Encoder and Decoder implementations
 impl ToByte for HeaderRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.key.encode(buffer);
-        self.version.encode(buffer);
-        self.correlation.encode(buffer);
-        self.clientid.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.key.encode(buffer),
+            self.version.encode(buffer),
+            self.correlation.encode(buffer),
+            self.clientid.encode(buffer)
+        )
     }
 }
 
 impl ToByte for MetadataRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.header.encode(buffer);
-        self.topics.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.header.encode(buffer),
+            self.topics.encode(buffer)
+        )
     }
 }
 
 impl ToByte for OffsetRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.header.encode(buffer);
-        self.replica.encode(buffer);
-        self.topic_partitions.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.header.encode(buffer),
+            self.replica.encode(buffer),
+            self.topic_partitions.encode(buffer)
+        )
     }
 }
 
 impl ToByte for ProduceRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.header.encode(buffer);
-        self.required_acks.encode(buffer);
-        self.timeout.encode(buffer);
-        self.topic_partitions.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.header.encode(buffer),
+            self.required_acks.encode(buffer),
+            self.timeout.encode(buffer),
+            self.topic_partitions.encode(buffer)
+        )
     }
 }
 
 impl ToByte for TopicPartitionProduceRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.topic.encode(buffer);
-        self.partitions.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.topic.encode(buffer),
+            self.partitions.encode(buffer)
+        )
     }
 }
 
 impl ToByte for PartitionProduceRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.partition.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         let mut buf = vec!();
-        self.messageset.encode(&mut buf);
-        buf.encode(buffer);
+        try_multi!(
+            self.partition.encode(buffer),
+            self.messageset.encode(&mut buf),
+            buf.encode(buffer)
+        )
     }
 }
 
 impl ToByte for FetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.header.encode(buffer);
-        self.replica.encode(buffer);
-        self.max_wait_time.encode(buffer);
-        self.min_bytes.encode(buffer);
-        self.topic_partitions.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.header.encode(buffer),
+            self.replica.encode(buffer),
+            self.max_wait_time.encode(buffer),
+            self.min_bytes.encode(buffer),
+            self.topic_partitions.encode(buffer)
+        )
     }
 }
 
 impl ToByte for TopicPartitionFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.topic.encode(buffer);
-        self.partitions.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.topic.encode(buffer),
+            self.partitions.encode(buffer)
+        )
     }
 }
 
 impl ToByte for PartitionFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.partition.encode(buffer);
-        self.offset.encode(buffer);
-        self.max_bytes.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.partition.encode(buffer),
+            self.offset.encode(buffer),
+            self.max_bytes.encode(buffer)
+        )
     }
 }
 
@@ -578,8 +607,7 @@ impl FromByte for HeaderResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.correlation.decode(buffer);
-        Ok(())
+        self.correlation.decode(buffer)
     }
 }
 
@@ -588,10 +616,11 @@ impl FromByte for MetadataResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.header.decode(buffer);
-        self.brokers.decode(buffer);
-        self.topics.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.header.decode(buffer),
+            self.brokers.decode(buffer),
+            self.topics.decode(buffer)
+        )
     }
 }
 
@@ -600,9 +629,10 @@ impl FromByte for OffsetResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.header.decode(buffer);
-        self.topic_partitions.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.header.decode(buffer),
+            self.topic_partitions.decode(buffer)
+        )
     }
 }
 
@@ -611,9 +641,10 @@ impl FromByte for TopicPartitionOffsetResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.topic.decode(buffer);
-        self.partitions.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.topic.decode(buffer),
+            self.partitions.decode(buffer)
+        )
     }
 }
 
@@ -622,10 +653,11 @@ impl FromByte for PartitionOffsetResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.partition.decode(buffer);
-        self.error.decode(buffer);
-        self.offset.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.partition.decode(buffer),
+            self.error.decode(buffer),
+            self.offset.decode(buffer)
+        )
     }
 }
 
@@ -634,9 +666,10 @@ impl FromByte for ProduceResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.header.decode(buffer);
-        self.topic_partitions.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.header.decode(buffer),
+            self.topic_partitions.decode(buffer)
+        )
     }
 }
 
@@ -645,9 +678,10 @@ impl FromByte for TopicPartitionProduceResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.topic.decode(buffer);
-        self.partitions.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.topic.decode(buffer),
+            self.partitions.decode(buffer)
+        )
     }
 }
 
@@ -656,10 +690,11 @@ impl FromByte for PartitionProduceResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.partition.decode(buffer);
-        self.error.decode(buffer);
-        self.offset.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.partition.decode(buffer),
+            self.error.decode(buffer),
+            self.offset.decode(buffer)
+        )
     }
 }
 
@@ -669,9 +704,12 @@ impl FromByte for FetchResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.header.decode(buffer);
-        self.topic_partitions.decode(buffer);
-        Ok(())
+        //try_multi!(
+            self.header.decode(buffer);
+            let x = self.topic_partitions.decode(buffer);
+            println!("{:?}", x);
+            x
+        //)
     }
 }
 
@@ -680,9 +718,10 @@ impl FromByte for TopicPartitionFetchResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.topic.decode(buffer);
-        self.partitions.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.topic.decode(buffer),
+            self.partitions.decode(buffer)
+        )
     }
 }
 
@@ -691,11 +730,12 @@ impl FromByte for PartitionFetchResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.partition.decode(buffer);
-        self.error.decode(buffer);
-        self.offset.decode(buffer);
-        self.messageset.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.partition.decode(buffer),
+            self.error.decode(buffer),
+            self.offset.decode(buffer),
+            self.messageset.decode(buffer)
+        )
     }
 }
 // For Helper Structs
@@ -705,10 +745,11 @@ impl FromByte for BrokerMetadata {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.nodeid.decode(buffer);
-        self.host.decode(buffer);
-        self.port.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.nodeid.decode(buffer),
+            self.host.decode(buffer),
+            self.port.decode(buffer)
+        )
     }
 }
 
@@ -717,10 +758,11 @@ impl FromByte for TopicMetadata {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.error.decode(buffer);
-        self.topic.decode(buffer);
-        self.partitions.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.error.decode(buffer),
+            self.topic.decode(buffer),
+            self.partitions.decode(buffer)
+        )
     }
 }
 
@@ -729,33 +771,38 @@ impl FromByte for PartitionMetadata {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.error.decode(buffer);
-        self.id.decode(buffer);
-        self.leader.decode(buffer);
-        self.replicas.decode(buffer);
-        self.isr.decode(buffer);
-        Ok(())
+        try_multi!(
+            self.error.decode(buffer),
+            self.id.decode(buffer),
+            self.leader.decode(buffer),
+            self.replicas.decode(buffer),
+            self.isr.decode(buffer)
+        )
     }
 }
 
 impl ToByte for TopicPartitionOffsetRequest {
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        self.topic.encode(buffer);
-        self.partitions.encode(buffer);
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.topic.encode(buffer),
+            self.partitions.encode(buffer)
+        )
     }
 }
 
 impl ToByte for PartitionOffsetRequest {
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        self.partition.encode(buffer);
-        self.time.encode(buffer);
-        self.max_offsets.encode(buffer);
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.partition.encode(buffer),
+            self.time.encode(buffer),
+            self.max_offsets.encode(buffer)
+        )
     }
 }
 
 impl ToByte for MessageSet {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.message.encode_nolen(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        self.message.encode_nolen(buffer)
     }
 }
 
@@ -763,9 +810,17 @@ impl FromByte for MessageSet {
     type R = MessageSet;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try!(self.message.decode(buffer));
+        let mut msgs: Vec<u8> = vec!();
+        try!(msgs.decode(buffer));
+        let l = msgs.len() as u64;
+        let mut buf = Cursor::new(msgs);
+        while l > buf.position() {
+            let mi = try!(MessageSetInner::decode_new(&mut buf));
+            self.message.push(mi);
+        }
         Ok(())
     }
+
     fn decode_new<T: Read>(buffer: &mut T) -> Result<Self::R> {
         let mut temp: Self::R = Default::default();
         loop {
@@ -782,11 +837,13 @@ impl FromByte for MessageSet {
 }
 
 impl ToByte for MessageSetInner {
-    fn encode<T:Write>(&self, buffer: &mut T) {
-        self.offset.encode(buffer);
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         let mut buf = vec!();
-        self.message.encode(&mut buf);
-        buf.encode(buffer);
+        try_multi!(
+            self.offset.encode(buffer),
+            self.message.encode(&mut buf),
+            buf.encode(buffer)
+        )
     }
 }
 
@@ -795,31 +852,32 @@ impl FromByte for MessageSetInner {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.offset.decode(buffer);
-        self.messagesize.decode(buffer);
-        try!(self.message.decode(buffer));
-        Ok(())
+        try_multi!(
+            self.offset.decode(buffer),
+            self.messagesize.decode(buffer),
+            self.message.decode(buffer)
+        )
     }
 }
 
 impl ToByte for Message {
-    fn encode<T:Write>(&self, buffer: &mut T) {
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         let mut buf = vec!();
-        self.magic.encode(&mut buf);
-        self.attributes.encode(&mut buf);
+        try!(self.magic.encode(&mut buf));
+        try!(self.attributes.encode(&mut buf));
         if self.key.len() == 0 {
             let a: i32 = -1;
-            a.encode(&mut buf);
+            try!(a.encode(&mut buf));
         } else {
-            self.key.encode(&mut buf);
+            try!(self.key.encode(&mut buf));
         }
 
-        self.value.encode(&mut buf);
+        try!(self.value.encode(&mut buf));
         let (_, x) = buf.split_at(0);
         let crc = Crc32::tocrc(x) as i32;
 
-        crc.encode(buffer);
-        buf.encode_nolen(buffer);
+        try!(crc.encode(buffer));
+        buf.encode_nolen(buffer)
     }
 }
 
@@ -827,12 +885,12 @@ impl FromByte for Message {
     type R = Message;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-
-        try!(self.crc.decode(buffer));
-        try!(self.magic.decode(buffer));
-        try!(self.attributes.decode(buffer));
-        try!(self.key.decode(buffer));
-        try!(self.value.decode(buffer));
-        Ok(())
+        try_multi!(
+            self.crc.decode(buffer),
+            self.magic.decode(buffer),
+            self.attributes.decode(buffer),
+            self.key.decode(buffer),
+            self.value.decode(buffer)
+        )
     }
 }
