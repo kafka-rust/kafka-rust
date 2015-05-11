@@ -199,3 +199,123 @@ impl FromByte for Vec<u8>{
         }
     }
 }
+
+#[test]
+fn codec_i8() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: i8 = 5;
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [5]);
+
+    // Read from buffer into existing variable
+    let mut dec1: i8 = 0;
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = i8::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_i16() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: i16 = 5;
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 5]);
+
+    // Read from buffer into existing variable
+    let mut dec1: i16 = 0;
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = i16::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_32() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: i32 = 5;
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 0, 0, 5]);
+
+    // Read from buffer into existing variable
+    let mut dec1: i32 = 0;
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = i32::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_i64() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: i64 = 5;
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 0, 0, 0, 0, 0, 0, 5]);
+
+    // Read from buffer into existing variable
+    let mut dec1: i64 = 0;
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = i64::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_string() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig = "test".to_string();
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 4, 116, 101, 115, 116]);
+
+    // Read from buffer into existing variable
+    let mut dec1 = String::new();
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = String::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_vec_u8() {
+    use std::io::Cursor;
+    let mut buf = vec!();
+    let orig: Vec<u8> = vec!(1, 2, 3);
+
+    // Encode into buffer
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 0, 0, 3, 1, 2, 3]);
+
+    // Read from buffer into existing variable
+    let mut dec1: Vec<u8> = vec!();
+    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec1, orig);
+
+    // Read from buffer into new variable
+    let dec2 = Vec::<u8>::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    assert_eq!(dec2, orig);
+}
