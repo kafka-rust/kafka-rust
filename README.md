@@ -79,6 +79,6 @@ fn main() {
 
 #### TODO:
 
-* Tests
+* Tests - (Added tests for gzip.rs, snappy.rs, and codecs.rs)
 * Missing functions for the implemented methods (eg. Fetch Message by multiple topic/partition)
 * Offset Management functions
