@@ -274,6 +274,36 @@ impl KafkaClient {
 
     }
 
+    pub fn commit_offset(&mut self, group: &String, topic: &String,
+        partition: i32, offset: i64) -> Result<()>{
+        let host = self.get_broker(topic, partition).unwrap();
+
+        let correlation = self.next_id();
+
+
+        let req = protocol::OffsetCommitRequest::new(group, topic,
+                    &partition, &offset, &"".to_string(), correlation, &self.clientid);
+
+        try!(self.send_receive
+            ::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(&host, req));
+
+        Ok(())
+    }
+
+    pub fn fetch_group_topic_offset(&mut self, group: &String, topic: &String, partition: i32) -> Result<i64> {
+        let host = self.get_broker(topic, partition).unwrap();
+
+        let correlation = self.next_id();
+        let req = protocol::OffsetFetchRequest::new(group, &vec!(topic.clone()),
+                    &vec!(partition), correlation, &self.clientid);
+
+        let resp = try!(self.send_receive
+                    ::<protocol::OffsetFetchRequest, protocol::OffsetFetchResponse>(&host, req));
+
+        Ok(resp.get_offset_partition(topic, &partition))
+
+    }
+
     fn send_receive<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<V::R> {
         let mut conn = try!(self.get_conn(&host));
         try!(self.send_request(&mut conn, req));
@@ -294,7 +324,8 @@ impl KafkaClient {
     fn get_response<T: FromByte>(&self, conn:&mut KafkaConnection) -> Result<T::R>{
         let mut v: Vec<u8> = vec!();
         let _ = conn.read(4, &mut v);
-        let size = i32::decode_new(&mut Cursor::new(v)).unwrap();
+
+        let size = try!(i32::decode_new(&mut Cursor::new(v)));
 
         let mut resp: Vec<u8> = vec!();
         let _ = try!(conn.read(size as u64, &mut resp));
