@@ -183,6 +183,89 @@ pub struct PartitionFetchResponse {
     pub messageset: MessageSet
 }
 
+#[derive(Default, Debug, Clone)]
+pub struct ConsumerMetadataRequest {
+    pub header: HeaderRequest,
+    pub group: String
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct ConsumerMetadataResponse {
+    pub header: HeaderResponse,
+    pub error: i16,
+    pub id: i32,
+    pub host: String,
+    pub port: i32
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct OffsetCommitRequest {
+    pub header: HeaderRequest,
+    pub group: String,
+    pub topic: String,
+    pub partition: i32,
+    pub offset i64,
+    pub metadata: String
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct OffsetCommitResponse {
+    pub header: HeaderResponse,
+    pub topic_partitions: Vec<TopicPartitionOffsetCommitResponset>
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct TopicPartitionOffsetCommitResponse {
+    pub topic: String,
+    pub partitions: Vec<PartitionOffsetCommitResponse>
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct PartitionOffsetCommitResponse {
+    pub partition: i32,
+    pub error: i16
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct OffsetFetchRequest {
+    pub header: HeaderRequest,
+    pub group: String,
+    pub topic_partitions: Vec<TopicPartitionOffsetFetchRequest>
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct TopicPartitionOffsetFetchRequest {
+    pub topic: String,
+    pub partitions: Vec<PartitionOffsetFetchRequest>
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct PartitionOffsetFetchRequest {
+    pub partition: i32
+}
+
+
+#[derive(Default, Debug, Clone)]
+pub struct OffsetFetchResponse {
+    pub header: HeaderResponse,
+    pub topic_partitions: Vec<TopicPartitionOffsetFetchResponse>
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct TopicPartitionOffsetOffsetResponse {
+    pub topic: String,
+    pub partitions: Vec<PartitionOffsetFetchResponse>
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct PartitionOffsetFetchResponse {
+    pub partition: i32,
+    pub offset i64,
+    pub metadata: String,
+    pub error: i16
+}
+
+
 // Helper Structs
 
 #[derive(Default, Debug, Clone)]
@@ -228,6 +311,7 @@ pub struct Message {
     pub key: Vec<u8>,
     pub value: Vec<u8>
 }
+
 
 // Constructors for Requests
 impl MetadataRequest {
