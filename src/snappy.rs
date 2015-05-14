@@ -65,7 +65,7 @@ impl FromByte for SnappyMessage {
     }
 }
 
-pub fn uncompress(src: &Vec<u8>) -> Result<Vec<u8>> {
+pub fn uncompress(src: Vec<u8>) -> Result<Vec<u8>> {
     unsafe {
         let (_, x) = src.split_at(0);
         let srclen = x.len() as size_t;
@@ -88,7 +88,7 @@ pub fn uncompress(src: &Vec<u8>) -> Result<Vec<u8>> {
 fn test_uncompress() {
     // The vector should uncompress to "This is test"
     let msg: Vec<u8> = vec!(12, 44, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116);
-    let uncomp_msg = String::from_utf8(uncompress(&msg).unwrap()).unwrap();
+    let uncomp_msg = String::from_utf8(uncompress(msg).unwrap()).unwrap();
     assert_eq!(&uncomp_msg[..], "This is test");
 }
 
@@ -96,6 +96,6 @@ fn test_uncompress() {
 #[should_panic]
 fn test_uncompress_panic() {
     let msg: Vec<u8> = vec!(12, 42, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116);
-    let uncomp_msg = String::from_utf8(uncompress(&msg).unwrap()).unwrap();
+    let uncomp_msg = String::from_utf8(uncompress(msg).unwrap()).unwrap();
     assert_eq!(&uncomp_msg[..], "This is test");
 }
