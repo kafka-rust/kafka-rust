@@ -22,7 +22,7 @@ const DEFAULT_TIMEOUT: i32 = 120; // seconds
 /// # Examples
 ///
 /// ```no_run
-/// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+/// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
 /// let res = client.load_metadata_all();
 /// ```
 ///
@@ -44,7 +44,7 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
     /// ```
     pub fn new(hosts: Vec<String>) -> KafkaClient {
         KafkaClient { hosts: hosts, clientid: CLIENTID.to_string(),
@@ -141,9 +141,9 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
     /// let res = client.load_metadata_all();
-    /// let offsets = client.fetch_topic_offset(&"my-topic".to_string());
+    /// let offsets = client.fetch_topic_offset("my-topic".to_string());
     /// ```
     /// Returns a vector of (topic, partition offset data).
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
@@ -211,9 +211,9 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
     /// let res = client.load_metadata_all();
-    /// let msgs = client.fetch_messages(&"my-topic".to_string(), 0, 0);
+    /// let msgs = client.fetch_messages("my-topic".to_string(), 0, 0);
     /// ```
     pub fn fetch_messages(&mut self, topic: String, partition: i32, offset: i64) -> Result<Vec<utils::OffsetMessage>>{
 
@@ -252,10 +252,10 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(&vec!("localhost:9092".to_string()));
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
     /// let res = client.load_metadata_all();
-    /// let msgs = client.send_message(&"my-topic".to_string(), 0, 1,
-    ///                  100, &"b".to_string().into_bytes());
+    /// let msgs = client.send_message("my-topic".to_string(), 0, 1,
+    ///                  100, "b".to_string().into_bytes());
     /// ```
     /// The return value will contain topic, partition, offset and error if any
     /// OR error:Error
