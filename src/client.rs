@@ -103,6 +103,7 @@ impl KafkaClient {
                 }
             }
         }
+        println!("{:?}", self.topic_partitions);
         Ok(())
     }
 
@@ -128,13 +129,57 @@ impl KafkaClient {
         Err(Error::NoHostReachable)
     }
 
-    /// Fetch offsets for a list of topics
-    /// Not implemented as yet.
-    pub fn fetch_offsets(&mut self, _topics: &Vec<String>) {
-        // TODO - Implement method to fetch offsets for more than 1 topic
-
+    fn get_broker(&mut self, topic: &String, partition: &i32) -> Option<String> {
+        let key = format!("{}-{}", topic, partition);
+        match self.topic_brokers.get(&key) {
+            Some(broker) => {
+                Some(broker.clone())
+            },
+            None => None
+        }
     }
 
+    /// Fetch offsets for a list of topics
+    /// Not implemented as yet.
+    pub fn fetch_offsets(&mut self, topics: Vec<String>) -> Result<()> {
+        // TODO - Implement method to fetch offsets for more than 1 topic
+        let correlation = self.next_id();
+        let mut req = protocol::OffsetRequest::new(correlation, self.clientid.clone());
+        let mut reqs: HashMap<String, protocol::OffsetRequest> = HashMap:: new();
+        for topic in topics {
+            let partitions = self.topic_partitions
+                                 .get(&topic)
+                                 .unwrap_or(&vec!())
+                                 .clone();
+
+            // Maybe TODO: Can this be simplified without complexifying?
+
+            for p in partitions {
+                let key = format!("{}-{}", topic, p);
+                match self.topic_brokers.get(&key) {
+                    Some(broker) => {
+                        if !reqs.contains_key(broker) {
+                            reqs.insert(broker.clone(),
+                                           protocol::OffsetRequest::new(correlation, self.clientid.clone()));
+                        }
+                        reqs.get_mut(broker).unwrap().add(topic.clone(), p, -1);
+                    },
+                    None => {}
+                }
+            }
+        }
+
+        //let mut res: Vec<utils::TopicPartitionOffset> = vec!();
+        for (host, req) in reqs.iter() {
+            let resp = try!(self.send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&host, req.clone()));
+            //res.push(resp.get_offsets());
+            println!("{:?}", resp.get_offsets());
+        }
+        Ok(())
+        //Ok(res)
+
+    }
+/*
     /// Fetch offset for a topic.
     /// It gets the latest offset only. Support for getting earliest will be added soon
     ///
@@ -189,16 +234,6 @@ impl KafkaClient {
 
         Ok(resp.get_offsets())
 
-    }
-
-    fn get_broker(&mut self, topic: &String, partition: &i32) -> Option<String> {
-        let key = format!("{}-{}", topic, partition);
-        match self.topic_brokers.get(&key) {
-            Some(broker) => {
-                Some(broker.clone())
-            },
-            None => None
-        }
     }
 
     /// Fetch messages from Kafka
@@ -304,7 +339,7 @@ impl KafkaClient {
         Ok(resp.get_offset_partition(topic, partition))
 
     }
-
+*/
     fn send_receive<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<V::R> {
         let mut conn = try!(self.get_conn(&host));
         try!(self.send_request(&mut conn, req));

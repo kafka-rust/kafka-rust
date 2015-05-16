@@ -345,32 +345,37 @@ impl MetadataRequest {
 }
 
 impl OffsetRequest {
-    pub fn new(topic_partitions: Vec<TopicPartitions>, time: i64,
-               correlation: i32, clientid: String) -> OffsetRequest{
+    pub fn new(correlation: i32, clientid: String) -> OffsetRequest{
         OffsetRequest{
             header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
             replica: -1,
-            topic_partitions: topic_partitions.iter()
-                                .map(|ref tp|
-                                    TopicPartitionOffsetRequest::new(tp.topic.clone(), tp.partitions.to_vec(), time.clone()))
-                                .collect()
+            topic_partitions: vec!()
         }
     }
-    pub fn new_latest(topic_partitions: Vec<TopicPartitions>,
-                      correlation: i32, clientid: String) -> OffsetRequest{
-        OffsetRequest::new(topic_partitions, -1, correlation, clientid)
+
+    pub fn add(&mut self, topic: String, partition: i32, time: i64) {
+        for tp in &mut self.topic_partitions {
+            if tp.topic == topic {
+                tp.add(partition, time);
+                return;
+            }
+        }
+        self.topic_partitions.push(TopicPartitionOffsetRequest::new(topic.clone()));
+        self.add(topic, partition, time);
     }
 }
 
 impl TopicPartitionOffsetRequest {
-    pub fn new(topic: String, partitions: Vec<i32>, time: i64) -> TopicPartitionOffsetRequest{
+    pub fn new(topic: String) -> TopicPartitionOffsetRequest{
         TopicPartitionOffsetRequest {
             topic: topic,
-            partitions: partitions.iter()
-                                  .map(|&partition| PartitionOffsetRequest:: new(partition, time))
-                                  .collect()
+            partitions: vec!()
         }
+    }
+
+    pub fn add(&mut self, partition: i32, time: i64) {
+        self.partitions.push(PartitionOffsetRequest::new(partition, time));
     }
 }
 
@@ -416,25 +421,39 @@ impl PartitionOffsetResponse {
 
 
 impl ProduceRequest {
-    pub fn new_single(topic: String, partition: i32, required_acks: i16,
-                      timeout: i32, message: Vec<u8>,
-                      correlation: i32, clientid: String) -> ProduceRequest{
+    pub fn new(required_acks: i16, timeout: i32,
+               correlation: i32, clientid: String) -> ProduceRequest{
         ProduceRequest{
             header: HeaderRequest{key: PRODUCE_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
             required_acks: required_acks,
             timeout: timeout,
-            topic_partitions: vec!(TopicPartitionProduceRequest::new_single(topic, partition, message))
+            topic_partitions: vec!()
         }
+    }
+
+    pub fn add(&mut self, topic: String, partition: i32, message: Vec<u8>) {
+        for tp in &mut self.topic_partitions {
+            if tp.topic == topic {
+                tp.add(partition, message);
+                return;
+            }
+        }
+        self.topic_partitions.push(TopicPartitionProduceRequest::new(topic.clone()));
+        self.add(topic, partition, message);
     }
 }
 
 impl TopicPartitionProduceRequest {
-    pub fn new_single(topic: String, partition: i32, message: Vec<u8>) -> TopicPartitionProduceRequest{
+    pub fn new(topic: String) -> TopicPartitionProduceRequest {
         TopicPartitionProduceRequest {
             topic: topic,
-            partitions: vec!(PartitionProduceRequest:: new(partition, message))
+            partitions: vec!()
         }
+    }
+
+    pub fn add(&mut self, partition: i32, message: Vec<u8>) {
+        self.partitions.push(PartitionProduceRequest:: new(partition, message))
     }
 }
 
@@ -479,25 +498,39 @@ impl PartitionProduceResponse {
 
 impl FetchRequest {
 
-    pub fn new_single(topic: String, partition: i32, offset: i64,
-               correlation: i32, clientid: String) -> FetchRequest{
+    pub fn new(correlation: i32, clientid: String) -> FetchRequest{
         FetchRequest{
             header: HeaderRequest{key: FETCH_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
             replica: -1,
             max_wait_time: FETCH_MAX_WAIT_TIME,
             min_bytes: FETCH_MIN_BYTES,
-            topic_partitions: vec!(TopicPartitionFetchRequest::new_single(topic, partition, offset))
+            topic_partitions: vec!()
         }
+    }
+
+    pub fn add(&mut self, topic: String, partition: i32, offset: i64) {
+        for tp in &mut self.topic_partitions {
+            if tp.topic == topic {
+                tp.add(partition, offset);
+                return;
+            }
+        }
+        self.topic_partitions.push(TopicPartitionFetchRequest::new(topic.clone()));
+        self.add(topic, partition, offset);
     }
 }
 
 impl TopicPartitionFetchRequest {
-    pub fn new_single(topic: String, partition: i32, offset: i64) -> TopicPartitionFetchRequest{
+    pub fn new(topic: String) -> TopicPartitionFetchRequest{
         TopicPartitionFetchRequest {
             topic: topic,
-            partitions: vec!(PartitionFetchRequest::new(partition, offset))
+            partitions: vec!()
         }
+    }
+
+    pub fn add(&mut self, partition: i32, offset: i64) {
+        self.partitions.push(PartitionFetchRequest:: new(partition, offset))
     }
 }
 
@@ -547,47 +580,84 @@ impl ConsumerMetadataRequest {
 }
 
 impl OffsetCommitRequest {
-    pub fn new(group: String, topic: String, partition: i32, offset: i64, metadata: String,
-        correlation: i32, clientid: String) -> OffsetCommitRequest {
+    pub fn new(group: String, correlation: i32, clientid: String) -> OffsetCommitRequest {
         OffsetCommitRequest{
             header: HeaderRequest{key: OFFSET_COMMIT_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
             group: group,
-            topic_partitions: vec!(TopicPartitionOffsetCommitRequest{
-                topic: topic,
-                partitions: vec!(PartitionOffsetCommitRequest{
-                    partition: partition,
-                    offset: offset,
-                    metadata: metadata
-                    })
-                })
+            topic_partitions: vec!()
             }
     }
+    pub fn add(&mut self, topic: String, partition: i32, offset: i64, metadata: String) {
+        for tp in &mut self.topic_partitions {
+            if tp.topic == topic {
+                tp.add(partition, offset, metadata);
+                return;
+            }
+        }
+        self.topic_partitions.push(TopicPartitionOffsetCommitRequest::new(topic.clone()));
+        self.add(topic, partition, offset, metadata);
+    }
+}
 
+impl TopicPartitionOffsetCommitRequest {
+    pub fn new(topic: String) -> TopicPartitionOffsetCommitRequest{
+        TopicPartitionOffsetCommitRequest {
+            topic: topic,
+            partitions: vec!()
+        }
+    }
+
+    pub fn add(&mut self, partition: i32, offset: i64, metadata: String) {
+        self.partitions.push(PartitionOffsetCommitRequest::new(partition, offset, metadata))
+    }
+}
+
+impl PartitionOffsetCommitRequest {
+    pub fn new(partition: i32, offset: i64, metadata: String) -> PartitionOffsetCommitRequest {
+
+        PartitionOffsetCommitRequest{
+            partition: partition,
+            offset: offset,
+            metadata: metadata
+        }
+    }
 }
 
 impl OffsetFetchRequest {
-    pub fn new(group: String, topics: Vec<String>, partitions: Vec<i32>,
-               correlation: i32, clientid: String) -> OffsetFetchRequest {
-        let topic_partitions = topics
-                                .into_iter()
-                                .map(|topic| TopicPartitionOffsetFetchRequest::new(topic, partitions.to_vec()))
-                                .collect();
+    pub fn new(group: String, correlation: i32, clientid: String) -> OffsetFetchRequest {
         OffsetFetchRequest{
             header: HeaderRequest{key: OFFSET_FETCH_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
             group: group,
-            topic_partitions: topic_partitions}
+            topic_partitions: vec!()}
+    }
+
+    pub fn add(&mut self, topic: String, partition: i32) {
+        for tp in &mut self.topic_partitions {
+            if tp.topic == topic {
+                tp.add(partition);
+                return;
+            }
+        }
+        self.topic_partitions.push(TopicPartitionOffsetFetchRequest::new(topic.clone()));
+        self.add(topic, partition);
     }
 }
 
 impl TopicPartitionOffsetFetchRequest {
-    pub fn new(topic: String, partitions: Vec<i32>) -> TopicPartitionOffsetFetchRequest {
-        let parts = partitions
-                        .into_iter()
-                        .map(|p| PartitionOffsetFetchRequest{partition: p})
-                        .collect();
-        TopicPartitionOffsetFetchRequest{topic: topic, partitions: parts}
+    pub fn new(topic: String) -> TopicPartitionOffsetFetchRequest {
+        TopicPartitionOffsetFetchRequest{topic: topic, partitions: vec!()}
+    }
+
+    pub fn add(&mut self, partition: i32) {
+        self.partitions.push(PartitionOffsetFetchRequest::new(partition));
+    }
+}
+
+impl PartitionOffsetFetchRequest {
+    pub fn new(partition: i32) -> PartitionOffsetFetchRequest {
+        PartitionOffsetFetchRequest{partition: partition}
     }
 }
 
@@ -605,6 +675,7 @@ impl OffsetFetchResponse {
         vec!()
     }
 
+    // TODO Do something about this braindead code
     pub fn get_offset_partition(&self, topic: String, partition: i32) -> i64 {
         for tp in &self.topic_partitions {
             if tp.topic == topic {
