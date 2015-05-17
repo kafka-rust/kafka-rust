@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 use std::io::Cursor;
 
 use error::{Result, Error};
-use utils::{OffsetMessage, TopicPartitions, TopicPartitionOffset, PartitionOffset};
+use utils::{OffsetMessage, TopicMessage, TopicPartitions, TopicPartitionOffset, PartitionOffset};
 use crc32::Crc32;
 use codecs::{ToByte, FromByte};
 use snappy;
@@ -545,7 +545,7 @@ impl PartitionFetchRequest {
 }
 
 impl FetchResponse {
-    pub fn get_messages(&self) -> Vec<OffsetMessage>{
+    pub fn get_messages(&self) -> Vec<TopicMessage>{
         self.topic_partitions
             .iter()
             .flat_map(|ref tp| tp.get_messages())
@@ -554,17 +554,21 @@ impl FetchResponse {
 }
 
 impl TopicPartitionFetchResponse {
-    pub fn get_messages(&self) -> Vec<OffsetMessage>{
+    pub fn get_messages(&self) -> Vec<TopicMessage>{
         self.partitions
             .iter()
-            .flat_map(|ref p| p.get_messages())
+            .flat_map(|ref p| p.get_messages(self.topic.clone()))
             .collect()
     }
 }
 
 impl PartitionFetchResponse {
-    pub fn get_messages(&self) -> Vec<OffsetMessage>{
+    pub fn get_messages(&self, topic: String) -> Vec<TopicMessage>{
         self.messageset.get_messages()
+                       .iter()
+                       .map(|om| TopicMessage{topic: topic.clone(), partition: self.partition.clone(),
+                                              offset: om.offset.clone(), message: om.message.clone()})
+                       .collect()
     }
 }
 
@@ -661,32 +665,32 @@ impl PartitionOffsetFetchRequest {
     }
 }
 
-
 impl OffsetFetchResponse {
-    pub fn get_offset(&self, topic: String) -> Vec<PartitionOffset> {
-        for tp in &self.topic_partitions {
-            if *tp.topic == topic {
-                return tp.partitions
-                         .iter()
-                         .map(|ref p| PartitionOffset{partition:p.partition, offset:p.offset})
-                         .collect();
-            }
-        }
-        vec!()
+    pub fn get_offsets(&self) -> Vec<TopicPartitionOffset>{
+        self.topic_partitions
+            .iter()
+            .flat_map(|ref tp| tp.get_offsets(tp.topic.clone()))
+            .collect()
     }
+}
 
-    // TODO Do something about this braindead code
-    pub fn get_offset_partition(&self, topic: String, partition: i32) -> i64 {
-        for tp in &self.topic_partitions {
-            if tp.topic == topic {
-                for p in &tp.partitions {
-                    if p.partition == partition {
-                        return p.offset
-                    }
-                }
-            }
+impl TopicPartitionOffsetFetchResponse {
+    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffset>{
+        self.partitions
+            .iter()
+            .map(|ref p| p.get_offsets(topic.clone()))
+            .collect()
+    }
+}
+
+impl PartitionOffsetFetchResponse {
+    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffset{
+        TopicPartitionOffset{
+            topic: topic,
+            partition: self.partition,
+            offset:self.offset,
+            error: self.error
         }
-        -1
     }
 }
 

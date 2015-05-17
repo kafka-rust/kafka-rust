@@ -6,6 +6,15 @@ pub struct OffsetMessage {
 }
 
 #[derive(Clone, Debug)]
+pub struct TopicMessage {
+    pub topic: String,
+    pub partition: i32,
+    pub offset: i64,
+    pub message: Vec<u8>
+}
+
+
+#[derive(Clone, Debug)]
 pub struct ProduceMessage {
     pub topic: String,
     pub partition: i32,
