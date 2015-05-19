@@ -35,7 +35,8 @@ pub struct KafkaClient {
     correlation: i32,
     conns: HashMap<String, KafkaConnection>,
     pub topic_partitions: HashMap<String, Vec<i32>>,
-    topic_brokers: HashMap<String, String>
+    topic_brokers: HashMap<String, String>,
+    topic_partition_curr: HashMap<String, i32>
 }
 
 impl KafkaClient {
@@ -71,6 +72,14 @@ impl KafkaClient {
 
 
     /// Resets and loads metadata for all topics.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// ```
+    ///
     pub fn load_metadata_all(&mut self) -> Result<()>{
         self.reset_metadata();
         self.load_metadata(vec!())
@@ -78,8 +87,15 @@ impl KafkaClient {
 
     /// Reloads metadata for a list of supplied topics
     ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata(vec!("my-topic".to_string()));
+    /// ```
+    ///
     /// returns Result<(), error::Error>
-    pub fn load_metadata (&mut self, topics: Vec<String>) -> Result<()>{
+    pub fn load_metadata(&mut self, topics: Vec<String>) -> Result<()>{
         let resp = try!(self.get_metadata(topics));
 
         let mut brokers: HashMap<i32, String> = HashMap::new();
@@ -87,7 +103,6 @@ impl KafkaClient {
             brokers.insert(broker.nodeid, format!("{}:{}", broker.host, broker.port));
         }
 
-        self.topic_brokers.clear();
         for topic in resp.topics {
             self.topic_partitions.insert(topic.topic.clone(), vec!());
 
@@ -128,11 +143,72 @@ impl KafkaClient {
         Err(Error::NoHostReachable)
     }
 
-    /// Fetch offsets for a list of topics
-    /// Not implemented as yet.
-    pub fn fetch_offsets(&mut self, _topics: &Vec<String>) {
-        // TODO - Implement method to fetch offsets for more than 1 topic
+    fn get_broker(&self, topic: &String, partition: &i32) -> Option<String> {
+        let key = format!("{}-{}", topic, partition);
+        match self.topic_brokers.get(&key) {
+            Some(broker) => {
+                Some(broker.clone())
+            },
+            None => None
+        }
+    }
 
+    fn choose_partition(&mut self, topic: &String) -> Option<i32> {
+        match self.topic_partitions.get(topic) {
+            Some(partitions) => {
+                let plen = partitions.len();
+                if plen == 0 {
+                    return None;
+                }
+
+                let curr = self.topic_partition_curr.entry(topic.clone()).or_insert(0);
+                *curr = (*curr+1) % plen as i32;
+                Some(*curr)
+            },
+            None => None
+        }
+
+    }
+
+    /// Fetch offsets for a list of topics.
+    /// It gets the latest offset only. Support for getting earliest will be added soon
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let topics = client.topic_partitions.keys().cloned().collect();
+    /// let offsets = client.fetch_offsets(topics);
+    /// ```
+    /// Returns a hashmap of (topic, PartitionOffset data).
+    /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
+    pub fn fetch_offsets(&mut self, topics: Vec<String>) -> Result<HashMap<String, Vec<utils::PartitionOffset>>> {
+        let correlation = self.next_id();
+        let mut reqs: HashMap<String, protocol::OffsetRequest> = HashMap:: new();
+
+        // Map topic and partition to the corresponding broker
+        for topic in topics {
+            for p in self.topic_partitions.get(&topic).unwrap_or(&vec!()) {
+                self.get_broker(&topic, &p).and_then(|broker| {
+                    let entry = reqs.entry(broker.clone()).or_insert(
+                                protocol::OffsetRequest::new(correlation, self.clientid.clone()));
+                    entry.add(topic.clone(), p.clone(), -1);
+                    Some(())
+                });
+            }
+        }
+
+        // Call each broker with the request formed earlier
+        let mut res: HashMap<String, Vec<utils::PartitionOffset>> = HashMap::new();
+        for (host, req) in reqs.iter() {
+            let resp = try!(self.send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&host, req.clone()));
+            for tp in resp.get_offsets() {
+                let entry = res.entry(tp.topic).or_insert(vec!());
+                entry.push(utils::PartitionOffset{offset:tp.offset, partition: tp.partition});
+            }
+        }
+        Ok(res)
     }
 
     /// Fetch offset for a topic.
@@ -145,63 +221,63 @@ impl KafkaClient {
     /// let res = client.load_metadata_all();
     /// let offsets = client.fetch_topic_offset("my-topic".to_string());
     /// ```
-    /// Returns a vector of (topic, partition offset data).
+    /// Returns a hashmap of (topic, PartitionOffset data).
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
-    pub fn fetch_topic_offset(&mut self, topic: String) -> Result<Vec<(String, Vec<utils::PartitionOffset>)>> {
-        // Doing it like this because HashMap will not return borrow of self otherwise
-        let partitions = self.topic_partitions
-                             .get(&topic)
-                             .unwrap_or(&vec!())
-                             .clone();
-
-        // Maybe TODO: Can this be simplified without complexifying?
-        let mut brokers: HashMap<String, Vec<i32>> = HashMap:: new();
-        for p in partitions {
-            let key = format!("{}-{}", topic, p);
-            match self.topic_brokers.get(&key) {
-                Some(broker) => {
-                    if !brokers.contains_key(broker) {brokers.insert(broker.clone(), Vec::new());}
-                    brokers.get_mut(broker).unwrap().push(p);
-                },
-                None => {}
-            }
-        }
-
-        let mut res: Vec<utils::PartitionOffset> = vec!();
-        for (host, partitions) in brokers.iter() {
-            let v = vec!(utils::TopicPartitions{
-                topic: topic.clone(),
-                partitions: partitions.to_vec()
-                });
-            for tpo in try!(self.fetch_offset(v, host.clone())) {
-                res.push(utils::PartitionOffset{partition: tpo.partition, offset: tpo.offset});
-            }
-        }
-        Ok(vec!((topic.clone(), res)))
+    pub fn fetch_topic_offset(&mut self, topic: String) -> Result<HashMap<String, Vec<utils::PartitionOffset>>> {
+        self.fetch_offsets(vec!(topic))
     }
 
-    fn fetch_offset(&mut self, topic_partitions: Vec<utils::TopicPartitions>, host: String)
-                            -> Result<Vec<utils::TopicPartitionOffset>> {
+    /// Fetch messages from Kafka (Multiple topic, partition, offset)
+    ///
+    /// It takes a vector of `utils:TopicPartitionOffset` and returns a vector of `utils::TopicMessage`
+    /// or error::Error
+    /// You can figure out the appropriate partition and offset using client's
+    /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use kafka::utils;
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let msgs = client.fetch_messages_multi(vec!(utils::TopicPartitionOffset{
+    ///                                                 topic: "my-topic".to_string(),
+    ///                                                 partition: 0,
+    ///                                                 offset: 0
+    ///                                                 },
+    ///                                             utils::TopicPartitionOffset{
+    ///                                                 topic: "my-topic-2".to_string(),
+    ///                                                 partition: 0,
+    ///                                                 offset: 0
+    ///                                             }));
+    /// ```
+    pub fn fetch_messages_multi(&mut self, input: Vec<utils::TopicPartitionOffset>) -> Result<Vec<utils::TopicMessage>>{
+
         let correlation = self.next_id();
-        let req = protocol::OffsetRequest::new_latest(topic_partitions, correlation, self.clientid.clone());
+        let mut reqs: HashMap<String, protocol::FetchRequest> = HashMap:: new();
 
-        let resp = try!(self.send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&host, req));
-
-        Ok(resp.get_offsets())
-
-    }
-
-    fn get_broker(&mut self, topic: &String, partition: &i32) -> Option<String> {
-        let key = format!("{}-{}", topic, partition);
-        match self.topic_brokers.get(&key) {
-            Some(broker) => {
-                Some(broker.clone())
-            },
-            None => None
+        // Map topic and partition to the corresponding broker
+        for tpo in input {
+            self.get_broker(&tpo.topic, &tpo.partition).and_then(|broker| {
+                let entry = reqs.entry(broker.clone()).or_insert(
+                            protocol::FetchRequest::new(correlation, self.clientid.clone()));
+                entry.add(tpo.topic.clone(), tpo.partition.clone(), tpo.offset);
+                Some(())
+            });
         }
+
+        // Call each broker with the request formed earlier
+        let mut res: Vec<utils::TopicMessage> = vec!();
+        for (host, req) in reqs.iter() {
+            let resp = try!(self.send_receive::<protocol::FetchRequest, protocol::FetchResponse>(&host, req.clone()));
+            for tm in resp.get_messages() {
+                res.push(tm);
+            }
+        }
+        Ok(res)
     }
 
-    /// Fetch messages from Kafka
+    /// Fetch messages from Kafka (Single topic, partition, offset)
     ///
     /// It takes a single topic, parition and offset and return a vector of messages
     /// or error::Error
@@ -215,20 +291,12 @@ impl KafkaClient {
     /// let res = client.load_metadata_all();
     /// let msgs = client.fetch_messages("my-topic".to_string(), 0, 0);
     /// ```
-    pub fn fetch_messages(&mut self, topic: String, partition: i32, offset: i64) -> Result<Vec<utils::OffsetMessage>>{
-
-        let host = self.get_broker(&topic, &partition).unwrap();
-
-        let correlation = self.next_id();
-        let req = protocol::FetchRequest::new_single(topic, partition, offset, correlation, self.clientid.clone());
-
-        let resp = try!(self.send_receive::<protocol::FetchRequest, protocol::FetchResponse>(&host, req));
-        Ok(resp.get_messages()
-                .iter()
-                .filter(|ref x| x.offset >= offset)
-                .cloned()
-                .collect()
-            )
+    pub fn fetch_messages(&mut self, topic: String, partition: i32, offset: i64) -> Result<Vec<utils::TopicMessage>>{
+        self.fetch_messages_multi(vec!(utils::TopicPartitionOffset{
+                                        topic: topic,
+                                        partition: partition,
+                                        offset: offset
+                                        }))
     }
 
     /// Send a message to Kafka
@@ -237,7 +305,71 @@ impl KafkaClient {
     /// client.topic_partitions and client.fetch_topic_offset(topic)
     ///
     /// `required_acks` - indicates how many acknowledgements the servers should receive before
-    /// responding to the request. If it is 0 the server will not send any response
+    /// responding to the request. If it is 0 the server will not send any response (Not Implemented)
+    /// (this is the only case where the server will not reply to a request).
+    /// If it is 1, the server will wait the data is written to the local log before sending
+    /// a response. If it is -1 the server will block until the message is committed by all
+    /// in sync replicas before sending a response. For any number > 1 the server will block
+    /// waiting for this number of acknowledgements to occur (but the server will never wait
+    /// for more acknowledgements than there are in-sync replicas).
+    ///
+    /// `timeout` - This provides a maximum time in milliseconds the server can await the
+    /// receipt of the number of acknowledgements in `required_acks`
+    /// `input` - A vector of `utils::ProduceMessage`
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use kafka::utils;
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let m1 = "a".to_string().into_bytes();
+    /// let m2 = "b".to_string().into_bytes();
+    /// let req = vec!(utils::ProduceMessage{topic: "my-topic".to_string(), message: m1},
+    ///                 utils::ProduceMessage{topic: "my-topic-2".to_string(), message: m2});
+    /// println!("{:?}", client.send_messages(1, 100, req));
+    /// ```
+    /// The return value will contain a vector of topic, partition, offset and error if any
+    /// OR error:Error
+    pub fn send_messages(&mut self, required_acks: i16, timeout: i32,
+                         input: Vec<utils::ProduceMessage>) -> Result<Vec<utils::TopicPartitionOffsetError>> {
+
+        let correlation = self.next_id();
+        let mut reqs: HashMap<String, protocol::ProduceRequest> = HashMap::new();
+
+        // Map topic and partition to the corresponding broker
+        for pm in input {
+            let partition = self.choose_partition(&pm.topic);
+            if partition.is_none() {
+                continue
+            }
+            let p = partition.unwrap();
+            self.get_broker(&pm.topic, &p).and_then(|broker| {
+                let entry = reqs.entry(broker.clone()).or_insert(
+                         protocol::ProduceRequest::new(required_acks, timeout, correlation, self.clientid.clone()));
+                entry.add(pm.topic.clone(), p.clone(), pm.message.clone());
+                Some(())
+            });
+        }
+
+        // Call each broker with the request formed earlier
+        let mut res: Vec<utils::TopicPartitionOffsetError> = vec!();
+        for (host, req) in reqs.iter() {
+            let resp = try!(self.send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req.clone()));
+            for tpo in resp.get_response() {
+                res.push(tpo);
+            }
+        }
+        Ok(res)
+    }
+
+    /// Send a message to Kafka
+    ///
+    /// You can figure out the appropriate partition and offset using client's
+    /// client.topic_partitions and client.fetch_topic_offset(topic)
+    ///
+    /// `required_acks` - indicates how many acknowledgements the servers should receive before
+    /// responding to the request. If it is 0 the server will not send any response (Not Implemented)
     /// (this is the only case where the server will not reply to a request).
     /// If it is 1, the server will wait the data is written to the local log before sending
     /// a response. If it is -1 the server will block until the message is committed by all
@@ -254,54 +386,78 @@ impl KafkaClient {
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
     /// let res = client.load_metadata_all();
-    /// let msgs = client.send_message("my-topic".to_string(), 0, 1,
-    ///                  100, "b".to_string().into_bytes());
+    /// let msgs = client.send_message(1, 100, "my-topic".to_string(), "msg".to_string().into_bytes());
     /// ```
     /// The return value will contain topic, partition, offset and error if any
     /// OR error:Error
-    pub fn send_message(&mut self, topic: String, partition: i32, required_acks: i16,
-                      timeout: i32, message: Vec<u8>) -> Result<Vec<utils::TopicPartitionOffset>> {
+    pub fn send_message(&mut self, required_acks: i16, timeout: i32,
+                      topic: String, message: Vec<u8>) -> Result<Vec<utils::TopicPartitionOffsetError>> {
+        self.send_messages(required_acks, timeout, vec!(utils::ProduceMessage{
+            topic: topic,
+            message: message
+            }))
 
-        let host = self.get_broker(&topic, &partition).unwrap();
+    }
+
+    pub fn commit_offsets(&mut self, group: String, input: Vec<(String, i32, i64)>) -> Result<()>{
 
         let correlation = self.next_id();
-        let req = protocol::ProduceRequest::new_single(topic, partition, required_acks,
-                                                       timeout, message, correlation,
-                                                       self.clientid.clone());
+        let mut reqs: HashMap<String, protocol::OffsetCommitRequest> = HashMap:: new();
 
-        let resp = try!(self.send_receive
-            ::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req));
-        Ok(resp.get_response())
+        // Map topic and partition to the corresponding broker
+        for (topic, partition, offset) in input {
+            self.get_broker(&topic, &partition).and_then(|broker| {
+                let entry = reqs.entry(broker.clone()).or_insert(
+                            protocol::OffsetCommitRequest::new(group.clone(), correlation, self.clientid.clone()));
+                entry.add(topic.clone(), partition.clone(), offset, "".to_string());
+                Some(())
+            });
+        }
 
+        // Call each broker with the request formed earlier
+        for (host, req) in reqs.iter() {
+            try!(self.send_receive::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(&host, req.clone()));
+        }
+        Ok(())
     }
 
     pub fn commit_offset(&mut self, group: String, topic: String,
                          partition: i32, offset: i64) -> Result<()>{
-        let host = self.get_broker(&topic, &partition).unwrap();
-
-        let correlation = self.next_id();
-
-
-        let req = protocol::OffsetCommitRequest::new(group, topic, partition, offset,
-                                                    "".to_string(), correlation, self.clientid.clone());
-
-        try!(self.send_receive
-            ::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(&host, req));
-
-        Ok(())
+        self.commit_offsets(group, vec!((topic, partition, offset)))
     }
 
-    pub fn fetch_group_topic_offset(&mut self, group: String, topic: String, partition: i32) -> Result<i64> {
-        let host = self.get_broker(&topic, &partition).unwrap();
+    pub fn fetch_group_topic_offsets(&mut self, group: String, input: Vec<utils::TopicPartition>)
+        -> Result<Vec<utils::TopicPartitionOffsetError>>{
 
         let correlation = self.next_id();
-        let req = protocol::OffsetFetchRequest::new(group, vec!(topic.clone()),
-                                                    vec!(partition), correlation, self.clientid.clone());
+        let mut reqs: HashMap<String, protocol::OffsetFetchRequest> = HashMap:: new();
 
-        let resp = try!(self.send_receive
-                    ::<protocol::OffsetFetchRequest, protocol::OffsetFetchResponse>(&host, req));
+        // Map topic and partition to the corresponding broker
+        for tp in input {
+            self.get_broker(&tp.topic, &tp.partition).and_then(|broker| {
+                let entry = reqs.entry(broker.clone()).or_insert(
+                            protocol::OffsetFetchRequest::new(group.clone(), correlation, self.clientid.clone()));
+                entry.add(tp.topic.clone(), tp.partition.clone());
+                Some(())
+            });
+        }
 
-        Ok(resp.get_offset_partition(topic, partition))
+        // Call each broker with the request formed earlier
+        let mut res = vec!();
+        for (host, req) in reqs.iter() {
+            let resp = try!(self.send_receive::<
+                            protocol::OffsetFetchRequest, protocol::OffsetFetchResponse>(&host, req.clone()));
+            let o = resp.get_offsets();
+            for tpo in o {
+                res.push(tpo);
+            }
+        }
+        Ok(res)
+    }
+
+    pub fn fetch_group_topic_offset(&mut self, group: String, topic: String, partition: i32)
+        -> Result<Vec<utils::TopicPartitionOffsetError>> {
+        self.fetch_group_topic_offsets(group, vec!(utils::TopicPartition{topic: topic, partition: partition}))
 
     }
 
