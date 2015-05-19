@@ -6,11 +6,12 @@ pub struct OffsetMessage {
     pub message: Vec<u8>
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct TopicMessage {
     pub topic: String,
     pub partition: i32,
     pub offset: i64,
+    pub error: Option<Error>,
     pub message: Vec<u8>
 }
 

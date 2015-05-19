@@ -566,10 +566,16 @@ impl TopicPartitionFetchResponse {
 
 impl PartitionFetchResponse {
     pub fn get_messages(&self, topic: String) -> Vec<TopicMessage>{
+        if self.error != 0 {
+            return vec!(TopicMessage{topic: topic.clone(), partition: self.partition.clone(),
+                                   offset: self.offset, message: vec!(),
+                                   error: Error::from_i16(self.error)});
+        }
         self.messageset.get_messages()
                        .iter()
                        .map(|om| TopicMessage{topic: topic.clone(), partition: self.partition.clone(),
-                                              offset: om.offset.clone(), message: om.message.clone()})
+                                              offset: om.offset.clone(), message: om.message.clone(),
+                                              error: Error::from_i16(self.error)})
                        .collect()
     }
 }

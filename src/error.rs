@@ -37,7 +37,6 @@ pub enum Error {
     CodecError,
     NoHostReachable,
     Unknown,
-    NoError,
     OffsetOutOfRange,
     InvalidMessage,
     UnknownTopicOrPartition,
@@ -59,7 +58,6 @@ pub enum Error {
 impl FromPrimitive for Error {
     fn from_i16(n: i16) -> Option<Error> {
         match n {
-            0 => Some(Error::NoError),
             1 => Some(Error::OffsetOutOfRange),
             2 => Some(Error::InvalidMessage),
             3 => Some(Error::UnknownTopicOrPartition),
