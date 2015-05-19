@@ -1,4 +1,4 @@
-use error::{Result, Error};
+use error::Error;
 
 #[derive(Clone, Debug)]
 pub struct OffsetMessage {
@@ -48,4 +48,10 @@ pub struct TopicPartitionOffsetError {
 pub struct TopicPartitions {
     pub topic: String,
     pub partitions: Vec<i32>
+}
+
+#[derive(Debug)]
+pub struct TopicPartition {
+    pub topic: String,
+    pub partition: i32
 }

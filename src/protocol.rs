@@ -1,10 +1,10 @@
 use std::io::{Read, Write};
 use std::io::Cursor;
 
-use num::traits::{ToPrimitive, FromPrimitive};
+use num::traits::FromPrimitive;
 
 use error::{Result, Error};
-use utils::{OffsetMessage, TopicMessage, TopicPartitions, TopicPartitionOffsetError, PartitionOffset};
+use utils::{OffsetMessage, TopicMessage, TopicPartitionOffsetError};
 use crc32::Crc32;
 use codecs::{ToByte, FromByte};
 use snappy;
@@ -29,7 +29,7 @@ const OFFSET_KEY: i16 = 2;
 const METADATA_KEY: i16 = 3;
 const OFFSET_COMMIT_KEY: i16 = 8;
 const OFFSET_FETCH_KEY: i16 = 9;
-const CONSUMER_METADATA_KEY: i16 = 10;
+//const CONSUMER_METADATA_KEY: i16 = 10;
 
 const VERSION: i16 = 0;
 
@@ -578,17 +578,6 @@ impl PartitionFetchResponse {
                                               error: Error::from_i16(self.error)})
                        .collect()
     }
-}
-
-
-impl ConsumerMetadataRequest {
-    pub fn new(group: String, correlation: i32, clientid: String) -> ConsumerMetadataRequest {
-        ConsumerMetadataRequest{
-            header: HeaderRequest{key: CONSUMER_METADATA_KEY, correlation: correlation,
-                                  clientid: clientid, version: VERSION},
-            group: group}
-    }
-
 }
 
 impl OffsetCommitRequest {
