@@ -80,7 +80,7 @@ impl KafkaClient {
     /// Reloads metadata for a list of supplied topics
     ///
     /// returns Result<(), error::Error>
-    pub fn load_metadata (&mut self, topics: Vec<String>) -> Result<()>{
+    pub fn load_metadata(&mut self, topics: Vec<String>) -> Result<()>{
         let resp = try!(self.get_metadata(topics));
 
         let mut brokers: HashMap<i32, String> = HashMap::new();
@@ -88,7 +88,6 @@ impl KafkaClient {
             brokers.insert(broker.nodeid, format!("{}:{}", broker.host, broker.port));
         }
 
-        self.topic_brokers.clear();
         for topic in resp.topics {
             self.topic_partitions.insert(topic.topic.clone(), vec!());
 
