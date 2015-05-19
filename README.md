@@ -55,7 +55,7 @@ fn main() {
     let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
     client.load_metadata_all();
     let topics = client.topic_partitions.keys().cloned().collect();
-    let offsets = client.fetch_topic_offset(topics);
+    let offsets = client.fetch_offsets(topics);
 }
 ```
 ##### Produce:
