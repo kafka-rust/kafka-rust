@@ -1,8 +1,10 @@
 use std::io::{Read, Write};
 use std::io::Cursor;
 
+use num::traits::{ToPrimitive, FromPrimitive};
+
 use error::{Result, Error};
-use utils::{OffsetMessage, TopicMessage, TopicPartitions, TopicPartitionOffset, PartitionOffset};
+use utils::{OffsetMessage, TopicMessage, TopicPartitions, TopicPartitionOffsetError, PartitionOffset};
 use crc32::Crc32;
 use codecs::{ToByte, FromByte};
 use snappy;
@@ -391,7 +393,7 @@ impl PartitionOffsetRequest {
 }
 
 impl OffsetResponse {
-    pub fn get_offsets(&self) -> Vec<TopicPartitionOffset>{
+    pub fn get_offsets(&self) -> Vec<TopicPartitionOffsetError>{
         self.topic_partitions
             .iter()
             .flat_map(|ref tp| tp.get_offsets(tp.topic.clone()))
@@ -400,7 +402,7 @@ impl OffsetResponse {
 }
 
 impl TopicPartitionOffsetResponse {
-    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffset>{
+    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffsetError>{
         self.partitions
             .iter()
             .map(|ref p| p.get_offsets(topic.clone()))
@@ -409,12 +411,12 @@ impl TopicPartitionOffsetResponse {
 }
 
 impl PartitionOffsetResponse {
-    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffset{
-        TopicPartitionOffset{
+    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffsetError{
+        TopicPartitionOffsetError{
             topic: topic,
             partition: self.partition,
             offset:self.offset[0],
-            error: self.error
+            error: Error::from_i16(self.error)
         }
     }
 }
@@ -468,7 +470,7 @@ impl PartitionProduceRequest {
 }
 
 impl ProduceResponse {
-    pub fn get_response(&self) -> Vec<TopicPartitionOffset>{
+    pub fn get_response(&self) -> Vec<TopicPartitionOffsetError>{
         self.topic_partitions
             .iter()
             .flat_map(|ref tp| tp.get_response(tp.topic.clone()))
@@ -477,7 +479,7 @@ impl ProduceResponse {
 }
 
 impl TopicPartitionProduceResponse {
-    pub fn get_response(& self, topic: String) -> Vec<TopicPartitionOffset>{
+    pub fn get_response(& self, topic: String) -> Vec<TopicPartitionOffsetError>{
         self.partitions
             .iter()
             .map(|ref p| p.get_response(topic.clone()))
@@ -486,12 +488,12 @@ impl TopicPartitionProduceResponse {
 }
 
 impl PartitionProduceResponse {
-    pub fn get_response(& self, topic: String) -> TopicPartitionOffset{
-        TopicPartitionOffset{
+    pub fn get_response(& self, topic: String) -> TopicPartitionOffsetError{
+        TopicPartitionOffsetError{
             topic: topic,
             partition: self.partition,
             offset:self.offset,
-            error: self.error
+            error: Error::from_i16(self.error)
         }
     }
 }
@@ -666,7 +668,7 @@ impl PartitionOffsetFetchRequest {
 }
 
 impl OffsetFetchResponse {
-    pub fn get_offsets(&self) -> Vec<TopicPartitionOffset>{
+    pub fn get_offsets(&self) -> Vec<TopicPartitionOffsetError>{
         self.topic_partitions
             .iter()
             .flat_map(|ref tp| tp.get_offsets(tp.topic.clone()))
@@ -675,7 +677,7 @@ impl OffsetFetchResponse {
 }
 
 impl TopicPartitionOffsetFetchResponse {
-    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffset>{
+    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffsetError>{
         self.partitions
             .iter()
             .map(|ref p| p.get_offsets(topic.clone()))
@@ -684,12 +686,12 @@ impl TopicPartitionOffsetFetchResponse {
 }
 
 impl PartitionOffsetFetchResponse {
-    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffset{
-        TopicPartitionOffset{
+    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffsetError{
+        TopicPartitionOffsetError{
             topic: topic,
             partition: self.partition,
             offset:self.offset,
-            error: self.error
+            error: Error::from_i16(self.error)
         }
     }
 }
@@ -1029,12 +1031,10 @@ impl FromByte for FetchResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        //try_multi!(
-            self.header.decode(buffer);
-            let x = self.topic_partitions.decode(buffer);
-            println!("{:?}", x);
-            x
-        //)
+        try_multi!(
+            self.header.decode(buffer),
+            self.topic_partitions.decode(buffer)
+        )
     }
 }
 

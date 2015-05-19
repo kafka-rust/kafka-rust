@@ -1,3 +1,4 @@
+use error::{Result, Error};
 
 #[derive(Clone, Debug)]
 pub struct OffsetMessage {
@@ -17,7 +18,6 @@ pub struct TopicMessage {
 #[derive(Clone, Debug)]
 pub struct ProduceMessage {
     pub topic: String,
-    pub partition: i32,
     pub message: Vec<u8>
 }
 
@@ -32,8 +32,15 @@ pub struct PartitionOffset {
 pub struct TopicPartitionOffset {
     pub topic: String,
     pub partition: i32,
+    pub offset: i64
+}
+
+#[derive(Debug)]
+pub struct TopicPartitionOffsetError {
+    pub topic: String,
+    pub partition: i32,
     pub offset: i64,
-    pub error: i16
+    pub error: Option<Error>
 }
 
 #[derive(Debug)]
