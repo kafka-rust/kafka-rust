@@ -1,8 +1,5 @@
-/// User facing module of this library.
+/// Kafka Client
 ///
-/// Fetching message from multiple (topic, partition) pair or producing messages to multiple
-/// topics is not yet supported.
-/// It should be added very soon.
 
 use error::{Result, Error};
 use utils;
@@ -17,7 +14,10 @@ const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_TIMEOUT: i32 = 120; // seconds
 
 
-/// Client struct. It keeps track of brokers and topic metadata
+/// Client struct.
+///
+/// It keeps track of brokers and topic metadata
+/// Implements methods described by Kafka Protocol (https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol)
 ///
 /// # Examples
 ///
@@ -171,7 +171,9 @@ impl KafkaClient {
     }
 
     /// Fetch offsets for a list of topics.
-    /// It gets the latest offset only. Support for getting earliest will be added soon
+    /// `time` - Used to ask for all messages before a certain time (ms). There are two special values.
+    ///          Specify -1 to receive the latest offset (i.e. the offset of the next coming message)
+    ///          and -2 to receive the earliest available offset
     ///
     /// # Examples
     ///
@@ -179,11 +181,12 @@ impl KafkaClient {
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
     /// let res = client.load_metadata_all();
     /// let topics = client.topic_partitions.keys().cloned().collect();
-    /// let offsets = client.fetch_offsets(topics);
+    /// let offsets = client.fetch_offsets(topics, -1);
     /// ```
     /// Returns a hashmap of (topic, PartitionOffset data).
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
-    pub fn fetch_offsets(&mut self, topics: Vec<String>) -> Result<HashMap<String, Vec<utils::PartitionOffset>>> {
+    pub fn fetch_offsets(&mut self, topics: Vec<String>, time: i64)
+        -> Result<HashMap<String, Vec<utils::PartitionOffset>>> {
         let correlation = self.next_id();
         let mut reqs: HashMap<String, protocol::OffsetRequest> = HashMap:: new();
 
@@ -193,7 +196,7 @@ impl KafkaClient {
                 self.get_broker(&topic, &p).and_then(|broker| {
                     let entry = reqs.entry(broker.clone()).or_insert(
                                 protocol::OffsetRequest::new(correlation, self.clientid.clone()));
-                    entry.add(topic.clone(), p.clone(), -1);
+                    entry.add(topic.clone(), p.clone(), time);
                     Some(())
                 });
             }
@@ -212,19 +215,22 @@ impl KafkaClient {
     }
 
     /// Fetch offset for a topic.
-    /// It gets the latest offset only. Support for getting earliest will be added soon
+    /// `time` - Used to ask for all messages before a certain time (ms). There are two special values.
+    ///          Specify -1 to receive the latest offset (i.e. the offset of the next coming message)
+    ///          and -2 to receive the earliest available offset
     ///
     /// # Examples
     ///
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
     /// let res = client.load_metadata_all();
-    /// let offsets = client.fetch_topic_offset("my-topic".to_string());
+    /// let offsets = client.fetch_topic_offset("my-topic".to_string(), -1);
     /// ```
     /// Returns a hashmap of (topic, PartitionOffset data).
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
-    pub fn fetch_topic_offset(&mut self, topic: String) -> Result<HashMap<String, Vec<utils::PartitionOffset>>> {
-        self.fetch_offsets(vec!(topic))
+    pub fn fetch_topic_offset(&mut self, topic: String, time: i64)
+        -> Result<HashMap<String, Vec<utils::PartitionOffset>>> {
+        self.fetch_offsets(vec!(topic), time)
     }
 
     /// Fetch messages from Kafka (Multiple topic, partition, offset)
@@ -279,7 +285,7 @@ impl KafkaClient {
 
     /// Fetch messages from Kafka (Single topic, partition, offset)
     ///
-    /// It takes a single topic, parition and offset and return a vector of messages
+    /// It takes a single topic, parition and offset and return a vector of messages (`utils::TopicMessage`)
     /// or error::Error
     /// You can figure out the appropriate partition and offset using client's
     /// client.topic_partitions and client.fetch_topic_offset(topic)
@@ -302,7 +308,7 @@ impl KafkaClient {
     /// Send a message to Kafka
     ///
     /// You can figure out the appropriate partition and offset using client's
-    /// client.topic_partitions and client.fetch_topic_offset(topic)
+    /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
     ///
     /// `required_acks` - indicates how many acknowledgements the servers should receive before
     /// responding to the request. If it is 0 the server will not send any response (Not Implemented)
@@ -366,7 +372,7 @@ impl KafkaClient {
     /// Send a message to Kafka
     ///
     /// You can figure out the appropriate partition and offset using client's
-    /// client.topic_partitions and client.fetch_topic_offset(topic)
+    /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
     ///
     /// `required_acks` - indicates how many acknowledgements the servers should receive before
     /// responding to the request. If it is 0 the server will not send any response (Not Implemented)
@@ -399,17 +405,34 @@ impl KafkaClient {
 
     }
 
-    pub fn commit_offsets(&mut self, group: String, input: Vec<(String, i32, i64)>) -> Result<()>{
+    /// Commit offset to topic, partition of a consumer group
+    ///
+    /// It takes a group name and list of `utils::TopicPartitionOffset` and returns `()`
+    /// or `error::Error`
+    /// You can figure out the appropriate partition and offset using client's
+    /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use kafka::utils;
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let resp = client.commit_offsets("my-group".to_string(), vec!(
+    ///                 utils::TopicPartitionOffset{topic: "my-topic".to_string(), partition: 0, offset: 100},
+    ///                 utils::TopicPartitionOffset{topic: "my-topic".to_string(), partition: 1, offset: 100}));
+    /// ```
+    pub fn commit_offsets(&mut self, group: String, input: Vec<utils::TopicPartitionOffset>) -> Result<()>{
 
         let correlation = self.next_id();
         let mut reqs: HashMap<String, protocol::OffsetCommitRequest> = HashMap:: new();
 
         // Map topic and partition to the corresponding broker
-        for (topic, partition, offset) in input {
-            self.get_broker(&topic, &partition).and_then(|broker| {
+        for tp in input {
+            self.get_broker(&tp.topic, &tp.partition).and_then(|broker| {
                 let entry = reqs.entry(broker.clone()).or_insert(
                             protocol::OffsetCommitRequest::new(group.clone(), correlation, self.clientid.clone()));
-                entry.add(topic.clone(), partition.clone(), offset, "".to_string());
+                entry.add(tp.topic.clone(), tp.partition, tp.offset, "".to_string());
                 Some(())
             });
         }
@@ -421,12 +444,47 @@ impl KafkaClient {
         Ok(())
     }
 
+    /// Commit offset to topic, partition of a consumer group
+    ///
+    /// It takes a group name, topic, partition and offset and returns `()`
+    /// or `error::Error`
+    /// You can figure out the appropriate partition and offset using client's
+    /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use kafka::utils;
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let resp = client.commit_offset("my-group".to_string(), "my-topic".to_string(), 0, 100);
+    /// ```
     pub fn commit_offset(&mut self, group: String, topic: String,
                          partition: i32, offset: i64) -> Result<()>{
-        self.commit_offsets(group, vec!((topic, partition, offset)))
+        self.commit_offsets(group, vec!(utils::TopicPartitionOffset{
+                topic: topic,
+                partition: partition,
+                offset: offset}))
     }
 
-    pub fn fetch_group_topic_offsets(&mut self, group: String, input: Vec<utils::TopicPartition>)
+    /// Fetch offset for vector of topic, partition of a consumer group
+    ///
+    /// It takes a group name and list of `utils::TopicPartition` and returns `utils::TopicPartitionOffsetError`
+    /// or `error::Error`
+    /// You can figure out the appropriate partition using client's
+    /// `client.topic_partitions`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use kafka::utils;
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let resp = client.fetch_group_topics_offset("my-group".to_string(), vec!(
+    ///                 utils::TopicPartition{topic: "my-topic".to_string(), partition: 0},
+    ///                 utils::TopicPartition{topic: "my-topic".to_string(), partition: 1}));
+    /// ```
+    pub fn fetch_group_topics_offset(&mut self, group: String, input: Vec<utils::TopicPartition>)
         -> Result<Vec<utils::TopicPartitionOffsetError>>{
 
         let correlation = self.next_id();
@@ -455,9 +513,56 @@ impl KafkaClient {
         Ok(res)
     }
 
-    pub fn fetch_group_topic_offset(&mut self, group: String, topic: String, partition: i32)
+    /// Fetch offset for all partitions of a topic of a consumer group
+    ///
+    /// It takes a group name and a topic and returns `utils::TopicPartitionOffsetError`
+    /// or `error::Error`
+    /// You can figure out the appropriate partition using client's
+    /// `client.topic_partitions`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use kafka::utils;
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let resp = client.fetch_group_topic_offset("my-group".to_string(),"my-topic".to_string());
+    /// ```
+    pub fn fetch_group_topic_offset(&mut self, group: String, topic: String)
         -> Result<Vec<utils::TopicPartitionOffsetError>> {
-        self.fetch_group_topic_offsets(group, vec!(utils::TopicPartition{topic: topic, partition: partition}))
+        let tps = self.topic_partitions.get(&topic)
+                        .unwrap()
+                        .iter()
+                        .map(|p| utils::TopicPartition{topic: topic.clone(), partition: p.clone()})
+                        .collect();
+        self.fetch_group_topics_offset(group, tps)
+
+    }
+
+    /// Fetch offset for all partitions of all topics of a consumer group
+    ///
+    /// It takes a group name and returns `utils::TopicPartitionOffsetError`
+    /// or `error::Error`
+    /// You can figure out the topics using client's
+    /// `client.topic_partitions`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use kafka::utils;
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+    /// let res = client.load_metadata_all();
+    /// let resp = client.fetch_group_offset("my-group".to_string());
+    /// ```
+    pub fn fetch_group_offset(&mut self, group: String)
+        -> Result<Vec<utils::TopicPartitionOffsetError>> {
+        let mut tps = vec!();
+        for (topic, partitions) in self.topic_partitions.iter() {
+            for p in partitions {
+                tps.push(utils::TopicPartition{topic: topic.clone(), partition: p.clone()})
+            }
+        }
+        self.fetch_group_topics_offset(group, tps)
 
     }
 
