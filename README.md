@@ -28,7 +28,7 @@ use kafka::client::KafkaClient;
 fn main() {
     let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
     client.load_metadata_all();
-    // OR 
+    // OR
     // client.load_metadata(&vec!("my-topic".to_string())); // Loads metadata for vector of topics
  }
 ```
@@ -105,7 +105,7 @@ use kafka::client::KafkaClient;
 fn main() {
     let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
     client.load_metadata_all();
-    // Topic, partition, offset
+    // Topic, Partition, Offset
     let msgs = client.fetch_messages(&"my-topic".to_string(), 0, 0);
 }
 ```
@@ -131,7 +131,91 @@ fn main() {
                                                 })));
 }
 ```
+
+##### Commit Offsets to a Consumer Group:
+
+[Single (group, topic, partition, offset)] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.commit_offset)
+
+```rust
+extern crate kafka;
+use kafka::client::KafkaClient;
+fn main() {
+    let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    client.load_metadata_all();
+    // Group, Topic, Partition, Offset
+    let resp = client.commit_offset("my-group".to_string(), "my-topic".to_string(), 0, 100);
+}
+```
+
+[Single group, Multiple (topic, partition, offset)] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.commit_offsets)
+
+```rust
+extern crate kafka;
+use kafka::client::KafkaClient;
+use kafka::utils;
+fn main() {
+    let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    client.load_metadata_all();
+    let msgs = client.commit_offsets("my-group".to_string(), vec!(utils::TopicPartitionOffset{
+                                                    topic: "my-topic".to_string(),
+                                                    partition: 0,
+                                                    offset: 0
+                                                    },
+                                                utils::TopicPartitionOffset{
+                                                    topic: "my-topic-2".to_string(),
+                                                    partition: 0,
+                                                    offset: 0
+                                                })));
+}
+```
+
+##### Fetch Offsets of a Consumer Group:
+
+[Offsets for all topics/partitions in a group] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_group_offset)
+
+```rust
+extern crate kafka;
+use kafka::client::KafkaClient;
+fn main() {
+    let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    client.load_metadata_all();
+    // Group, Topic, Partition, Offset
+    let resp = client.fetch_group_offset("my-group".to_string());
+}
+```
+
+[Offsets for a topic and all its partitions in a group] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_group_topic_offset)
+
+```rust
+extern crate kafka;
+use kafka::client::KafkaClient;
+use kafka::utils;
+fn main() {
+    let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    client.load_metadata_all();
+    let msgs = client.fetch_group_topic_offset("my-group".to_string(), "my-topic".to_string());
+}
+```
+
+[Offsets for Multiple (topic, partition) in a group] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_group_topics_offset)
+
+```rust
+extern crate kafka;
+use kafka::client::KafkaClient;
+use kafka::utils;
+fn main() {
+    let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    client.load_metadata_all();
+    let msgs = client.fetch_group_topics_offset("my-group".to_string(), vec!(utils::TopicPartition{
+                                                    topic: "my-topic".to_string(),
+                                                    partition: 0
+                                                    },
+                                                utils::TopicPartition{
+                                                    topic: "my-topic-2".to_string(),
+                                                    partition: 0
+                                                })));
+}
+```
 #### TODO:
 
 * Tests - (Added tests for gzip.rs, snappy.rs, and codecs.rs)
-* Offset Management functions (Not thoroughly tested)
