@@ -1,5 +1,8 @@
 /// Kafka Client
 ///
+/// Primary module of this library.
+///
+/// Provides implementation for `KafkaClient` which is used to interact with Kafka
 
 use error::{Result, Error};
 use utils;
@@ -17,6 +20,7 @@ const DEFAULT_TIMEOUT: i32 = 120; // seconds
 /// Client struct.
 ///
 /// It keeps track of brokers and topic metadata
+///
 /// Implements methods described by Kafka Protocol (https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol)
 ///
 /// # Examples
@@ -34,6 +38,7 @@ pub struct KafkaClient {
     hosts: Vec<String>,
     correlation: i32,
     conns: HashMap<String, KafkaConnection>,
+    /// HashMap where `topic` is the key and list of `partitions` is the value
     pub topic_partitions: HashMap<String, Vec<i32>>,
     topic_brokers: HashMap<String, String>,
     topic_partition_curr: HashMap<String, i32>
@@ -94,7 +99,7 @@ impl KafkaClient {
     /// let res = client.load_metadata(vec!("my-topic".to_string()));
     /// ```
     ///
-    /// returns Result<(), error::Error>
+    /// returns `Result<(), error::Error>`
     pub fn load_metadata(&mut self, topics: Vec<String>) -> Result<()>{
         let resp = try!(self.get_metadata(topics));
 
@@ -171,6 +176,7 @@ impl KafkaClient {
     }
 
     /// Fetch offsets for a list of topics.
+    ///
     /// `time` - Used to ask for all messages before a certain time (ms). There are two special values.
     ///          Specify -1 to receive the latest offset (i.e. the offset of the next coming message)
     ///          and -2 to receive the earliest available offset
@@ -215,6 +221,7 @@ impl KafkaClient {
     }
 
     /// Fetch offset for a topic.
+    ///
     /// `time` - Used to ask for all messages before a certain time (ms). There are two special values.
     ///          Specify -1 to receive the latest offset (i.e. the offset of the next coming message)
     ///          and -2 to receive the earliest available offset
@@ -237,6 +244,7 @@ impl KafkaClient {
     ///
     /// It takes a vector of `utils:TopicPartitionOffset` and returns a vector of `utils::TopicMessage`
     /// or error::Error
+    ///
     /// You can figure out the appropriate partition and offset using client's
     /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
     ///
@@ -287,6 +295,7 @@ impl KafkaClient {
     ///
     /// It takes a single topic, parition and offset and return a vector of messages (`utils::TopicMessage`)
     /// or error::Error
+    ///
     /// You can figure out the appropriate partition and offset using client's
     /// client.topic_partitions and client.fetch_topic_offset(topic)
     ///
@@ -321,6 +330,7 @@ impl KafkaClient {
     ///
     /// `timeout` - This provides a maximum time in milliseconds the server can await the
     /// receipt of the number of acknowledgements in `required_acks`
+    ///
     /// `input` - A vector of `utils::ProduceMessage`
     ///
     /// # Example
@@ -385,6 +395,7 @@ impl KafkaClient {
     ///
     /// `timeout` - This provides a maximum time in milliseconds the server can await the
     /// receipt of the number of acknowledgements in `required_acks`
+    ///
     /// `message` - A single message as a vector of u8s
     ///
     /// # Example
@@ -409,6 +420,7 @@ impl KafkaClient {
     ///
     /// It takes a group name and list of `utils::TopicPartitionOffset` and returns `()`
     /// or `error::Error`
+    ///
     /// You can figure out the appropriate partition and offset using client's
     /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
     ///
@@ -448,6 +460,7 @@ impl KafkaClient {
     ///
     /// It takes a group name, topic, partition and offset and returns `()`
     /// or `error::Error`
+    ///
     /// You can figure out the appropriate partition and offset using client's
     /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
     ///
@@ -471,6 +484,7 @@ impl KafkaClient {
     ///
     /// It takes a group name and list of `utils::TopicPartition` and returns `utils::TopicPartitionOffsetError`
     /// or `error::Error`
+    ///
     /// You can figure out the appropriate partition using client's
     /// `client.topic_partitions`
     ///
@@ -517,6 +531,7 @@ impl KafkaClient {
     ///
     /// It takes a group name and a topic and returns `utils::TopicPartitionOffsetError`
     /// or `error::Error`
+    ///
     /// You can figure out the appropriate partition using client's
     /// `client.topic_partitions`
     ///
@@ -543,6 +558,7 @@ impl KafkaClient {
     ///
     /// It takes a group name and returns `utils::TopicPartitionOffsetError`
     /// or `error::Error`
+    ///
     /// You can figure out the topics using client's
     /// `client.topic_partitions`
     ///
