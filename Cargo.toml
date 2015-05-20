@@ -21,3 +21,4 @@ flate2 = "0.2"
 [[bin]]
 name = "main"
 doc = false
+test = false
