@@ -102,6 +102,15 @@ impl From<byteorder::Error> for Error {
     }
 }
 
+impl Clone for Error {
+    fn clone(&self) -> Error {
+        match *self {
+            Error::Io(ref err) => Error::Io(io::Error::new(err.kind(), "Io Error")),
+            ref x => x.clone()
+        }
+    }
+}
+
 impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {

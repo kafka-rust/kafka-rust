@@ -1,11 +1,8 @@
 /// Kafka Consumer
 ///
 
-use num::traits::FromPrimitive;
-
-use error::{Result, Error};
+use error::Result;
 use utils::TopicMessage;
-use protocol;
 use client::KafkaClient;
 
 
@@ -34,7 +31,7 @@ impl Consumer {
     }
 
     fn make_request(&mut self) -> Result<()>{
-        self.messages = try!(self.client.fetch_messages(self.topic.clone(), self.partition.clone(), self.offset.clone()));
+        self.messages = try!(self.client.fetch_messages(self.topic.clone(), self.partition, self.offset));
         self.initialized = true;
         self.index = 0;
         Ok(())
@@ -48,7 +45,11 @@ impl Iterator for Consumer {
         if self.initialized {
             self.index += 1;
             if self.index <= self.messages.len() {
-                return Some(self.messages[self.index-1].clone());
+                if self.messages[self.index-1].error.is_none() {
+                    self.offset = self.messages[self.index-1].offset+1;
+                    return Some(self.messages[self.index-1].clone());
+                }
+                return None;
             }
             if self.messages.len() == 0 {
                 return None;
