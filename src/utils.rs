@@ -1,4 +1,5 @@
 use error::Error;
+use num::traits::FromPrimitive;
 
 #[derive(Clone, Debug)]
 pub struct OffsetMessage {
@@ -13,6 +14,18 @@ pub struct TopicMessage {
     pub offset: i64,
     pub error: Option<Error>,
     pub message: Vec<u8>
+}
+
+impl Clone for TopicMessage {
+    fn clone(&self) -> TopicMessage {
+        TopicMessage{
+            topic: self.topic.clone(),
+            partition: self.partition.clone(),
+            offset: self.offset.clone(),
+            error: Error::from_i16(0),
+            message: self.message.clone()
+        }
+    }
 }
 
 
