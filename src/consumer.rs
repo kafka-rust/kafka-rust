@@ -1,5 +1,24 @@
 /// Kafka Consumer
 ///
+/// A simple consumer based on KafkaClient. Accepts an instance of KafkaClient, a group and a
+/// topic. Partitions can be specfied using builder pattern (Assumes all partitions if not
+/// specfied).
+///
+///
+/// ```no_run
+/// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+/// let res = client.load_metadata_all();
+/// let con = consumer::Consumer::new(client, "test-group".to_string(), "my-topic".to_string())
+///             .partition(0);
+/// for msg in con {
+///     println!("{:?}", msg);
+/// }
+/// ```
+///
+/// Consumer auto-commits the offsets afer consuming COMMIT_INTERVAL messages (Currently set at
+/// 100)
+///
+/// Consumer implements Iterator.
 
 use std::collections::HashMap;
 use error::Result;
@@ -22,29 +41,25 @@ pub struct Consumer {
 }
 
 impl Consumer {
-    pub fn new(client: KafkaClient) -> Consumer {
+    /// Constructor
+    ///
+    /// Create a new consumer. Expects a KafkaClient, group, and topic as arguments.
+    pub fn new(client: KafkaClient, group: String, topic: String) -> Consumer {
         Consumer{
             client: client,
+            group: group,
+            topic: topic,
             initialized: false,
             index: 0,
             ..Consumer::default()
         }
     }
 
-    /// Set the group of this consumer.
-    pub fn group<'a>(&'a mut self, group: String) -> &'a mut Consumer {
-        self.group = group;
-        self
-    }
-
-    /// Set the topic of this consumer.
-    pub fn topic<'a>(&'a mut self, topic: String) -> &'a mut Consumer {
-        self.topic = topic;
-        self
-    }
-
     /// Set the partitions of this consumer.
-    pub fn partition<'a>(&'a mut self, partition: i32) -> &'a mut Consumer {
+    ///
+    /// If this function is never called, all partitions are assumed.
+    /// This function call be called multiple times to add more than 1 partitions.
+    pub fn partition(mut self, partition: i32) -> Consumer {
         self.partitions.push(partition);
         self
     }
