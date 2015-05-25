@@ -1,3 +1,5 @@
+//! Some utility structures
+
 use error::Error;
 
 #[derive(Clone, Debug)]
@@ -6,7 +8,7 @@ pub struct OffsetMessage {
     pub message: Vec<u8>
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TopicMessage {
     pub topic: String,
     pub partition: i32,
@@ -14,7 +16,6 @@ pub struct TopicMessage {
     pub error: Option<Error>,
     pub message: Vec<u8>
 }
-
 
 #[derive(Clone, Debug)]
 pub struct ProduceMessage {

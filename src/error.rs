@@ -1,3 +1,5 @@
+//! Error struct and methods
+
 use std::result;
 use std::error;
 use std::io;
@@ -98,6 +100,15 @@ impl From<byteorder::Error> for Error {
         match err {
             byteorder::Error::UnexpectedEOF => Error::UnexpectedEOF,
             byteorder::Error::Io(err) => Error::Io(err)
+        }
+    }
+}
+
+impl Clone for Error {
+    fn clone(&self) -> Error {
+        match *self {
+            Error::Io(ref err) => Error::Io(io::Error::new(err.kind(), "Io Error")),
+            ref x => x.clone()
         }
     }
 }

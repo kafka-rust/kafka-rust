@@ -11,3 +11,4 @@ mod codecs;
 mod connection;
 mod protocol;
 pub mod client;
+pub mod consumer;
