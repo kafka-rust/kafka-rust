@@ -216,6 +216,26 @@ fn main() {
                                                 })));
 }
 ```
+
+##### [Consumer] (http://fauzism.co/rustdoc/kafka/consumer/index.html)
+
+This is a simple Consumer for kafka. It handles offset management internally (Fetching offset for the group at the start and committing offsets at a pre-defined interval - 100 consumed messages currently) and provides an Iterator interface.
+
+```rust
+extern crate kafka;
+use kafka::client::KafkaClient;
+use kafka::utils;
+fn main() {
+    let mut client = KafkaClient::new(&vec!("localhost:9092".to_string()));
+    client.load_metadata_all();
+    let con = kafka::consumer::Consumer::new(client, "test-group".to_string(), "my-topic".to_string())
+             .partition(0);
+    for msg in con {
+        println!("{:?}", msg);
+    }
+}
+```
+
 #### TODO:
 
 * Tests - (Added tests for gzip.rs, snappy.rs, and codecs.rs)
