@@ -1,8 +1,8 @@
-/// Kafka Client
-///
-/// Primary module of this library.
-///
-/// Provides implementation for `KafkaClient` which is used to interact with Kafka
+//! Kafka Client
+//!
+//! Primary module of this library.
+//!
+//! Provides implementation for `KafkaClient` which is used to interact with Kafka
 
 use error::{Result, Error};
 use utils;

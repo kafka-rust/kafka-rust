@@ -1,3 +1,5 @@
+//! Error struct and methods
+
 use std::result;
 use std::error;
 use std::io;

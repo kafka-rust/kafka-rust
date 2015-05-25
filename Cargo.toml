@@ -1,6 +1,6 @@
 [package]
 name = "kafka"
-version = "0.1.5"
+version = "0.1.6"
 authors = ["Yousuf Fauzan https://github.com/spicavigo"]
 description = "Rust client for Apache Kafka"
 homepage = "https://github.com/spicavigo/kafka-rust"

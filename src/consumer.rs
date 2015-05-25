@@ -1,24 +1,25 @@
-/// Kafka Consumer
-///
-/// A simple consumer based on KafkaClient. Accepts an instance of KafkaClient, a group and a
-/// topic. Partitions can be specfied using builder pattern (Assumes all partitions if not
-/// specfied).
-///
-///
-/// ```no_run
-/// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
-/// let res = client.load_metadata_all();
-/// let con = consumer::Consumer::new(client, "test-group".to_string(), "my-topic".to_string())
-///             .partition(0);
-/// for msg in con {
-///     println!("{:?}", msg);
-/// }
-/// ```
-///
-/// Consumer auto-commits the offsets afer consuming COMMIT_INTERVAL messages (Currently set at
-/// 100)
-///
-/// Consumer implements Iterator.
+//! Kafka Consumer
+//!
+//! A simple consumer based on KafkaClient. Accepts an instance of KafkaClient, a group and a
+//! topic. Partitions can be specfied using builder pattern (Assumes all partitions if not
+//! specfied).
+//!
+//! # Example
+//!
+//! ```no_run
+//! let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+//! let res = client.load_metadata_all();
+//! let con = kafka::consumer::Consumer::new(client, "test-group".to_string(), "my-topic".to_string())
+//!             .partition(0);
+//! for msg in con {
+//!     println!("{:?}", msg);
+//! }
+//! ```
+//!
+//! Consumer auto-commits the offsets afer consuming COMMIT_INTERVAL messages (Currently set at
+//! 100)
+//!
+//! Consumer implements Iterator.
 
 use std::collections::HashMap;
 use error::Result;

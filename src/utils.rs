@@ -1,3 +1,5 @@
+//! Some utility structures
+
 use error::Error;
 
 #[derive(Clone, Debug)]
