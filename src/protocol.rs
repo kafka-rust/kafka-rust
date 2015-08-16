@@ -455,6 +455,12 @@ impl TopicPartitionProduceRequest {
     }
 
     pub fn add(&mut self, partition: i32, message: Vec<u8>) {
+        for pp in &mut self.partitions {
+            if pp.partition == partition {
+                pp.add(message);
+                return;
+            }
+        }
         self.partitions.push(PartitionProduceRequest:: new(partition, message))
     }
 }
@@ -466,6 +472,10 @@ impl PartitionProduceRequest {
             messageset_size: 0,
             messageset: MessageSet::new(message)
         }
+    }
+
+    pub fn add(&mut self, message: Vec<u8>) {
+        self.messageset.add(message)
     }
 }
 
@@ -589,6 +599,7 @@ impl OffsetCommitRequest {
             topic_partitions: vec!()
             }
     }
+
     pub fn add(&mut self, topic: String, partition: i32, offset: i64, metadata: String) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
@@ -695,6 +706,11 @@ impl MessageSet {
     pub fn new(message: Vec<u8>) -> MessageSet {
         MessageSet{message: vec!(MessageSetInner::new(message))}
     }
+
+    pub fn add(&mut self, message: Vec<u8>) {
+        self.message.push(MessageSetInner::new(message))
+    }
+
     fn get_messages(&self) -> Vec<OffsetMessage>{
         self.message
             .iter()
