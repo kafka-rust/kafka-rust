@@ -320,7 +320,7 @@ impl KafkaClient {
     /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
     ///
     /// `required_acks` - indicates how many acknowledgements the servers should receive before
-    /// responding to the request. If it is 0 the server will not send any response (Not Implemented)
+    /// responding to the request. If it is 0 the server will not send any response
     /// (this is the only case where the server will not reply to a request).
     /// If it is 1, the server will wait the data is written to the local log before sending
     /// a response. If it is -1 the server will block until the message is committed by all
@@ -369,14 +369,21 @@ impl KafkaClient {
         }
 
         // Call each broker with the request formed earlier
-        let mut res: Vec<utils::TopicPartitionOffsetError> = vec!();
-        for (host, req) in reqs.iter() {
-            let resp = try!(self.send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req.clone()));
-            for tpo in resp.get_response() {
-                res.push(tpo);
+        if required_acks == 0 {
+            for (host, req) in reqs.iter() {
+                try!(self.send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req.clone()));
             }
+            Ok(vec!())
+        } else {
+            let mut res: Vec<utils::TopicPartitionOffsetError> = vec!();
+            for (host, req) in reqs.iter() {
+                let resp = try!(self.send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req.clone()));
+                for tpo in resp.get_response() {
+                    res.push(tpo);
+                }
+            }
+            Ok(res)
         }
-        Ok(res)
     }
 
     /// Send a message to Kafka
@@ -385,7 +392,7 @@ impl KafkaClient {
     /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
     ///
     /// `required_acks` - indicates how many acknowledgements the servers should receive before
-    /// responding to the request. If it is 0 the server will not send any response (Not Implemented)
+    /// responding to the request. If it is 0 the server will not send any response
     /// (this is the only case where the server will not reply to a request).
     /// If it is 1, the server will wait the data is written to the local log before sending
     /// a response. If it is -1 the server will block until the message is committed by all
@@ -580,6 +587,11 @@ impl KafkaClient {
         }
         self.fetch_group_topics_offset(group, tps)
 
+    }
+
+    fn send_noack<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<usize> {
+        let mut conn = try!(self.get_conn(&host));
+        self.send_request(&mut conn, req)
     }
 
     fn send_receive<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<V::R> {
