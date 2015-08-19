@@ -363,8 +363,9 @@ impl OffsetRequest {
                 return;
             }
         }
-        self.topic_partitions.push(TopicPartitionOffsetRequest::new(topic.clone()));
-        self.add(topic, partition, time);
+        let mut tp = TopicPartitionOffsetRequest::new(topic.clone());
+        tp.add(partition, time);
+        self.topic_partitions.push(tp);
     }
 }
 
@@ -441,8 +442,9 @@ impl ProduceRequest {
                 return;
             }
         }
-        self.topic_partitions.push(TopicPartitionProduceRequest::new(topic.clone()));
-        self.add(topic, partition, message);
+        let mut tp = TopicPartitionProduceRequest::new(topic.clone());
+        tp.add(partition, message);
+        self.topic_partitions.push(tp);
     }
 }
 
@@ -518,8 +520,9 @@ impl FetchRequest {
                 return;
             }
         }
-        self.topic_partitions.push(TopicPartitionFetchRequest::new(topic.clone()));
-        self.add(topic, partition, offset);
+        let mut tp = TopicPartitionFetchRequest::new(topic.clone());
+        tp.add(partition, offset);
+        self.topic_partitions.push(tp);
     }
 }
 
@@ -596,8 +599,9 @@ impl OffsetCommitRequest {
                 return;
             }
         }
-        self.topic_partitions.push(TopicPartitionOffsetCommitRequest::new(topic.clone()));
-        self.add(topic, partition, offset, metadata);
+        let mut tp = TopicPartitionOffsetCommitRequest::new(topic.clone());
+        tp.add(partition, offset, metadata);
+        self.topic_partitions.push(tp);
     }
 }
 
@@ -641,8 +645,9 @@ impl OffsetFetchRequest {
                 return;
             }
         }
-        self.topic_partitions.push(TopicPartitionOffsetFetchRequest::new(topic.clone()));
-        self.add(topic, partition);
+        let mut tp = TopicPartitionOffsetFetchRequest::new(topic.clone());
+        tp.add(partition);
+        self.topic_partitions.push(tp);
     }
 }
 
