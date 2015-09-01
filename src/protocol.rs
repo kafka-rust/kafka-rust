@@ -1246,8 +1246,11 @@ impl FromByte for MessageSet {
         let l = msgs.len() as u64;
         let mut buf = Cursor::new(msgs);
         while l > buf.position() {
-            let mi = try!(MessageSetInner::decode_new(&mut buf));
-            self.message.push(mi);
+            match MessageSetInner::decode_new(&mut buf) {
+                Ok(val) => self.message.push(val),
+                Err(Error::UnexpectedEOF) => (),
+                Err(err) => return Err(err)
+            }
         }
         Ok(())
     }
