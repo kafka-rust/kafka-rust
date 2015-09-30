@@ -12,6 +12,7 @@ use codecs::{ToByte, FromByte};
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::io::Read;
+use std::rc::Rc;
 
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_TIMEOUT: i32 = 120; // seconds
@@ -33,7 +34,7 @@ const DEFAULT_TIMEOUT: i32 = 120; // seconds
 /// You will have to load metadata before making any other request.
 #[derive(Default, Debug)]
 pub struct KafkaClient {
-    clientid: String,
+    clientid: Rc<String>,
     timeout: i32,
     hosts: Vec<String>,
     correlation: i32,
@@ -53,7 +54,7 @@ impl KafkaClient {
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
     /// ```
     pub fn new(hosts: Vec<String>) -> KafkaClient {
-        KafkaClient { hosts: hosts, clientid: CLIENTID.to_string(),
+        KafkaClient { hosts: hosts, clientid: Rc::new(CLIENTID.to_owned()),
                       timeout: DEFAULT_TIMEOUT, ..KafkaClient::default()}
     }
 

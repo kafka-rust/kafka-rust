@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 use std::io::Cursor;
+use std::rc::Rc;
 
 use num::traits::FromPrimitive;
 
@@ -44,7 +45,7 @@ pub struct HeaderRequest {
     pub key: i16,
     pub version: i16,
     pub correlation: i32,
-    pub clientid: String
+    pub clientid: Rc<String>
 }
 
 #[derive(Default, Debug, Clone)]
@@ -337,7 +338,7 @@ pub struct Message {
 
 // Constructors for Requests
 impl MetadataRequest {
-    pub fn new(correlation: i32, clientid: String, topics: Vec<String>) -> MetadataRequest{
+    pub fn new(correlation: i32, clientid: Rc<String>, topics: Vec<String>) -> MetadataRequest{
         MetadataRequest{
             header: HeaderRequest{key: METADATA_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
@@ -347,7 +348,7 @@ impl MetadataRequest {
 }
 
 impl OffsetRequest {
-    pub fn new(correlation: i32, clientid: String) -> OffsetRequest{
+    pub fn new(correlation: i32, clientid: Rc<String>) -> OffsetRequest{
         OffsetRequest{
             header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
@@ -425,7 +426,7 @@ impl PartitionOffsetResponse {
 
 impl ProduceRequest {
     pub fn new(required_acks: i16, timeout: i32,
-               correlation: i32, clientid: String) -> ProduceRequest{
+               correlation: i32, clientid: Rc<String>) -> ProduceRequest{
         ProduceRequest{
             header: HeaderRequest{key: PRODUCE_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
@@ -512,7 +513,7 @@ impl PartitionProduceResponse {
 
 impl FetchRequest {
 
-    pub fn new(correlation: i32, clientid: String) -> FetchRequest{
+    pub fn new(correlation: i32, clientid: Rc<String>) -> FetchRequest{
         FetchRequest{
             header: HeaderRequest{key: FETCH_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
@@ -594,7 +595,7 @@ impl PartitionFetchResponse {
 }
 
 impl OffsetCommitRequest {
-    pub fn new(group: String, correlation: i32, clientid: String) -> OffsetCommitRequest {
+    pub fn new(group: String, correlation: i32, clientid: Rc<String>) -> OffsetCommitRequest {
         OffsetCommitRequest{
             header: HeaderRequest{key: OFFSET_COMMIT_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
@@ -641,7 +642,7 @@ impl PartitionOffsetCommitRequest {
 }
 
 impl OffsetFetchRequest {
-    pub fn new(group: String, correlation: i32, clientid: String) -> OffsetFetchRequest {
+    pub fn new(group: String, correlation: i32, clientid: Rc<String>) -> OffsetFetchRequest {
         OffsetFetchRequest{
             header: HeaderRequest{key: OFFSET_FETCH_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
