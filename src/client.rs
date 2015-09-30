@@ -357,25 +357,24 @@ impl KafkaClient {
         // Map topic and partition to the corresponding broker
         for pm in input {
             if let Some(p) = self.choose_partition(&pm.topic) {
-                self.get_broker(&pm.topic, &p).and_then(|broker| {
+                if let Some(broker) = self.get_broker(&pm.topic, &p) {
                     let entry = reqs.entry(broker.clone()).or_insert(
                         protocol::ProduceRequest::new(required_acks, timeout, correlation, self.clientid.clone()));
-                    entry.add(pm.topic.clone(), p.clone(), pm.message.clone());
-                    Some(())
-                });
+                    entry.add(pm.topic, p, pm.message);
+                }
             }
         }
 
         // Call each broker with the request formed earlier
         if required_acks == 0 {
-            for (host, req) in reqs.iter() {
-                try!(self.send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req.clone()));
+            for (host, req) in reqs {
+                try!(self.send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req));
             }
             Ok(vec!())
         } else {
             let mut res: Vec<utils::TopicPartitionOffsetError> = vec!();
-            for (host, req) in reqs.iter() {
-                let resp = try!(self.send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req.clone()));
+            for (host, req) in reqs {
+                let resp = try!(self.send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req));
                 for tpo in resp.get_response() {
                     res.push(tpo);
                 }
