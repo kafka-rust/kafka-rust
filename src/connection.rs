@@ -47,7 +47,6 @@ impl KafkaConnection {
 
     pub fn new(host: &str, timeout: i32) -> Result<KafkaConnection> {
         let stream = try!(TcpStream::connect(host));
-        Ok(KafkaConnection{host: host.to_string(), timeout: timeout, stream: stream})
-
+        Ok(KafkaConnection{host: host.to_owned(), timeout: timeout, stream: stream})
     }
 }
