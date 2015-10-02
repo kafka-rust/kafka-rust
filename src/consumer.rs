@@ -7,9 +7,9 @@
 //! # Example
 //!
 //! ```no_run
-//! let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_string()));
+//! let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
 //! let res = client.load_metadata_all();
-//! let con = kafka::consumer::Consumer::new(client, "test-group".to_string(), "my-topic".to_string())
+//! let con = kafka::consumer::Consumer::new(client, "test-group".to_owned(), "my-topic".to_owned())
 //!             .partition(0);
 //! for msg in con {
 //!     println!("{:?}", msg);

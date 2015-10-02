@@ -284,7 +284,7 @@ fn codec_i64() {
 fn codec_string() {
     use std::io::Cursor;
     let mut buf = vec!();
-    let orig = "test".to_string();
+    let orig = "test".to_owned();
 
     // Encode into buffer
     orig.encode(&mut buf).unwrap();
