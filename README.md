@@ -26,10 +26,10 @@ kafka = "*"
 extern crate kafka;
 use kafka::client::KafkaClient;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     // OR
-    // client.load_metadata(&vec!("my-topic".to_owned())); // Loads metadata for vector of topics
+    // client.load_metadata(vec!("my-topic".to_owned())); // Loads metadata for vector of topics
  }
 ```
 ##### Fetch Offsets:
@@ -40,9 +40,9 @@ fn main() {
 extern crate kafka;
 use kafka::client::KafkaClient;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
-    let offsets = client.fetch_topic_offset(&"my-topic".to_owned());
+    let offsets = client.fetch_topic_offset("my-topic".to_owned(), -1);
 }
 ```
 
@@ -55,7 +55,7 @@ fn main() {
     let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     let topics = client.topic_partitions.keys().cloned().collect();
-    let offsets = client.fetch_offsets(topics);
+    let offsets = client.fetch_offsets(topics, -1);
 }
 ```
 ##### Produce:
@@ -65,16 +65,11 @@ fn main() {
 ```rust
 extern crate kafka;
 use kafka::client::KafkaClient;
+use kafka::utils;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
-    client.send_message(
-        1,                              // Required Acks
-        0,                              // Timeout
-        &"my-topic".to_owned(),        // Topic
-        0,                              // Partition
-        &"b".to_owned().into_bytes()   // Message
-    )
+    client.send_message(1, 100, "my-topic".to_owned(), "msg".to_owned().into_bytes())
 }
 ```
 
@@ -85,7 +80,7 @@ extern crate kafka;
 use kafka::client::KafkaClient;
 use kafka::utils;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     let m1 = "a".to_owned().into_bytes();
     let m2 = "b".to_owned().into_bytes();
@@ -106,7 +101,7 @@ fn main() {
     let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     // Topic, Partition, Offset
-    let msgs = client.fetch_messages(&"my-topic".to_owned(), 0, 0);
+    let msgs = client.fetch_messages("my-topic".to_owned(), 0, 0);
 }
 ```
 
@@ -117,7 +112,7 @@ extern crate kafka;
 use kafka::client::KafkaClient;
 use kafka::utils;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     let msgs = client.fetch_messages_multi(vec!(utils::TopicPartitionOffset{
                                                     topic: "my-topic".to_owned(),
@@ -140,7 +135,7 @@ fn main() {
 extern crate kafka;
 use kafka::client::KafkaClient;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     // Group, Topic, Partition, Offset
     let resp = client.commit_offset("my-group".to_owned(), "my-topic".to_owned(), 0, 100);
@@ -154,7 +149,7 @@ extern crate kafka;
 use kafka::client::KafkaClient;
 use kafka::utils;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     let msgs = client.commit_offsets("my-group".to_owned(), vec!(utils::TopicPartitionOffset{
                                                     topic: "my-topic".to_owned(),
@@ -177,7 +172,7 @@ fn main() {
 extern crate kafka;
 use kafka::client::KafkaClient;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     // Group, Topic, Partition, Offset
     let resp = client.fetch_group_offset("my-group".to_owned());
@@ -191,7 +186,7 @@ extern crate kafka;
 use kafka::client::KafkaClient;
 use kafka::utils;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     let msgs = client.fetch_group_topic_offset("my-group".to_owned(), "my-topic".to_owned());
 }
@@ -204,7 +199,7 @@ extern crate kafka;
 use kafka::client::KafkaClient;
 use kafka::utils;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     let msgs = client.fetch_group_topics_offset("my-group".to_owned(), vec!(utils::TopicPartition{
                                                     topic: "my-topic".to_owned(),
@@ -226,7 +221,7 @@ extern crate kafka;
 use kafka::client::KafkaClient;
 use kafka::utils;
 fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
+    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     let con = kafka::consumer::Consumer::new(client, "test-group".to_owned(), "my-topic".to_owned())
              .partition(0);
