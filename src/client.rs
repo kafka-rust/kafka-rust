@@ -13,6 +13,7 @@ use compression::Compression;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::io::Read;
+use std::mem;
 use std::rc::Rc;
 
 const CLIENTID: &'static str = "kafka-rust";
@@ -86,20 +87,20 @@ impl KafkaClient {
                       timeout: DEFAULT_TIMEOUT, ..KafkaClient::default()}
     }
 
-    fn get_conn(& mut self, host: &str) -> Result<KafkaConnection> {
-        match self.conns.get(host) {
-            Some (conn) => return conn.clone(),
-            None => {}
+    fn get_conn<'a>(&'a mut self, host: &str) -> Result<&'a mut KafkaConnection> {
+        if let Some(conn) = self.conns.get_mut(host) {
+            // ~ decouple the lifetimes to make borrowck happy; this
+            // is actually safe since we're immediatelly returning
+            // this, so the follow up code is not affected here (this
+            // method is no longer recursive).
+            return Ok(unsafe { mem::transmute(conn) });
         }
-        // TODO
-        // Keeping this out here since get is causing ownership issues
-        // Will refactor once I know better
         self.conns.insert(host.to_owned(),
                           try!(KafkaConnection::new(host, self.timeout)));
-        self.get_conn(host)
+        Ok(self.conns.get_mut(host).unwrap())
     }
 
-    fn next_id(&mut self) -> i32{
+    fn next_id(&mut self) -> i32 {
         self.correlation = (self.correlation + 1) % (1i32 << 30);
         self.correlation
     }
@@ -171,8 +172,8 @@ impl KafkaClient {
         for host in self.hosts.to_vec() {
             let req = protocol::MetadataRequest::new(correlation, self.clientid.clone(), topics.to_vec());
             match self.get_conn(&host) {
-                Ok(mut conn) => if self.send_request(&mut conn, req).is_ok() {
-                    return self.get_response::<protocol::MetadataResponse>(&mut conn);
+                Ok(conn) => if send_request(conn, req).is_ok() {
+                    return get_response::<protocol::MetadataResponse>(conn);
                 },
                 Err(_) => {}
             }
@@ -408,8 +409,8 @@ impl KafkaClient {
         // Map topic and partition to the corresponding broker
         for pm in input {
             if let Some((partition, broker)) = self.choose_partition(&pm.topic) {
-                let entry = reqs.entry(broker).or_insert(
-                    protocol::ProduceRequest::new(required_acks, timeout, correlation, self.clientid.clone(), self.compression));
+                let entry = reqs.entry(broker).or_insert_with(
+                    || protocol::ProduceRequest::new(required_acks, timeout, correlation, self.clientid.clone(), self.compression));
                 entry.add(pm.topic, partition, pm.message);
             }
         }
@@ -632,41 +633,43 @@ impl KafkaClient {
             }
         }
         self.fetch_group_topics_offset(group, tps)
-
     }
 
     fn send_noack<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<usize> {
         let mut conn = try!(self.get_conn(&host));
-        self.send_request(&mut conn, req)
+        send_request(&mut conn, req)
     }
 
     fn send_receive<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<V::R> {
         let mut conn = try!(self.get_conn(&host));
-        try!(self.send_request(&mut conn, req));
-        self.get_response::<V>(&mut conn)
+        try!(send_request(&mut conn, req));
+        get_response::<V>(&mut conn)
     }
+}
 
-    fn send_request<T: ToByte>(&self, conn: &mut KafkaConnection, request: T) -> Result<usize>{
-        let mut buffer = vec!();
-        try!(request.encode(&mut buffer));
+fn send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
+                           -> Result<usize>
+{
+    let mut buffer = vec!();
+    try!(request.encode(&mut buffer));
 
-        let mut s = vec!();
-        try!((buffer.len() as i32).encode(&mut s));
-        for byte in buffer.iter() { s.push(*byte); }
+    let mut s = vec!();
+    try!((buffer.len() as i32).encode(&mut s));
+    for byte in buffer.iter() { s.push(*byte); }
 
-        conn.send(&s)
-    }
+    conn.send(&s)
+}
 
-    fn get_response<T: FromByte>(&self, conn:&mut KafkaConnection) -> Result<T::R>{
-        let mut v: Vec<u8> = vec!();
-        let _ = conn.read(4, &mut v);
+fn get_response<T: FromByte>(conn: &mut KafkaConnection)
+                             -> Result<T::R>
+{
+    let mut v: Vec<u8> = vec!();
+    let _ = conn.read(4, &mut v);
 
-        let size = try!(i32::decode_new(&mut Cursor::new(v)));
+    let size = try!(i32::decode_new(&mut Cursor::new(v)));
 
-        let mut resp: Vec<u8> = vec!();
-        let _ = try!(conn.read(size as u64, &mut resp));
+    let mut resp: Vec<u8> = vec!();
+    let _ = try!(conn.read(size as u64, &mut resp));
 
-        T::decode_new(&mut Cursor::new(resp))
-    }
-
+    T::decode_new(&mut Cursor::new(resp))
 }

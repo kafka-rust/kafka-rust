@@ -18,7 +18,7 @@ impl fmt::Debug for KafkaConnection {
 
 impl KafkaConnection {
 
-    pub fn send(&mut self, msg: & Vec<u8>) -> Result<usize> {
+    pub fn send(&mut self, msg: &Vec<u8>) -> Result<usize> {
         self.stream.write(&msg[..]).map_err(From::from)
     }
 
@@ -37,12 +37,6 @@ impl KafkaConnection {
         }
         Ok(total_bytes_read)
 
-    }
-
-    pub fn clone(&self) -> Result<KafkaConnection> {
-        Ok(KafkaConnection{stream: try!(self.stream.try_clone()),
-                        host: self.host.clone(),
-                        timeout: self.timeout})
     }
 
     pub fn new(host: &str, timeout: i32) -> Result<KafkaConnection> {
