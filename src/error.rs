@@ -23,7 +23,7 @@ pub type Result<T> = result::Result<T, Error>;
 ///
 /// `InvalidInputSnappy` - Snappy failed to decode response from Kafka
 ///
-/// `UnexpectedEOF` - Raised from `byteorder` when decoding values fails.
+/// `UnexpectedEOF` - Raised from `byteorder` when decoding values fails or upon the deliver of an insufficient number of bytes.
 ///
 /// `NoHostReachable` - Unable to reach any host.
 ///

@@ -326,8 +326,8 @@ impl KafkaClient {
         // Map topic and partition to the corresponding broker
         for tpo in input {
             self.find_broker(&tpo.topic, &tpo.partition).and_then(|broker| {
-                let entry = reqs.entry(broker.clone()).or_insert(
-                            protocol::FetchRequest::new(correlation, self.clientid.clone()));
+                let entry = reqs.entry(broker.clone()).or_insert_with(
+                    || protocol::FetchRequest::new(correlation, self.clientid.clone()));
                 entry.add(tpo.topic.clone(), tpo.partition.clone(), tpo.offset);
                 Some(())
             });
@@ -605,7 +605,6 @@ impl KafkaClient {
                         .map(|p| utils::TopicPartition{topic: topic.clone(), partition: p.clone()})
                         .collect();
         self.fetch_group_topics_offset(group, tps)
-
     }
 
     /// Fetch offset for all partitions of all topics of a consumer group
@@ -663,13 +662,9 @@ fn send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
 fn get_response<T: FromByte>(conn: &mut KafkaConnection)
                              -> Result<T::R>
 {
-    let mut v: Vec<u8> = vec!();
-    let _ = conn.read(4, &mut v);
-
+    let v = try!(conn.read_exact(4));
     let size = try!(i32::decode_new(&mut Cursor::new(v)));
 
-    let mut resp: Vec<u8> = vec!();
-    let _ = try!(conn.read(size as u64, &mut resp));
-
+    let resp = try!(conn.read_exact(size as u64));
     T::decode_new(&mut Cursor::new(resp))
 }

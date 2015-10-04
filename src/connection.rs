@@ -2,7 +2,7 @@ use std::io::prelude::*;
 use std::net::TcpStream;
 use std::fmt;
 
-use error::Result;
+use error::{Error, Result};
 
 pub struct KafkaConnection {
     host: String,
@@ -22,21 +22,15 @@ impl KafkaConnection {
         self.stream.write(&msg[..]).map_err(From::from)
     }
 
-    pub fn read(&mut self, size: u64, buffer: &mut Vec<u8>) -> Result<usize>{
-        let mut buffer_: Vec<u8> = Vec::new();
+    pub fn read_exact(&mut self, size: u64) -> Result<Vec<u8>> {
+        let mut buffer: Vec<u8> = Vec::with_capacity(size as usize);
         let mut s = (&self.stream).take(size);
-        let mut total_bytes_read: usize = 0;
-        match s.read_to_end(&mut buffer_) {
-            Err(err) => return Err(From::from(err)),
-            Ok(bytes_read) => {
-                total_bytes_read += bytes_read;
-                for b in buffer_.iter() {
-                    buffer.push(*b);
-                }
-            }
+        let bytes_read = try!(s.read_to_end(&mut buffer));
+        if bytes_read != size as usize {
+            Err(Error::UnexpectedEOF)
+        } else {
+            Ok(buffer)
         }
-        Ok(total_bytes_read)
-
     }
 
     pub fn new(host: &str, timeout: i32) -> Result<KafkaConnection> {
