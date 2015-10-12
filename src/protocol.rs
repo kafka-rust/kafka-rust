@@ -8,8 +8,7 @@ use error::{Result, Error};
 use utils::{OffsetMessage, TopicMessage, TopicPartitionOffsetError};
 use crc32::Crc32;
 use codecs::{ToByte, FromByte};
-use snappy;
-use gzip;
+use compression::{Compression, snappy, gzip};
 
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {
@@ -74,19 +73,22 @@ pub struct ProduceRequest {
     pub required_acks: i16,
     pub timeout: i32,
     pub topic_partitions: Vec<TopicPartitionProduceRequest>,
+    pub compression: Compression
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct TopicPartitionProduceRequest {
     pub topic: String,
     pub partitions: Vec<PartitionProduceRequest>,
+    pub compression: Compression
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct PartitionProduceRequest {
     pub partition: i32,
     pub messageset_size: i32,
-    pub messageset: MessageSet
+    pub messageset: MessageSet,
+    pub compression: Compression
 }
 
 #[derive(Default, Debug, Clone)]
@@ -320,6 +322,13 @@ pub struct MessageSet {
 }
 
 #[derive(Default, Debug, Clone)]
+pub struct MessageSetOuter {
+    pub offset: i64,
+    pub messagesize: i32,
+    pub message: Vec<u8>
+}
+
+#[derive(Default, Debug, Clone)]
 pub struct MessageSetInner {
     pub offset: i64,
     pub messagesize: i32,
@@ -426,13 +435,14 @@ impl PartitionOffsetResponse {
 
 impl ProduceRequest {
     pub fn new(required_acks: i16, timeout: i32,
-               correlation: i32, clientid: Rc<String>) -> ProduceRequest{
+               correlation: i32, clientid: Rc<String>, compression: Compression) -> ProduceRequest{
         ProduceRequest{
             header: HeaderRequest{key: PRODUCE_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
             required_acks: required_acks,
             timeout: timeout,
-            topic_partitions: vec!()
+            topic_partitions: vec!(),
+            compression: compression
         }
     }
 
@@ -443,17 +453,18 @@ impl ProduceRequest {
                 return;
             }
         }
-        let mut tp = TopicPartitionProduceRequest::new(topic.clone());
+        let mut tp = TopicPartitionProduceRequest::new(topic.clone(), self.compression);
         tp.add(partition, message);
         self.topic_partitions.push(tp);
     }
 }
 
 impl TopicPartitionProduceRequest {
-    pub fn new(topic: String) -> TopicPartitionProduceRequest {
+    pub fn new(topic: String, compression: Compression) -> TopicPartitionProduceRequest {
         TopicPartitionProduceRequest {
             topic: topic,
-            partitions: vec!()
+            partitions: vec!(),
+            compression: compression
         }
     }
 
@@ -464,16 +475,17 @@ impl TopicPartitionProduceRequest {
                 return;
             }
         }
-        self.partitions.push(PartitionProduceRequest:: new(partition, message))
+        self.partitions.push(PartitionProduceRequest:: new(partition, message, self.compression))
     }
 }
 
 impl PartitionProduceRequest {
-    pub fn new(partition: i32, message: Vec<u8>) -> PartitionProduceRequest {
+    pub fn new(partition: i32, message: Vec<u8>, compression: Compression) -> PartitionProduceRequest {
         PartitionProduceRequest{
             partition: partition,
             messageset_size: 0,
-            messageset: MessageSet::new(message)
+            messageset: MessageSet::new(message),
+            compression: compression
         }
     }
 
@@ -717,11 +729,17 @@ impl MessageSet {
         self.message.push(MessageSetInner::new(message))
     }
 
-    fn get_messages(&self) -> Vec<OffsetMessage>{
+    fn get_messages(&self) -> Vec<OffsetMessage> {
         self.message
             .iter()
             .flat_map(|ref m| m.get_messages())
             .collect()
+    }
+}
+
+impl MessageSetOuter {
+    fn new(message: Vec<u8>) -> MessageSetOuter {
+        MessageSetOuter{offset:0, messagesize:0, message: message}
     }
 }
 
@@ -740,10 +758,10 @@ impl Message {
     }
 
     fn get_messages(&self, offset: i64) -> Vec<OffsetMessage>{
-        match self.attributes {
-            0 => vec!(OffsetMessage{offset:offset, message: self.value.clone()}),
-            1 => message_decode_gzip(self.value.clone()),
-            2 => message_decode_snappy(self.value.clone()),
+        match self.attributes & 3 {
+            codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{offset:offset, message: self.value.clone()}),
+            codec if codec == Compression::GZIP as i8 => message_decode_gzip(self.value.clone()),
+            codec if codec == Compression::SNAPPY as i8 => message_decode_snappy(self.value.clone()),
             _ => vec!()
         }
     }
@@ -842,12 +860,22 @@ impl ToByte for TopicPartitionProduceRequest {
 
 impl ToByte for PartitionProduceRequest {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        let mut buf = vec!();
-        try_multi!(
-            self.partition.encode(buffer),
-            self.messageset.encode(&mut buf),
-            buf.encode(buffer)
-        )
+        let mut buf_msgset = vec!();
+        try!(self.partition.encode(buffer));
+        try!(self.messageset.encode(&mut buf_msgset));
+        match self.compression {
+            Compression::NONE => buf_msgset.encode(buffer),
+            Compression::GZIP | Compression::SNAPPY => {
+                let mut msg = Message::new(buf_msgset);
+                msg.attributes |= self.compression as i8;
+                let mut buf_msg = vec!();
+                try!(msg.encode(&mut buf_msg));
+                let outer_msgset = MessageSetOuter::new(buf_msg);
+                let mut buf_outer_msgset = vec!();
+                try!(outer_msgset.encode(&mut buf_outer_msgset));
+                buf_outer_msgset.encode(buffer)
+            }
+        }
     }
 }
 
@@ -1271,6 +1299,17 @@ impl FromByte for MessageSet {
     }
 }
 
+impl ToByte for MessageSetOuter {
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        let mut buf = vec!();
+        try_multi!(
+            self.offset.encode(buffer),
+            self.message.encode(&mut buf),
+            buf.encode_nolen(buffer)
+        )
+    }
+}
+
 impl ToByte for MessageSetInner {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         let mut buf = vec!();
@@ -1306,8 +1345,18 @@ impl ToByte for Message {
         } else {
             try!(self.key.encode(&mut buf));
         }
-
-        try!(self.value.encode(&mut buf));
+        match self.attributes & 3 {
+            codec if codec == Compression::NONE as i8 => try!(self.value.encode(&mut buf)),
+            codec if codec == Compression::GZIP as i8 => {
+                let compressed = try!(gzip::compress(&self.value));
+                try!(compressed.encode(&mut buf))
+            }
+            codec if codec == Compression::SNAPPY as i8 => {
+                let compressed = try!(snappy::compress(&self.value));
+                try!(compressed.encode(&mut buf))
+            },
+            _ => panic!("Unsupported compression format")
+        };
         let (_, x) = buf.split_at(0);
         let crc = Crc32::tocrc(x) as i32;
 

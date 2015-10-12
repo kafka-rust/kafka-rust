@@ -1,7 +1,17 @@
 use std::io::prelude::*;
+use flate2::Compression;
 use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
 
 use error::Result;
+
+pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
+    let mut e = GzEncoder::new(Vec::new(), Compression::Default);
+
+    try!(e.write(src));
+    let compressed_bytes = try!(e.finish());
+    Ok((compressed_bytes))
+}
 
 pub fn uncompress<T: Read>(src: T) -> Result<Vec<u8>> {
     let mut d = try!(GzDecoder::new(src));

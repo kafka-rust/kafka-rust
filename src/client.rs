@@ -9,6 +9,7 @@ use utils;
 use protocol;
 use connection::KafkaConnection;
 use codecs::{ToByte, FromByte};
+use compression::Compression;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::io::Read;
@@ -43,7 +44,8 @@ pub struct KafkaClient {
     pub topic_partitions: HashMap<String, Vec<i32>>,
 
     topic_brokers: HashMap<String, Rc<String>>,
-    topic_partition_curr: HashMap<String, i32>
+    topic_partition_curr: HashMap<String, i32>,
+    compression: Compression
 }
 
 impl KafkaClient {
@@ -173,7 +175,21 @@ impl KafkaClient {
                 Some(1)
             }
         }
+    }
 
+    /// Set the compression algorithm to use
+    ///
+    /// `compression` - one of compression::Compression::{NONE, GZIP, SNAPPY}
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use kafka::compression::Compression;
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// client.set_compression(Compression::SNAPPY);
+    /// ```
+    pub fn set_compression(&mut self, compression: Compression) {
+        self.compression = compression;
     }
 
     /// Fetch offsets for a list of topics.
@@ -359,7 +375,7 @@ impl KafkaClient {
             if let Some(p) = self.choose_partition(&pm.topic) {
                 if let Some(broker) = self.get_broker(&pm.topic, &p) {
                     let entry = reqs.entry(broker.clone()).or_insert(
-                        protocol::ProduceRequest::new(required_acks, timeout, correlation, self.clientid.clone()));
+                        protocol::ProduceRequest::new(required_acks, timeout, correlation, self.clientid.clone(), self.compression));
                     entry.add(pm.topic, p, pm.message);
                 }
             }
