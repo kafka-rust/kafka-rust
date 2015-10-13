@@ -171,8 +171,8 @@ impl KafkaClient {
                     *curr = (*curr+1) % partitions.len() as i32;
                     return Some(*curr);
                 }
-                self.topic_partition_curr.insert(topic.to_owned(), 1);
-                Some(1)
+                self.topic_partition_curr.insert(topic.to_owned(), 0);
+                Some(0)
             }
         }
     }
