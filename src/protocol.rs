@@ -1271,13 +1271,16 @@ impl FromByte for MessageSet {
     type R = MessageSet;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        let mut msgs: Vec<u8> = vec!();
-        try!(msgs.decode(buffer));
-        let l = msgs.len() as u64;
-        let mut buf = Cursor::new(msgs);
-        while l > buf.position() {
+        let mssize = try!(i32::decode_new(buffer));
+        if mssize <= 0 { return Ok(()); }
+
+        let mssize = mssize as u64;
+        let mut buf = buffer.take(mssize);
+
+        while buf.limit() > 0 {
             match MessageSetInner::decode_new(&mut buf) {
                 Ok(val) => self.message.push(val),
+                // handle partial trailing messages (see #17)
                 Err(Error::UnexpectedEOF) => (),
                 Err(err) => return Err(err)
             }
