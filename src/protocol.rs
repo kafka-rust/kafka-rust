@@ -573,35 +573,38 @@ impl PartitionFetchRequest {
 }
 
 impl FetchResponse {
-    pub fn get_messages(&self) -> Vec<TopicMessage>{
+    pub fn into_messages(self) -> Vec<TopicMessage> {
         self.topic_partitions
-            .iter()
-            .flat_map(|ref tp| tp.get_messages())
+            .into_iter()
+            .flat_map(|tp| tp.into_messages())
             .collect()
     }
 }
 
 impl TopicPartitionFetchResponse {
-    pub fn get_messages(&self) -> Vec<TopicMessage>{
+    pub fn into_messages(self) -> Vec<TopicMessage> {
+        let topic = self.topic;
         self.partitions
-            .iter()
-            .flat_map(|ref p| p.get_messages(self.topic.clone()))
+            .into_iter()
+            .flat_map(|p| p.into_messages(topic.clone()))
             .collect()
     }
 }
 
 impl PartitionFetchResponse {
-    pub fn get_messages(&self, topic: String) -> Vec<TopicMessage>{
+    pub fn into_messages(self, topic: String) -> Vec<TopicMessage> {
         if self.error != 0 {
-            return vec!(TopicMessage{topic: topic.clone(), partition: self.partition.clone(),
-                                   offset: self.offset, message: vec!(),
-                                   error: Error::from_i16(self.error)});
+            return vec!(TopicMessage{topic: topic, partition: self.partition.clone(),
+                                     offset: self.offset, message: vec!(),
+                                     error: Error::from_i16(self.error)});
         }
-        self.messageset.get_messages()
-                       .iter()
-                       .map(|om| TopicMessage{topic: topic.clone(), partition: self.partition.clone(),
-                                              offset: om.offset.clone(), message: om.message.clone(),
-                                              error: Error::from_i16(self.error)})
+        let partition = self.partition;
+        let error = self.error;
+        self.messageset.into_messages()
+                       .into_iter()
+                       .map(|om| TopicMessage{topic: topic.clone(), partition: partition.clone(),
+                                              offset: om.offset, message: om.message,
+                                              error: Error::from_i16(error)})
                        .collect()
     }
 }
@@ -729,10 +732,10 @@ impl MessageSet {
         self.message.push(MessageSetInner::new(message))
     }
 
-    fn get_messages(&self) -> Vec<OffsetMessage> {
+    fn into_messages(self) -> Vec<OffsetMessage> {
         self.message
-            .iter()
-            .flat_map(|ref m| m.get_messages())
+            .into_iter()
+            .flat_map(|m| m.into_messages())
             .collect()
     }
 }
@@ -747,8 +750,8 @@ impl MessageSetInner {
     fn new(message: Vec<u8>) -> MessageSetInner {
         MessageSetInner{offset:0, messagesize:0, message: Message::new(message)}
     }
-    fn get_messages(&self) -> Vec<OffsetMessage>{
-        self.message.get_messages(self.offset)
+    fn into_messages(self) -> Vec<OffsetMessage>{
+        self.message.into_messages(self.offset)
     }
 }
 
@@ -757,11 +760,11 @@ impl Message {
         Message{crc: 0, value: message, ..Default::default()}
     }
 
-    fn get_messages(&self, offset: i64) -> Vec<OffsetMessage>{
+    fn into_messages(self, offset: i64) -> Vec<OffsetMessage>{
         match self.attributes & 3 {
-            codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{offset:offset, message: self.value.clone()}),
-            codec if codec == Compression::GZIP as i8 => message_decode_gzip(self.value.clone()),
-            codec if codec == Compression::SNAPPY as i8 => message_decode_snappy(self.value.clone()),
+            codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{offset:offset, message: self.value}),
+            codec if codec == Compression::GZIP as i8 => message_decode_gzip(self.value),
+            codec if codec == Compression::SNAPPY as i8 => message_decode_snappy(self.value),
             _ => vec!()
         }
     }
@@ -776,19 +779,18 @@ fn message_decode_snappy(value: Vec<u8>) -> Vec<OffsetMessage>{
     let mut v = vec!();
     loop {
         match message_decode_loop_snappy(&mut buffer) {
-            Ok(x) => v.push(x),
+            Ok(x) => v.extend(x),
             Err(_) => break
         }
     }
-    v.iter().flat_map(|ref x| x.into_iter().cloned()).collect()
+    v
 }
 
 fn message_decode_loop_snappy<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
     let sms = try!(snappy::SnappyMessage::decode_new(buffer));
     let msg = try!(snappy::uncompress(sms.message));
     let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
-    Ok(mset.get_messages())
-
+    Ok(mset.into_messages())
 }
 
 fn message_decode_gzip(value: Vec<u8>) -> Vec<OffsetMessage>{
@@ -803,8 +805,7 @@ fn message_decode_gzip(value: Vec<u8>) -> Vec<OffsetMessage>{
 fn message_decode_loop_gzip<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
     let msg = try!(gzip::uncompress(buffer));
     let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
-    Ok(mset.get_messages())
-
+    Ok(mset.into_messages())
 }
 
 // Encoder and Decoder implementations
