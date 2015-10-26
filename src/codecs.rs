@@ -147,10 +147,11 @@ impl FromByte for String {
     type R = String;
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i16 = 0;
-        match decode!(buffer, read_i16, &mut length) {
-            Ok(_) => {},
-            Err(e) => return Err(e)
+        if let Err(e) = decode!(buffer, read_i16, &mut length) {
+            return Err(e);
         }
+        if length <= 0 { return Ok(()); }
+        self.reserve(length as usize);
         let _ = buffer.take(length as u64).read_to_string(self);
         if self.len() != length as usize {
             return Err(Error::UnexpectedEOF);
@@ -164,10 +165,11 @@ impl <V: FromByte + Default> FromByte for Vec<V>{
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i32 = 0;
-        match decode!(buffer, read_i32, &mut length) {
-            Ok(_) => {},
-            Err(e) => return Err(e)
+        if let Err(e) = decode!(buffer, read_i32, &mut length) {
+            return Err(e);
         }
+        if length <= 0 { return Ok(()); }
+        self.reserve(length as usize);
         for _ in 0..length {
             let mut e: V = Default::default();
             try!(e.decode(buffer));
@@ -187,6 +189,7 @@ impl FromByte for Vec<u8>{
             Err(e) => return Err(e)
         }
         if length <= 0 {return Ok(());}
+        self.reserve(length as usize);
         match buffer.take(length as u64).read_to_end(self) {
             Ok(size) => {
                 if size < length as usize {
