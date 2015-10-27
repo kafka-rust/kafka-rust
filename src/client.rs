@@ -243,30 +243,39 @@ impl KafkaClient {
     /// Returns a hashmap of (topic, PartitionOffset data).
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
     pub fn fetch_offsets(&mut self, topics: Vec<String>, time: i64)
-        -> Result<HashMap<String, Vec<utils::PartitionOffset>>> {
+                         -> Result<HashMap<String, Vec<utils::PartitionOffset>>>
+    {
+        let n_topics = topics.len();
+
         let correlation = self.next_id();
-        let mut reqs: HashMap<Rc<String>, protocol::OffsetRequest> = HashMap:: new();
+        let mut reqs: HashMap<Rc<String>, protocol::OffsetRequest> = HashMap::with_capacity(n_topics);
 
         // Map topic and partition to the corresponding broker
         for topic in topics {
-            for p in self.topic_partitions.get(&topic).unwrap_or(&vec!()) {
-                // XXX no need to call find_broker here
-                self.find_broker(&topic, &p).and_then(|broker| {
-                    let entry = reqs.entry(broker.clone()).or_insert(
-                                protocol::OffsetRequest::new(correlation, self.clientid.clone()));
-                    entry.add(topic.clone(), p.clone(), time);
-                    Some(())
-                });
+            if let Some(tp) = self.topic_partitions_internal.get(&topic) {
+                for p in &tp.partitions {
+                    let entry = reqs.entry(p.broker_host.clone())
+                        .or_insert_with(|| protocol::OffsetRequest::new(correlation, self.clientid.clone()));
+                    entry.add(&topic, p.partition_id, time);
+                }
             }
         }
 
         // Call each broker with the request formed earlier
-        let mut res: HashMap<String, Vec<utils::PartitionOffset>> = HashMap::new();
-        for (host, req) in reqs.iter() {
-            let resp = try!(self.send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&host, req.clone()));
+        let mut res: HashMap<String, Vec<utils::PartitionOffset>> = HashMap::with_capacity(n_topics);
+        for (host, req) in reqs {
+            let resp = try!(self.send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&host, req));
             for tp in resp.get_offsets() {
-                let entry = res.entry(tp.topic).or_insert(vec!());
-                entry.push(utils::PartitionOffset{offset:tp.offset, partition: tp.partition});
+                match tp.error {
+                    None => {
+                        let entry = res.entry(tp.topic).or_insert(vec!());
+                        entry.push(utils::PartitionOffset{offset:tp.offset, partition: tp.partition});
+                    }
+                    _ => {}
+                    // Some(e) => {
+                    //     println!("offset error for {}:{}: {}", tp.topic, tp.partition, e);
+                    // }
+                }
             }
         }
         Ok(res)

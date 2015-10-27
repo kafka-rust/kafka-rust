@@ -366,14 +366,14 @@ impl OffsetRequest {
         }
     }
 
-    pub fn add(&mut self, topic: String, partition: i32, time: i64) {
+    pub fn add(&mut self, topic: &str, partition: i32, time: i64) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
                 tp.add(partition, time);
                 return;
             }
         }
-        let mut tp = TopicPartitionOffsetRequest::new(topic.clone());
+        let mut tp = TopicPartitionOffsetRequest::new(topic.to_owned());
         tp.add(partition, time);
         self.topic_partitions.push(tp);
     }
@@ -546,7 +546,7 @@ impl FetchRequest {
                 return;
             }
         }
-        let mut tp = TopicPartitionFetchRequest::new(topic.clone());
+        let mut tp = TopicPartitionFetchRequest::new(topic);
         tp.add(partition, offset);
         self.topic_partitions.push(tp);
     }
