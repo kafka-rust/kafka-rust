@@ -573,35 +573,38 @@ impl PartitionFetchRequest {
 }
 
 impl FetchResponse {
-    pub fn get_messages(&self) -> Vec<TopicMessage>{
+    pub fn into_messages(self) -> Vec<TopicMessage> {
         self.topic_partitions
-            .iter()
-            .flat_map(|ref tp| tp.get_messages())
+            .into_iter()
+            .flat_map(|tp| tp.into_messages())
             .collect()
     }
 }
 
 impl TopicPartitionFetchResponse {
-    pub fn get_messages(&self) -> Vec<TopicMessage>{
+    pub fn into_messages(self) -> Vec<TopicMessage> {
+        let topic = self.topic;
         self.partitions
-            .iter()
-            .flat_map(|ref p| p.get_messages(self.topic.clone()))
+            .into_iter()
+            .flat_map(|p| p.into_messages(topic.clone()))
             .collect()
     }
 }
 
 impl PartitionFetchResponse {
-    pub fn get_messages(&self, topic: String) -> Vec<TopicMessage>{
+    pub fn into_messages(self, topic: String) -> Vec<TopicMessage> {
         if self.error != 0 {
-            return vec!(TopicMessage{topic: topic.clone(), partition: self.partition.clone(),
-                                   offset: self.offset, message: vec!(),
-                                   error: Error::from_i16(self.error)});
+            return vec!(TopicMessage{topic: topic, partition: self.partition.clone(),
+                                     offset: self.offset, message: vec!(),
+                                     error: Error::from_i16(self.error)});
         }
-        self.messageset.get_messages()
-                       .iter()
-                       .map(|om| TopicMessage{topic: topic.clone(), partition: self.partition.clone(),
-                                              offset: om.offset.clone(), message: om.message.clone(),
-                                              error: Error::from_i16(self.error)})
+        let partition = self.partition;
+        let error = self.error;
+        self.messageset.into_messages()
+                       .into_iter()
+                       .map(|om| TopicMessage{topic: topic.clone(), partition: partition.clone(),
+                                              offset: om.offset, message: om.message,
+                                              error: Error::from_i16(error)})
                        .collect()
     }
 }
@@ -729,10 +732,10 @@ impl MessageSet {
         self.message.push(MessageSetInner::new(message))
     }
 
-    fn get_messages(&self) -> Vec<OffsetMessage> {
+    fn into_messages(self) -> Vec<OffsetMessage> {
         self.message
-            .iter()
-            .flat_map(|ref m| m.get_messages())
+            .into_iter()
+            .flat_map(|m| m.into_messages())
             .collect()
     }
 }
@@ -747,8 +750,8 @@ impl MessageSetInner {
     fn new(message: Vec<u8>) -> MessageSetInner {
         MessageSetInner{offset:0, messagesize:0, message: Message::new(message)}
     }
-    fn get_messages(&self) -> Vec<OffsetMessage>{
-        self.message.get_messages(self.offset)
+    fn into_messages(self) -> Vec<OffsetMessage>{
+        self.message.into_messages(self.offset)
     }
 }
 
@@ -757,11 +760,11 @@ impl Message {
         Message{crc: 0, value: message, ..Default::default()}
     }
 
-    fn get_messages(&self, offset: i64) -> Vec<OffsetMessage>{
+    fn into_messages(self, offset: i64) -> Vec<OffsetMessage>{
         match self.attributes & 3 {
-            codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{offset:offset, message: self.value.clone()}),
-            codec if codec == Compression::GZIP as i8 => message_decode_gzip(self.value.clone()),
-            codec if codec == Compression::SNAPPY as i8 => message_decode_snappy(self.value.clone()),
+            codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{offset:offset, message: self.value}),
+            codec if codec == Compression::GZIP as i8 => message_decode_gzip(self.value),
+            codec if codec == Compression::SNAPPY as i8 => message_decode_snappy(self.value),
             _ => vec!()
         }
     }
@@ -776,19 +779,18 @@ fn message_decode_snappy(value: Vec<u8>) -> Vec<OffsetMessage>{
     let mut v = vec!();
     loop {
         match message_decode_loop_snappy(&mut buffer) {
-            Ok(x) => v.push(x),
+            Ok(x) => v.extend(x),
             Err(_) => break
         }
     }
-    v.iter().flat_map(|ref x| x.into_iter().cloned()).collect()
+    v
 }
 
 fn message_decode_loop_snappy<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
     let sms = try!(snappy::SnappyMessage::decode_new(buffer));
     let msg = try!(snappy::uncompress(sms.message));
     let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
-    Ok(mset.get_messages())
-
+    Ok(mset.into_messages())
 }
 
 fn message_decode_gzip(value: Vec<u8>) -> Vec<OffsetMessage>{
@@ -803,8 +805,7 @@ fn message_decode_gzip(value: Vec<u8>) -> Vec<OffsetMessage>{
 fn message_decode_loop_gzip<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
     let msg = try!(gzip::uncompress(buffer));
     let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
-    Ok(mset.get_messages())
-
+    Ok(mset.into_messages())
 }
 
 // Encoder and Decoder implementations
@@ -1270,13 +1271,16 @@ impl FromByte for MessageSet {
     type R = MessageSet;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        let mut msgs: Vec<u8> = vec!();
-        try!(msgs.decode(buffer));
-        let l = msgs.len() as u64;
-        let mut buf = Cursor::new(msgs);
-        while l > buf.position() {
+        let mssize = try!(i32::decode_new(buffer));
+        if mssize <= 0 { return Ok(()); }
+
+        let mssize = mssize as u64;
+        let mut buf = buffer.take(mssize);
+
+        while buf.limit() > 0 {
             match MessageSetInner::decode_new(&mut buf) {
                 Ok(val) => self.message.push(val),
+                // handle partial trailing messages (see #17)
                 Err(Error::UnexpectedEOF) => (),
                 Err(err) => return Err(err)
             }
@@ -1376,5 +1380,70 @@ impl FromByte for Message {
             self.key.decode(buffer),
             self.value.decode(buffer)
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::io::Cursor;
+
+    use super::FetchResponse;
+    use codecs::FromByte;
+
+    #[test]
+    fn decode_new_fetch_response() {
+
+        // - one topic
+        // - 2 x message of 10 bytes (0..10)
+        // - 2 x message of 5 bytes (0..5)
+        // - 3 x message of 10 bytes (0..10)
+        // - 1 x message of 5 bytes (0..5) static
+        static FETCH_RESPONSE_RAW_DATA: &'static [u8] = &[
+            0, 0, 0, 3, 0, 0, 0, 1, 0, 13, 116, 101, 115, 116, 95,
+            116, 111, 112, 105, 99, 95, 49, 112, 0, 0, 0, 1, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 1, 17, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 24, 211, 120, 76, 139, 0, 0, 255,
+            255, 255, 255, 0, 0, 0, 10, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+            0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 24, 211, 120, 76, 139, 0,
+            0, 255, 255, 255, 255, 0, 0, 0, 10, 0, 1, 2, 3, 4, 5, 6,
+            7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 19, 224, 237,
+            15, 248, 0, 0, 255, 255, 255, 255, 0, 0, 0, 5, 0, 1, 2, 3,
+            4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 19, 224, 237, 15, 248,
+            0, 0, 255, 255, 255, 255, 0, 0, 0, 5, 0, 1, 2, 3, 4, 0, 0,
+            0, 0, 0, 0, 0, 4, 0, 0, 0, 24, 211, 120, 76, 139, 0, 0,
+            255, 255, 255, 255, 0, 0, 0, 10, 0, 1, 2, 3, 4, 5, 6, 7,
+            8, 9, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 24, 211, 120, 76,
+            139, 0, 0, 255, 255, 255, 255, 0, 0, 0, 10, 0, 1, 2, 3, 4,
+            5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 24, 211,
+            120, 76, 139, 0, 0, 255, 255, 255, 255, 0, 0, 0, 10, 0, 1,
+            2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0,
+            19, 224, 237, 15, 248, 0, 0, 255, 255, 255, 255, 0, 0, 0,
+            5, 0, 1, 2, 3, 4];
+
+        let r = FetchResponse::decode_new(&mut Cursor::new(FETCH_RESPONSE_RAW_DATA));
+        let msgs = r.unwrap().into_messages();
+
+        macro_rules! assert_msg {
+            ($msg:expr, $topic:expr, $partition:expr, $msgdata:expr) => {
+                assert_eq!($topic, &$msg.topic[..]);
+                assert_eq!($partition, $msg.partition);
+                assert_eq!($msgdata, &$msg.message[..]);
+            }
+        }
+
+        assert_eq!(8, msgs.len());
+        let zero_to_ten: Vec<u8> = (0..10).collect();
+        assert_msg!(msgs[0], "test_topic_1p", 0, &zero_to_ten[..]);
+        assert_msg!(msgs[1], "test_topic_1p", 0, &zero_to_ten[..]);
+
+        assert_msg!(msgs[2], "test_topic_1p", 0, &zero_to_ten[0..5]);
+        assert_msg!(msgs[3], "test_topic_1p", 0, &zero_to_ten[0..5]);
+
+        assert_msg!(msgs[4], "test_topic_1p", 0, &zero_to_ten[..]);
+        assert_msg!(msgs[5], "test_topic_1p", 0, &zero_to_ten[..]);
+        assert_msg!(msgs[6], "test_topic_1p", 0, &zero_to_ten[..]);
+
+        assert_msg!(msgs[7], "test_topic_1p", 0, &zero_to_ten[0..5]);
     }
 }

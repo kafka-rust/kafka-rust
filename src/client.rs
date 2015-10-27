@@ -325,21 +325,18 @@ impl KafkaClient {
 
         // Map topic and partition to the corresponding broker
         for tpo in input {
-            self.find_broker(&tpo.topic, &tpo.partition).and_then(|broker| {
+            if let Some(broker) = self.find_broker(&tpo.topic, &tpo.partition) {
                 let entry = reqs.entry(broker.clone()).or_insert_with(
                     || protocol::FetchRequest::new(correlation, self.clientid.clone()));
-                entry.add(tpo.topic.clone(), tpo.partition.clone(), tpo.offset);
-                Some(())
-            });
+                entry.add(tpo.topic, tpo.partition, tpo.offset);
+            }
         }
 
         // Call each broker with the request formed earlier
         let mut res: Vec<utils::TopicMessage> = vec!();
-        for (host, req) in reqs.iter() {
-            let resp = try!(self.send_receive::<protocol::FetchRequest, protocol::FetchResponse>(&host, req.clone()));
-            for tm in resp.get_messages() {
-                res.push(tm);
-            }
+        for (host, req) in reqs {
+            let resp = try!(self.send_receive::<protocol::FetchRequest, protocol::FetchResponse>(&host, req));
+            res.extend(resp.into_messages());
         }
         Ok(res)
     }
@@ -560,19 +557,18 @@ impl KafkaClient {
 
         // Map topic and partition to the corresponding broker
         for tp in input {
-            self.find_broker(&tp.topic, &tp.partition).and_then(|broker| {
+            if let Some(broker) = self.find_broker(&tp.topic, &tp.partition) {
                 let entry = reqs.entry(broker.clone()).or_insert(
-                            protocol::OffsetFetchRequest::new(group.clone(), correlation, self.clientid.clone()));
-                entry.add(tp.topic.clone(), tp.partition.clone());
-                Some(())
-            });
+                    protocol::OffsetFetchRequest::new(group.clone(), correlation, self.clientid.clone()));
+                entry.add(tp.topic, tp.partition);
+            }
         }
 
         // Call each broker with the request formed earlier
         let mut res = vec!();
-        for (host, req) in reqs.iter() {
+        for (host, req) in reqs {
             let resp = try!(self.send_receive::<
-                            protocol::OffsetFetchRequest, protocol::OffsetFetchResponse>(&host, req.clone()));
+                            protocol::OffsetFetchRequest, protocol::OffsetFetchResponse>(&host, req));
             let o = resp.get_offsets();
             for tpo in o {
                 res.push(tpo);
