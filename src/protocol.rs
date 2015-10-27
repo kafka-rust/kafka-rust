@@ -404,7 +404,7 @@ impl PartitionOffsetRequest {
 }
 
 impl OffsetResponse {
-    pub fn get_offsets(&self) -> Vec<TopicPartitionOffsetError>{
+    pub fn get_offsets(&self) -> Vec<TopicPartitionOffsetError> {
         self.topic_partitions
             .iter()
             .flat_map(|ref tp| tp.get_offsets(tp.topic.clone()))
@@ -413,7 +413,7 @@ impl OffsetResponse {
 }
 
 impl TopicPartitionOffsetResponse {
-    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffsetError>{
+    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffsetError> {
         self.partitions
             .iter()
             .map(|ref p| p.get_offsets(topic.clone()))
@@ -422,11 +422,14 @@ impl TopicPartitionOffsetResponse {
 }
 
 impl PartitionOffsetResponse {
-    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffsetError{
+    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffsetError {
         TopicPartitionOffsetError{
             topic: topic,
             partition: self.partition,
-            offset:self.offset[0],
+            offset: match self.offset.first() {
+                Some(offs) => *offs,
+                None => -1,
+            },
             error: Error::from_i16(self.error)
         }
     }
@@ -717,7 +720,7 @@ impl PartitionOffsetFetchResponse {
         TopicPartitionOffsetError{
             topic: topic,
             partition: self.partition,
-            offset:self.offset,
+            offset: self.offset,
             error: Error::from_i16(self.error)
         }
     }
