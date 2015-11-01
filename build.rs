@@ -2,6 +2,7 @@ extern crate pkg_config;
 
 use std::fs;
 use std::path::Path;
+use std::env;
 
 fn main() {
     configure_snappy();
@@ -12,8 +13,12 @@ fn configure_snappy() {
     if pkg_config::find_library("snappy").is_ok() {
         return;
     }
-    // link the static library to simplify distribution
-    println!("cargo:rustc-link-lib=static=snappy");
+    let mode = if env::var_os("SNAPPY_STATIC").is_some() {
+        "static"
+    } else {
+        "dylib"
+    };
+    println!("cargo:rustc-link-lib={}=snappy", mode);
     println!("cargo:rustc-flags=-l c++");
 
     for f in vec!["/usr/lib","/usr/local/lib"] {
