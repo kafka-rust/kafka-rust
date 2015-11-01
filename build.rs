@@ -8,15 +8,18 @@ fn main() {
 }
 
 fn configure_snappy() {
+    // try pkg_config first
     if pkg_config::find_library("snappy").is_ok() {
         return;
     }
     // link the static library to simplify distribution
     println!("cargo:rustc-link-lib=static=snappy");
     println!("cargo:rustc-flags=-l c++");
-    // For now just look in /usr/local/lib since this is the path where brew install snappy.
-    if is_file_in("libsnappy.a", Path::new("/usr/local/lib")) {
-        println!("cargo:rustc-link-search={}", "/usr/local/lib/");
+
+    for f in vec!["/usr/lib","/usr/local/lib"] {
+        if is_file_in("libsnappy.a", Path::new(f)) {
+            println!("cargo:rustc-link-search={}", f);
+        }
     }
 }
 
