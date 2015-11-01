@@ -17,3 +17,6 @@ num = "0.1"
 byteorder = "0.3"
 libc="0.1"
 flate2 = "0.2"
+
+[build-dependencies]
+pkg-config = "0.3"
