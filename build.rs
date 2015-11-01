@@ -13,13 +13,12 @@ fn configure_snappy() {
     if pkg_config::find_library("snappy").is_ok() {
         return;
     }
-    let mode = if env::var_os("SNAPPY_STATIC").is_some() {
-        "static"
+    if env::var_os("SNAPPY_STATIC").is_some() {
+        println!("cargo:rustc-link-lib=static=snappy");
+        println!("cargo:rustc-flags=-l c++");
     } else {
-        "dylib"
+        println!("cargo:rustc-link-lib=dylib=snappy");
     };
-    println!("cargo:rustc-link-lib={}=snappy", mode);
-    println!("cargo:rustc-flags=-l c++");
 
     for f in vec!["/usr/lib","/usr/local/lib"] {
         if is_file_in("libsnappy.a", Path::new(f)) {
