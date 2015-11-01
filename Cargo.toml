@@ -9,6 +9,7 @@ documentation = "http://fauzism.co/rustdoc/kafka/index.html"
 readme = "README.md"
 keywords = ["kafka", "apache"]
 license = "MIT"
+build = "build.rs"
 
 
 [dependencies]
