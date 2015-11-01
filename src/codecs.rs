@@ -50,8 +50,16 @@ impl ToByte for i64 {
         buffer.write_i64::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
+
 impl ToByte for String {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        let s: &str = self;
+        s.encode(buffer)
+    }
+}
+
+impl ToByte for str {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try!(self.len()
                         .to_i16()
                         .ok_or(Error::CodecError));
@@ -61,7 +69,7 @@ impl ToByte for String {
     }
 }
 
-impl <V:ToByte> ToByte for Vec<V> {
+impl <V: ToByte> ToByte for Vec<V> {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try!(self.len()
                         .to_i32()
@@ -80,7 +88,7 @@ impl <V:ToByte> ToByte for Vec<V> {
     }
 }
 
-impl ToByte for Vec<u8>{
+impl ToByte for Vec<u8> {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try!(self.len()
                         .to_i32()

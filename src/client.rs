@@ -300,17 +300,10 @@ impl KafkaClient {
         let mut res: HashMap<String, Vec<utils::PartitionOffset>> = HashMap::with_capacity(n_topics);
         for (host, req) in reqs {
             let resp = try!(self.send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&host, req));
-            for tp in resp.get_offsets() {
-                // XXX do return errors
-                match tp.error {
-                    None => {
-                        let entry = res.entry(tp.topic).or_insert(vec!());
-                        entry.push(utils::PartitionOffset{offset:tp.offset, partition: tp.partition});
-                    }
-                    _ => {}
-                    // Some(e) => {
-                    //     println!("offset error for {}:{}: {}", tp.topic, tp.partition, e);
-                    // }
+            for tp in resp.topic_partitions {
+                let e = res.entry(tp.topic).or_insert(vec!());
+                for p in tp.partitions {
+                    e.push(p.into_offset());
                 }
             }
         }
