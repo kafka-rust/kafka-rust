@@ -25,9 +25,9 @@ const DEFAULT_TIMEOUT: i32 = 120; // seconds
 
 /// Client struct.
 ///
-/// It keeps track of brokers and topic metadata
+/// It keeps track of brokers and topic metadata.
 ///
-/// Implements methods described by Kafka Protocol (https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol)
+/// Implements methods described by the [Kafka Protocol](https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol).
 ///
 /// # Examples
 ///
@@ -270,13 +270,13 @@ impl KafkaClient {
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let topics = client.topic_partitions.keys().cloned().collect();
-    /// let offsets = client.fetch_offsets(topics, kafka::client::FetchOffset::Latest);
+    /// let topics: Vec<String> = client.topic_partitions.keys().cloned().collect();
+    /// let offsets = client.fetch_offsets(&topics, kafka::client::FetchOffset::Latest);
     /// ```
     /// Returns a hashmap of (topic, PartitionOffset data).
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
-    pub fn fetch_offsets(&mut self, topics: Vec<String>, offset: FetchOffset)
-                         -> Result<HashMap<String, Vec<utils::PartitionOffset>>>
+    pub fn fetch_offsets<T: AsRef<str>>(&mut self, topics: &[T], offset: FetchOffset)
+                                        -> Result<HashMap<String, Vec<utils::PartitionOffset>>>
     {
         let time = offset.to_kafka_value();
         let n_topics = topics.len();
@@ -286,11 +286,12 @@ impl KafkaClient {
 
         // Map topic and partition to the corresponding broker
         for topic in topics {
-            if let Some(tp) = self.topic_partitions_internal.get(&topic) {
+            let topic = topic.as_ref();
+            if let Some(tp) = self.topic_partitions_internal.get(topic) {
                 for p in &tp.partitions {
                     let entry = reqs.entry(p.broker_host.clone())
                         .or_insert_with(|| protocol::OffsetRequest::new(correlation, self.clientid.clone()));
-                    entry.add(&topic, p.partition_id, time);
+                    entry.add(topic, p.partition_id, time);
                 }
             }
         }
@@ -316,22 +317,22 @@ impl KafkaClient {
         Ok(res)
     }
 
-    /// Fetch offset for a topic.
+    /// Fetch offset for a single topic.
     ///
     /// # Examples
     ///
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let offsets = client.fetch_topic_offset("my-topic".to_owned(), kafka::client::FetchOffset::Latest);
+    /// let offsets = client.fetch_topic_offset("my-topic", kafka::client::FetchOffset::Latest);
     /// ```
-    /// Returns a hashmap of (topic, PartitionOffset data).
+    /// Returns a vector of offset data for each available partition.
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
-    pub fn fetch_topic_offset(&mut self, topic: String, offset: FetchOffset)
-                              -> Result<Vec<utils::PartitionOffset>>
+    pub fn fetch_topic_offset<T: AsRef<str>>(&mut self, topic: T, offset: FetchOffset)
+                                             -> Result<Vec<utils::PartitionOffset>>
     {
-        let mut m = try!(self.fetch_offsets(vec!(topic.clone()), offset));
-        Ok(m.remove(&topic).unwrap_or(vec!()))
+        let mut m = try!(self.fetch_offsets(&[topic.as_ref()], offset));
+        Ok(m.remove(topic.as_ref()).unwrap_or(vec!()))
     }
 
     /// Fetch messages from Kafka (Multiple topic, partition, offset)

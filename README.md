@@ -42,7 +42,7 @@ use kafka::client::{KafkaClient, FetchOffset};
 fn main() {
     let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
-    let offsets = client.fetch_topic_offset("my-topic".to_owned(), FetchOffset::Latest);
+    let offsets = client.fetch_topic_offset("my-topic", FetchOffset::Latest);
 }
 ```
 
@@ -54,8 +54,8 @@ use kafka::client::{KafkaClient, FetchOffset};
 fn main() {
     let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
-    let topics = client.topic_partitions.keys().cloned().collect();
-    let offsets = client.fetch_offsets(topics, FetchOffset::Latest);
+    let topics: Vec<String> = client.topic_partitions.keys().cloned().collect();
+    let offsets = client.fetch_offsets(&topics, FetchOffset::Latest);
 }
 ```
 ##### Produce:
