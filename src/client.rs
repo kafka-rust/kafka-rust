@@ -77,6 +77,30 @@ impl TopicPartitions {
     }
 }
 
+/// Possible values when querying a topic's offset.
+/// See `KafkaClient::fetch_offsets`.
+#[derive(Debug)]
+pub enum FetchOffset {
+    /// Receive the earliest available offset.
+    Earliest,
+    /// Receive the latest offset.
+    Latest,
+    /// Used to ask for all messages before a certain time (ms); unix
+    /// timestamp in milliseconds.  See
+    /// http://grokbase.com/t/kafka/users/12cherxwf5/fetch-messages-since-a-specific-time
+    ByTime(i64),
+}
+
+impl FetchOffset {
+    fn to_kafka_value(&self) -> i64 {
+        match *self {
+            FetchOffset::Earliest => -2,
+            FetchOffset::Latest => -1,
+            FetchOffset::ByTime(n) => n,
+        }
+    }
+}
+
 impl KafkaClient {
     /// Create a new instance of KafkaClient
     ///
@@ -241,23 +265,20 @@ impl KafkaClient {
 
     /// Fetch offsets for a list of topics.
     ///
-    /// `time` - Used to ask for all messages before a certain time (ms). There are two special values.
-    ///          Specify -1 to receive the latest offset (i.e. the offset of the next coming message)
-    ///          and -2 to receive the earliest available offset
-    ///
     /// # Examples
     ///
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
     /// let topics = client.topic_partitions.keys().cloned().collect();
-    /// let offsets = client.fetch_offsets(topics, -1);
+    /// let offsets = client.fetch_offsets(topics, kafka::client::FetchOffset::Latest);
     /// ```
     /// Returns a hashmap of (topic, PartitionOffset data).
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
-    pub fn fetch_offsets(&mut self, topics: Vec<String>, time: i64)
+    pub fn fetch_offsets(&mut self, topics: Vec<String>, offset: FetchOffset)
                          -> Result<HashMap<String, Vec<utils::PartitionOffset>>>
     {
+        let time = offset.to_kafka_value();
         let n_topics = topics.len();
 
         let correlation = self.next_id();
@@ -279,6 +300,7 @@ impl KafkaClient {
         for (host, req) in reqs {
             let resp = try!(self.send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&host, req));
             for tp in resp.get_offsets() {
+                // XXX do return errors
                 match tp.error {
                     None => {
                         let entry = res.entry(tp.topic).or_insert(vec!());
@@ -296,22 +318,20 @@ impl KafkaClient {
 
     /// Fetch offset for a topic.
     ///
-    /// `time` - Used to ask for all messages before a certain time (ms). There are two special values.
-    ///          Specify -1 to receive the latest offset (i.e. the offset of the next coming message)
-    ///          and -2 to receive the earliest available offset
-    ///
     /// # Examples
     ///
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let offsets = client.fetch_topic_offset("my-topic".to_owned(), -1);
+    /// let offsets = client.fetch_topic_offset("my-topic".to_owned(), kafka::client::FetchOffset::Latest);
     /// ```
     /// Returns a hashmap of (topic, PartitionOffset data).
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
-    pub fn fetch_topic_offset(&mut self, topic: String, time: i64)
-        -> Result<HashMap<String, Vec<utils::PartitionOffset>>> {
-        self.fetch_offsets(vec!(topic), time)
+    pub fn fetch_topic_offset(&mut self, topic: String, offset: FetchOffset)
+                              -> Result<Vec<utils::PartitionOffset>>
+    {
+        let mut m = try!(self.fetch_offsets(vec!(topic.clone()), offset));
+        Ok(m.remove(&topic).unwrap_or(vec!()))
     }
 
     /// Fetch messages from Kafka (Multiple topic, partition, offset)

@@ -38,11 +38,11 @@ fn main() {
 
 ```rust
 extern crate kafka;
-use kafka::client::KafkaClient;
+use kafka::client::{KafkaClient, FetchOffset};
 fn main() {
     let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
-    let offsets = client.fetch_topic_offset("my-topic".to_owned(), -1);
+    let offsets = client.fetch_topic_offset("my-topic".to_owned(), FetchOffset::Latest);
 }
 ```
 
@@ -50,12 +50,12 @@ fn main() {
 
 ```rust
 extern crate kafka;
-use kafka::client::KafkaClient;
+use kafka::client::{KafkaClient, FetchOffset};
 fn main() {
     let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
     let topics = client.topic_partitions.keys().cloned().collect();
-    let offsets = client.fetch_offsets(topics, -1);
+    let offsets = client.fetch_offsets(topics, FetchOffset::Latest);
 }
 ```
 ##### Produce:
