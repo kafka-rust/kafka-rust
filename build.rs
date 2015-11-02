@@ -13,18 +13,37 @@ fn configure_snappy() {
     if pkg_config::find_library("snappy").is_ok() {
         return;
     }
-    if env::var_os("SNAPPY_STATIC").is_some() {
-        println!("cargo:rustc-link-lib=static=snappy");
-        println!("cargo:rustc-flags=-l c++");
-    } else {
-        println!("cargo:rustc-link-lib=dylib=snappy");
+
+    match env::var_os("SNAPPY_STATIC") {
+        Some(_) => {
+            println!("cargo:rustc-link-lib=static=snappy");
+            println!("cargo:rustc-flags=-l c++");
+        },
+        None => {
+            println!("cargo:rustc-link-lib=dylib=snappy");
+        }
     };
 
-    for f in vec!["/usr/lib","/usr/local/lib"] {
-        if is_file_in("libsnappy.a", Path::new(f)) {
-            println!("cargo:rustc-link-search={}", f);
+    if let Some(path) = first_path_with_file("libsnappy.a") {
+        println!("cargo:rustc-link-search={}", path);
+    }
+}
+
+fn first_path_with_file(file: &str) -> Option<String> {
+    // we want to look in LD_LIBRARY_PATH and then some default folders
+    if let Some(ld_path) = env::var_os("LD_LIBRARY_PATH") {
+        for p in env::split_paths(&ld_path) {
+            if is_file_in(file, &p) {
+                return p.to_str().map(|s| String::from(s))
+            }
         }
     }
+    for p in vec!["/usr/lib","/usr/local/lib"] {
+        if is_file_in(file, &Path::new(p)) {
+            return Some(String::from(p))
+        }
+    }
+    return None
 }
 
 fn is_file_in(file: &str, folder: &Path) -> bool {
