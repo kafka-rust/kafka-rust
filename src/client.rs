@@ -86,8 +86,8 @@ pub enum FetchOffset {
     /// Receive the latest offset.
     Latest,
     /// Used to ask for all messages before a certain time (ms); unix
-    /// timestamp in milliseconds.  See
-    /// http://grokbase.com/t/kafka/users/12cherxwf5/fetch-messages-since-a-specific-time
+    /// timestamp in milliseconds.  See also
+    /// https://cwiki.apache.org/confluence/display/KAFKA/Writing+a+Driver+for+Kafka#WritingaDriverforKafka-Offsets
     ByTime(i64),
 }
 
