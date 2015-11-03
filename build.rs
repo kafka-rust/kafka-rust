@@ -17,7 +17,14 @@ fn configure_snappy() {
     match env::var_os("SNAPPY_STATIC") {
         Some(_) => {
             println!("cargo:rustc-link-lib=static=snappy");
-            println!("cargo:rustc-flags=-l c++");
+            // From: https://github.com/alexcrichton/gcc-rs/blob/master/src/lib.rs
+            let target = env::var("TARGET").unwrap();
+            let cpp = if target.contains("darwin") {
+                "c++"
+            } else {
+                "stdc++"
+            };
+            println!("cargo:rustc-flags=-l {}", cpp);
         },
         None => {
             println!("cargo:rustc-link-lib=dylib=snappy");
@@ -25,7 +32,7 @@ fn configure_snappy() {
     };
 
     if let Some(path) = first_path_with_file("libsnappy.a") {
-        println!("cargo:rustc-link-search={}", path);
+        println!("cargo:rustc-link-search=native={}", path);
     }
 }
 
