@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 
 const CLIENTID: &'static str = "kafka-rust";
-const DEFAULT_TIMEOUT: i32 = 120; // seconds
+const DEFAULT_TIMEOUT_SECS: i32 = 120; // seconds
 
 
 /// Client struct.
@@ -40,16 +40,19 @@ const DEFAULT_TIMEOUT: i32 = 120; // seconds
 #[derive(Default, Debug)]
 pub struct KafkaClient {
     clientid: Rc<String>,
-    timeout: i32,
     hosts: Vec<String>,
     correlation: i32,
-    conns: HashMap<String, KafkaConnection>,
+
+    // ~ a pool of re-usable connections to kafka brokers
+    conn_pool: ConnectionPool,
+
     /// HashMap where `topic` is the key and list of `partitions` is the value
     pub topic_partitions: HashMap<String, Vec<i32>>,
 
     // ~ an internal representation of `topic_partitions`;
     // ~ `TopicPartitions#partitions` are kept in ascending order by `partition_id`
     topic_partitions_internal: HashMap<String, TopicPartitions>,
+
     compression: Compression
 }
 
@@ -101,17 +104,18 @@ impl FetchOffset {
     }
 }
 
-impl KafkaClient {
-    /// Create a new instance of KafkaClient
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// ```
-    pub fn new(hosts: Vec<String>) -> KafkaClient {
-        KafkaClient { hosts: hosts, clientid: Rc::new(CLIENTID.to_owned()),
-                      timeout: DEFAULT_TIMEOUT, ..KafkaClient::default()}
+#[derive(Debug, Default)]
+struct ConnectionPool {
+    conns: HashMap<String, KafkaConnection>,
+    timeout: i32,
+}
+
+impl ConnectionPool {
+    fn new(timeout: i32) -> ConnectionPool {
+        ConnectionPool {
+            conns: HashMap::new(),
+            timeout: timeout,
+        }
     }
 
     fn get_conn<'a>(&'a mut self, host: &str) -> Result<&'a mut KafkaConnection> {
@@ -125,6 +129,22 @@ impl KafkaClient {
         self.conns.insert(host.to_owned(),
                           try!(KafkaConnection::new(host, self.timeout)));
         Ok(self.conns.get_mut(host).unwrap())
+    }
+}
+
+impl KafkaClient {
+    /// Create a new instance of KafkaClient
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// ```
+    pub fn new(hosts: Vec<String>) -> KafkaClient {
+        KafkaClient { hosts: hosts,
+                      clientid: Rc::new(CLIENTID.to_owned()),
+                      conn_pool: ConnectionPool::new(DEFAULT_TIMEOUT_SECS),
+                      .. KafkaClient::default()}
     }
 
     fn next_id(&mut self) -> i32 {
@@ -207,16 +227,15 @@ impl KafkaClient {
 
     fn get_metadata(&mut self, topics: Vec<String>) -> Result<protocol::MetadataResponse> {
         let correlation = self.next_id();
-        for host in self.hosts.to_vec() {
+        for host in &self.hosts {
             let req = protocol::MetadataRequest::new(correlation, self.clientid.clone(), topics.to_vec());
-            match self.get_conn(&host) {
-                Ok(conn) => if send_request(conn, req).is_ok() {
+
+            if let Ok(conn) = self.conn_pool.get_conn(host) {
+                if send_request(conn, req).is_ok() {
                     return get_response::<protocol::MetadataResponse>(conn);
-                },
-                Err(_) => {}
+                }
             }
         }
-
         Err(Error::NoHostReachable)
     }
 
@@ -666,12 +685,12 @@ impl KafkaClient {
     }
 
     fn send_noack<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<usize> {
-        let mut conn = try!(self.get_conn(&host));
+        let mut conn = try!(self.conn_pool.get_conn(&host));
         send_request(&mut conn, req)
     }
 
     fn send_receive<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<V::R> {
-        let mut conn = try!(self.get_conn(&host));
+        let mut conn = try!(self.conn_pool.get_conn(&host));
         try!(send_request(&mut conn, req));
         get_response::<V>(&mut conn)
     }
