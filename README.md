@@ -231,6 +231,13 @@ fn main() {
 }
 ```
 
+#### [Create a topic] (https://kafka.apache.org/08/quickstart.html)
+
+The examples above assume you will create the topic my-topic, for example with
+```
+kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181  --partition 1 --replication-factor 1
+```
+
 #### TODO:
 
 * Tests - (Added tests for gzip.rs, snappy.rs, and codecs.rs)
