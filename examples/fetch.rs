@@ -1,8 +1,7 @@
 extern crate kafka;
 use kafka::client::KafkaClient;
 
-/// This program demonstrates consuming messages through
-/// `KafkaClient`.
+/// This program demonstrates fetching messages.
 fn main() {
     let broker = "localhost:9092";
     let topic = "my-topic";
@@ -22,10 +21,10 @@ fn main() {
         println!("No such topic at {}: {}", broker, topic);
         return;
     }
-    
-    let con = kafka::consumer::Consumer::new(client, "test-group".to_owned(), topic.to_owned())
-             .partition(0);
-    for msg in con {
+
+    let msgs = client.fetch_messages(topic.to_owned(), 0, 0);
+
+    for msg in msgs {
         println!("{:?}", msg);
     }
 }
