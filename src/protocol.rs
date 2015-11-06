@@ -7,7 +7,7 @@ use num::traits::FromPrimitive;
 use error::{Result, Error};
 use utils::{OffsetMessage, TopicMessage, TopicPartitionOffsetError, PartitionOffset};
 use crc32::Crc32;
-use codecs::{ToByte, FromByte};
+use codecs::{AsStrings, ToByte, FromByte};
 use compression::Compression;
 use snappy;
 use gzip;
@@ -25,15 +25,17 @@ macro_rules! try_multi {
 }
 
 
-const PRODUCE_KEY: i16 = 0;
-const FETCH_KEY: i16 = 1;
-const OFFSET_KEY: i16 = 2;
-const METADATA_KEY: i16 = 3;
+const PRODUCE_KEY: i16  = 0;
+const FETCH_KEY: i16    = 1;
+const OFFSET_KEY: i16   = 2;
+const API_KEY_METADATA: i16 = 3;
+// 4-7 reserved for non-public kafka api services
 const OFFSET_COMMIT_KEY: i16 = 8;
-const OFFSET_FETCH_KEY: i16 = 9;
+const OFFSET_FETCH_KEY: i16  = 9;
 //const CONSUMER_METADATA_KEY: i16 = 10;
 
-const VERSION: i16 = 0;
+// the version of Kafka API we are requesting
+const API_VERSION: i16 = 0;
 
 const FETCH_MAX_WAIT_TIME: i32 = 100;
 const FETCH_MIN_BYTES: i32 = 4096;
@@ -54,11 +56,20 @@ pub struct HeaderResponse {
     pub correlation: i32
 }
 
+// this is a replacement for the old HeaderRequest
+#[derive(Debug)]
+pub struct HeaderRequest_<'a> {
+    pub api_key: i16,
+    pub api_version: i16,
+    pub correlation_id: i32,
+    pub client_id: &'a str,
+}
+
 // Metadata
-#[derive(Default, Debug, Clone)]
-pub struct MetadataRequest {
-    pub header: HeaderRequest,
-    pub topics: Vec<String>
+#[derive(Debug)]
+pub struct MetadataRequest<'a, T: 'a> {
+    pub header: HeaderRequest_<'a>,
+    pub topics: &'a [T]
 }
 
 #[derive(Default, Debug, Clone)]
@@ -347,12 +358,37 @@ pub struct Message {
 }
 
 
+impl<'a> HeaderRequest_<'a> {
+    fn new(api_key: i16, api_version: i16, correlation_id: i32, client_id: &'a str)
+           -> HeaderRequest_
+    {
+        HeaderRequest_ {
+            api_key: api_key,
+            api_version: api_version,
+            correlation_id: correlation_id,
+            client_id: client_id,
+        }
+    }
+}
+
+impl<'a> ToByte for HeaderRequest_<'a> {
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.api_key.encode(buffer),
+            self.api_version.encode(buffer),
+            self.correlation_id.encode(buffer),
+            self.client_id.encode(buffer))
+    }
+}
+
 // Constructors for Requests
-impl MetadataRequest {
-    pub fn new(correlation: i32, clientid: Rc<String>, topics: Vec<String>) -> MetadataRequest{
-        MetadataRequest{
-            header: HeaderRequest{key: METADATA_KEY, correlation: correlation,
-                                  clientid: clientid, version: VERSION},
+impl<'a, T: AsRef<str>> MetadataRequest<'a, T> {
+    pub fn new(correlation_id: i32, client_id: &'a str, topics: &'a [T])
+               -> MetadataRequest<'a, T>
+    {
+        MetadataRequest {
+            header: HeaderRequest_::new(
+                API_KEY_METADATA, API_VERSION, correlation_id, client_id),
             topics: topics
         }
     }
@@ -362,7 +398,7 @@ impl<'a> OffsetRequest<'a> {
     pub fn new(correlation: i32, clientid: Rc<String>) -> OffsetRequest<'a> {
         OffsetRequest{
             header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
-                                  clientid: clientid, version: VERSION},
+                                  clientid: clientid, version: API_VERSION},
             replica: -1,
             topic_partitions: vec!()
         }
@@ -424,7 +460,7 @@ impl ProduceRequest {
                correlation: i32, clientid: Rc<String>, compression: Compression) -> ProduceRequest{
         ProduceRequest{
             header: HeaderRequest{key: PRODUCE_KEY, correlation: correlation,
-                                  clientid: clientid, version: VERSION},
+                                  clientid: clientid, version: API_VERSION},
             required_acks: required_acks,
             timeout: timeout,
             topic_partitions: vec!(),
@@ -514,7 +550,7 @@ impl FetchRequest {
     pub fn new(correlation: i32, clientid: Rc<String>) -> FetchRequest{
         FetchRequest{
             header: HeaderRequest{key: FETCH_KEY, correlation: correlation,
-                                  clientid: clientid, version: VERSION},
+                                  clientid: clientid, version: API_VERSION},
             replica: -1,
             max_wait_time: FETCH_MAX_WAIT_TIME,
             min_bytes: FETCH_MIN_BYTES,
@@ -599,7 +635,7 @@ impl OffsetCommitRequest {
     pub fn new(group: String, correlation: i32, clientid: Rc<String>) -> OffsetCommitRequest {
         OffsetCommitRequest{
             header: HeaderRequest{key: OFFSET_COMMIT_KEY, correlation: correlation,
-                                  clientid: clientid, version: VERSION},
+                                  clientid: clientid, version: API_VERSION},
             group: group,
             topic_partitions: vec!()
             }
@@ -646,7 +682,7 @@ impl OffsetFetchRequest {
     pub fn new(group: String, correlation: i32, clientid: Rc<String>) -> OffsetFetchRequest {
         OffsetFetchRequest{
             header: HeaderRequest{key: OFFSET_FETCH_KEY, correlation: correlation,
-                                  clientid: clientid, version: VERSION},
+                                  clientid: clientid, version: API_VERSION},
             group: group,
             topic_partitions: vec!()}
     }
@@ -806,12 +842,11 @@ impl ToByte for HeaderRequest {
     }
 }
 
-impl ToByte for MetadataRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a, T: AsRef<str> + 'a> ToByte for MetadataRequest<'a, T> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.header.encode(buffer),
-            self.topics.encode(buffer)
-        )
+            AsStrings(self.topics).encode(buffer))
     }
 }
 

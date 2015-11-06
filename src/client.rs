@@ -164,7 +164,7 @@ impl KafkaClient {
     ///
     pub fn load_metadata_all(&mut self) -> Result<()>{
         self.reset_metadata();
-        self.load_metadata(vec!())
+        self.load_metadata::<&str>(&[])
     }
 
     /// Reloads metadata for a list of supplied topics.
@@ -184,19 +184,25 @@ impl KafkaClient {
     ///
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata(vec!("my-topic".to_owned()));
+    /// let res = client.load_metadata(&["my-topic"]);
     /// ```
     ///
     /// returns `Result<(), error::Error>`
-    pub fn load_metadata(&mut self, topics: Vec<String>) -> Result<()> {
+    pub fn load_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<()> {
         let resp = try!(self.get_metadata(topics));
+        self.__load_metadata(resp)
+    }
 
+    // ~ this is the rest of `load_metadata`. this code is _not_
+    // generic (and hence will _not_ get generated for each distinct
+    // input type T to the `load_metadata` method).
+    fn __load_metadata(&mut self, md: protocol::MetadataResponse) -> Result<()> {
         let mut brokers: HashMap<i32, Rc<String>> = HashMap::new();
-        for broker in resp.brokers {
+        for broker in md.brokers {
             brokers.insert(broker.nodeid, Rc::new(format!("{}:{}", broker.host, broker.port)));
         }
 
-        for topic in resp.topics {
+        for topic in md.topics {
             let mut known_partitions = Vec::with_capacity(topic.partitions.len());
             let mut known_partitions_internal = Vec::with_capacity(topic.partitions.len());
 
@@ -225,12 +231,13 @@ impl KafkaClient {
         self.topic_partitions.clear();
     }
 
-    fn get_metadata(&mut self, topics: Vec<String>) -> Result<protocol::MetadataResponse> {
+    /// Loads metadata about the specified topics from all of the
+    /// underlying brokers (`self.hosts`).
+    fn get_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<protocol::MetadataResponse> {
         let correlation = self.next_id();
         for host in &self.hosts {
-            let req = protocol::MetadataRequest::new(correlation, self.clientid.clone(), topics.to_vec());
-
             if let Ok(conn) = self.conn_pool.get_conn(host) {
+                let req = protocol::MetadataRequest::new(correlation, &self.clientid, topics);
                 if send_request(conn, req).is_ok() {
                     return get_response::<protocol::MetadataResponse>(conn);
                 }

@@ -15,16 +15,10 @@ pub trait ToByte {
     }
 }
 
-pub trait FromByte {
-    type R: Default + FromByte;
 
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()>;
-    fn decode_new<T: Read>(buffer: &mut T) -> Result<Self::R> {
-        let mut temp: Self::R = Default::default();
-        match temp.decode(buffer) {
-            Ok(_) => Ok(temp),
-            Err(e) => Err(e)
-        }
+impl<'a, T: ToByte + 'a + ?Sized> ToByte for &'a T {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        (*self).encode(buffer)
     }
 }
 
@@ -52,34 +46,19 @@ impl ToByte for i64 {
     }
 }
 
-impl ToByte for String {
-    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        let s: &str = self;
-        s.encode(buffer)
-    }
-}
-
 impl ToByte for str {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try!(self.len()
-                        .to_i16()
-                        .ok_or(Error::CodecError));
+        let l = try!(self.len().to_i16().ok_or(Error::CodecError));
         try!(buffer.write_i16::<BigEndian>(l));
-        buffer.write_all(self.as_bytes())
-                             .or_else(|e| Err(From::from(e)))
+        self.as_bytes().encode_nolen(buffer)
     }
 }
 
-impl <V: ToByte> ToByte for Vec<V> {
+impl <V: ToByte> ToByte for [V] {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try!(self.len()
-                        .to_i32()
-                        .ok_or(Error::CodecError));
+        let l = try!(self.len().to_i32().ok_or(Error::CodecError));
         try!(buffer.write_i32::<BigEndian>(l));
-        for e in self {
-            try!(e.encode(buffer));
-        }
-        Ok(())
+        self.encode_nolen(buffer)
     }
     fn encode_nolen<T:Write>(&self, buffer: &mut T) -> Result<()> {
         for e in self {
@@ -89,18 +68,52 @@ impl <V: ToByte> ToByte for Vec<V> {
     }
 }
 
-impl ToByte for Vec<u8> {
+impl ToByte for [u8] {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try!(self.len()
-                        .to_i32()
-                        .ok_or(Error::CodecError));
+        let l = try!(self.len().to_i32().ok_or(Error::CodecError));
         try!(buffer.write_i32::<BigEndian>(l));
-        buffer.write_all(self).or_else(|e| Err(From::from(e)))
+        self.encode_nolen(buffer)
     }
     fn encode_nolen<T: Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
 }
+
+// ~ this allows to render a slice of various types (typically &str
+// and String) as strings
+pub struct AsStrings<'a, T: 'a>(pub &'a [T]);
+
+impl<'a, T: AsRef<str> + 'a> ToByte for AsStrings<'a, T> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        let &AsStrings(xs) = self;
+        let l = try!(xs.len().to_i32().ok_or(Error::CodecError));
+        try!(buffer.write_i32::<BigEndian>(l));
+        self.encode_nolen(buffer)
+    }
+    fn encode_nolen<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        let &AsStrings(xs) = self;
+        for e in xs {
+            try!(e.as_ref().encode(buffer));
+        }
+        Ok(())
+    }
+}
+
+// --------------------------------------------------------------------
+
+pub trait FromByte {
+    type R: Default + FromByte;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()>;
+    fn decode_new<T: Read>(buffer: &mut T) -> Result<Self::R> {
+        let mut temp: Self::R = Default::default();
+        match temp.decode(buffer) {
+            Ok(_) => Ok(temp),
+            Err(e) => Err(e)
+        }
+    }
+}
+
 
 macro_rules! dec_helper {
     ($val: expr, $dest:expr) => ({
@@ -336,28 +349,48 @@ fn codec_vec_u8() {
 }
 
 #[test]
-fn codec_vec_strings() {
-    use std::io::Cursor;
+fn codec_as_strings() {
 
-    let orig: Vec<String> = vec!["abc".to_owned(), "defg".to_owned()];
+    macro_rules! enc_dec_cmp {
+        ($orig:expr) => {{
+            use std::io::Cursor;
 
-    // Encode into buffer
-    let mut buf = Vec::new();
-    orig.encode(&mut buf).unwrap();
-    assert_eq!(buf, [0, 0, 0, 2,
-                     0, 3, b'a', b'b', b'c',
-                     0, 4, b'd', b'e', b'f', b'g']);
+            let orig = $orig;
 
-    // Decode from buffer into existing value
-    {
-        let mut dec: Vec<String> = Vec::new();
-        dec.decode(&mut Cursor::new(&buf)).unwrap();
-        assert_eq!(dec, orig);
+            // Encode into buffer
+            let mut buf = Vec::new();
+            AsStrings(&orig).encode(&mut buf).unwrap();
+            assert_eq!(buf, [0, 0, 0, 2,
+                             0, 3, b'a', b'b', b'c',
+                             0, 4, b'd', b'e', b'f', b'g']);
+
+            // Decode from buffer into existing value
+            {
+                let mut dec: Vec<String> = Vec::new();
+                dec.decode(&mut Cursor::new(&buf)).unwrap();
+                assert_eq!(dec, orig);
+            }
+
+            // Read from buffer into new variable
+            {
+                let dec = Vec::<String>::decode_new(&mut Cursor::new(&buf)).unwrap();
+                assert_eq!(dec, orig);
+            }
+        }}
     }
 
-    // Read from buffer into new variable
-    {
-        let dec = Vec::<String>::decode_new(&mut Cursor::new(&buf)).unwrap();
-        assert_eq!(dec, orig);
+    { // slice of &str
+        let orig: &[&str] = &["abc", "defg"];
+        enc_dec_cmp!(orig);
+    }
+
+    { // vec of &str
+        let orig: Vec<&str> = vec!["abc", "defg"];
+        enc_dec_cmp!(orig);
+    }
+
+    { // vec of String
+        let orig: Vec<String> = vec!["abc".to_owned(), "defg".to_owned()];
+        enc_dec_cmp!(orig);
     }
 }
