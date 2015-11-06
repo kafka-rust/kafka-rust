@@ -1,4 +1,3 @@
-
 use std::io::{Read, Write};
 use std::default::Default;
 
@@ -40,11 +39,13 @@ impl ToByte for i16 {
         buffer.write_i16::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
+
 impl ToByte for i32 {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_i32::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
+
 impl ToByte for i64 {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_i64::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
@@ -138,6 +139,7 @@ impl FromByte for i16 {
         decode!(buffer, read_i16, self)
     }
 }
+
 impl FromByte for i32 {
     type R = i32;
 
@@ -145,12 +147,14 @@ impl FromByte for i32 {
         decode!(buffer, read_i32, self)
     }
 }
+
 impl FromByte for i64 {
     type R = i64;
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         decode!(buffer, read_i64, self)
     }
 }
+
 impl FromByte for String {
     type R = String;
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
