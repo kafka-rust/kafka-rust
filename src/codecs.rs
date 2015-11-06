@@ -227,11 +227,11 @@ fn codec_i8() {
 
     // Read from buffer into existing variable
     let mut dec1: i8 = 0;
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = i8::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = i8::decode_new(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -247,11 +247,11 @@ fn codec_i16() {
 
     // Read from buffer into existing variable
     let mut dec1: i16 = 0;
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = i16::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = i16::decode_new(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -267,11 +267,11 @@ fn codec_32() {
 
     // Read from buffer into existing variable
     let mut dec1: i32 = 0;
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = i32::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = i32::decode_new(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -287,11 +287,11 @@ fn codec_i64() {
 
     // Read from buffer into existing variable
     let mut dec1: i64 = 0;
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = i64::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = i64::decode_new(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -307,11 +307,11 @@ fn codec_string() {
 
     // Read from buffer into existing variable
     let mut dec1 = String::new();
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = String::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = String::decode_new(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -327,10 +327,37 @@ fn codec_vec_u8() {
 
     // Read from buffer into existing variable
     let mut dec1: Vec<u8> = vec!();
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = Vec::<u8>::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = Vec::<u8>::decode_new(&mut Cursor::new(&buf)).unwrap();
     assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_vec_strings() {
+    use std::io::Cursor;
+
+    let orig: Vec<String> = vec!["abc".to_owned(), "defg".to_owned()];
+
+    // Encode into buffer
+    let mut buf = Vec::new();
+    orig.encode(&mut buf).unwrap();
+    assert_eq!(buf, [0, 0, 0, 2,
+                     0, 3, b'a', b'b', b'c',
+                     0, 4, b'd', b'e', b'f', b'g']);
+
+    // Decode from buffer into existing value
+    {
+        let mut dec: Vec<String> = Vec::new();
+        dec.decode(&mut Cursor::new(&buf)).unwrap();
+        assert_eq!(dec, orig);
+    }
+
+    // Read from buffer into new variable
+    {
+        let dec = Vec::<String>::decode_new(&mut Cursor::new(&buf)).unwrap();
+        assert_eq!(dec, orig);
+    }
 }
