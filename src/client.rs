@@ -365,7 +365,7 @@ impl KafkaClient {
     /// or error::Error
     ///
     /// You can figure out the appropriate partition and offset using client's
-    /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
+    /// `client.topic_partitions` and `client.fetch_topic_offset`
     ///
     /// # Examples
     ///
@@ -414,7 +414,7 @@ impl KafkaClient {
     /// or error::Error
     ///
     /// You can figure out the appropriate partition and offset using client's
-    /// client.topic_partitions and client.fetch_topic_offset(topic)
+    /// `client.topic_partitions` and `client.fetch_topic_offset`
     ///
     /// # Examples
     ///
@@ -534,7 +534,7 @@ impl KafkaClient {
     /// or `error::Error`
     ///
     /// You can figure out the appropriate partition and offset using client's
-    /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
+    /// `client.topic_partitions` and `client.fetch_topic_offset`
     ///
     /// # Examples
     ///
@@ -574,7 +574,7 @@ impl KafkaClient {
     /// or `error::Error`
     ///
     /// You can figure out the appropriate partition and offset using client's
-    /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
+    /// `client.topic_partitions` and `client.fetch_topic_offset`
     ///
     /// # Examples
     ///
