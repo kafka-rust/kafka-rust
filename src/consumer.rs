@@ -64,7 +64,7 @@ impl ConsumerState {
     fn fetch_offsets(&mut self, client: &mut KafkaClient) -> Result<()> {
         // ~ fetch the so far commited group offsets
         let mut tpos = try!(client.fetch_group_topic_offset(self.group.clone(), self.topic.clone()));
-        if self.partitions.len() == 0 {
+        if self.partitions.is_empty() {
             self.partitions = client.topic_partitions.get(&self.topic).unwrap_or(&vec!()).clone();
         }
 
@@ -148,7 +148,7 @@ impl ConsumerState {
                 return None;
             }
             let _ = self.commit_offsets(client);
-            if self.messages.len() == 0 {
+            if self.messages.is_empty() {
                 return None;
             }
         }

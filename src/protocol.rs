@@ -804,11 +804,8 @@ fn message_decode_snappy(value: Vec<u8>) -> Vec<OffsetMessage>{
     //if (!snappy::check_header(&header)) return;
 
     let mut v = vec!();
-    loop {
-        match message_decode_loop_snappy(&mut buffer) {
-            Ok(x) => v.extend(x),
-            Err(_) => break
-        }
+    while let Ok(x) = message_decode_loop_snappy(&mut buffer) {
+        v.extend(x);
     }
     v
 }
@@ -1316,13 +1313,10 @@ impl FromByte for MessageSet {
 
     fn decode_new<T: Read>(buffer: &mut T) -> Result<Self::R> {
         let mut temp: Self::R = Default::default();
-        loop {
-            match MessageSetInner::decode_new(buffer) {
-                Ok(mi) => temp.message.push(mi),
-                Err(_) => break
-            }
+        while let Ok(mi) = MessageSetInner::decode_new(buffer) {
+            temp.message.push(mi);
         }
-        if temp.message.len() == 0 {
+        if temp.message.is_empty() {
             return Err(Error::UnexpectedEOF)
         }
         Ok(temp)
@@ -1369,7 +1363,7 @@ impl ToByte for Message {
         let mut buf = vec!();
         try!(self.magic.encode(&mut buf));
         try!(self.attributes.encode(&mut buf));
-        if self.key.len() == 0 {
+        if self.key.is_empty() {
             let a: i32 = -1;
             try!(a.encode(&mut buf));
         } else {

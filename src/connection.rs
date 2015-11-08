@@ -18,7 +18,7 @@ impl fmt::Debug for KafkaConnection {
 
 impl KafkaConnection {
 
-    pub fn send(&mut self, msg: &Vec<u8>) -> Result<usize> {
+    pub fn send(&mut self, msg: &[u8]) -> Result<usize> {
         self.stream.write(&msg[..]).map_err(From::from)
     }
 

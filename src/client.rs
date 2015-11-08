@@ -572,7 +572,7 @@ impl KafkaClient {
         }
 
         // Call each broker with the request formed earlier
-        for (host, req) in reqs.iter() {
+        for (host, req) in reqs {
             try!(__send_receive::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(&mut self.conn_pool, &host, req.clone()));
         }
         Ok(())
@@ -693,7 +693,7 @@ impl KafkaClient {
     pub fn fetch_group_offset(&mut self, group: String)
         -> Result<Vec<utils::TopicPartitionOffsetError>> {
         let mut tps = vec!();
-        for (topic, partitions) in self.topic_partitions.iter() {
+        for (topic, partitions) in &self.topic_partitions {
             for p in partitions {
                 tps.push(utils::TopicPartition{topic: topic.clone(), partition: p.clone()})
             }
@@ -736,7 +736,7 @@ fn __send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
 
     let mut s = vec!();
     try!((buffer.len() as i32).encode(&mut s));
-    for byte in buffer.iter() { s.push(*byte); }
+    for byte in &buffer { s.push(*byte); }
 
     conn.send(&s)
 }
