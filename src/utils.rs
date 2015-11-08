@@ -2,13 +2,6 @@
 
 use error::{Result,Error};
 
-// XXX move to protocol module
-#[derive(Clone, Debug)]
-pub struct OffsetMessage {
-    pub offset: i64,
-    pub message: Vec<u8>
-}
-
 #[derive(Clone, Debug)]
 pub struct TopicMessage {
     pub topic: String,

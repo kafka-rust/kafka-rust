@@ -5,7 +5,7 @@ use std::rc::Rc;
 use num::traits::FromPrimitive;
 
 use error::{Result, Error};
-use utils::{OffsetMessage, TopicMessage, TopicPartitionOffsetError, PartitionOffset};
+use utils::{TopicMessage, TopicPartitionOffsetError, PartitionOffset};
 use crc32::Crc32;
 use codecs::{AsStrings, ToByte, FromByte};
 use compression::Compression;
@@ -357,6 +357,11 @@ pub struct Message {
     pub value: Vec<u8>
 }
 
+#[derive(Debug)]
+pub struct OffsetMessage {
+    pub offset: i64,
+    pub message: Vec<u8>
+}
 
 impl<'a> HeaderRequest_<'a> {
     fn new(api_key: i16, api_version: i16, correlation_id: i32, client_id: &'a str)
