@@ -1,5 +1,17 @@
+language: rust
+
+rust:
+  - stable
+  - beta
+  - nightly
+
 before_install:
   - sudo apt-get update -qq
   - sudo apt-get install -y libsnappy1 libsnappy-dev
 
-language: rust
+script:
+  - cargo build --verbose
+  - cargo test --verbose
+  - if [ "$TRAVIS_RUST_VERSION" = "nightly" ] ; then
+      cargo bench --verbose;
+    fi
