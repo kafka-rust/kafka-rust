@@ -25,10 +25,10 @@ macro_rules! try_multi {
 }
 
 
-const PRODUCE_KEY: i16  = 0;
-const FETCH_KEY: i16    = 1;
-const OFFSET_KEY: i16   = 2;
-const API_KEY_METADATA: i16 = 3;
+const PRODUCE_KEY: i16       = 0;
+const API_KEY_FETCH: i16     = 1;
+const OFFSET_KEY: i16        = 2;
+const API_KEY_METADATA: i16  = 3;
 // 4-7 reserved for non-public kafka api services
 const OFFSET_COMMIT_KEY: i16 = 8;
 const OFFSET_FETCH_KEY: i16  = 9;
@@ -165,18 +165,18 @@ pub struct PartitionOffsetResponse {
 }
 
 // Fetch
-#[derive(Default, Debug, Clone)]
-pub struct FetchRequest {
-    pub header: HeaderRequest,
+#[derive(Debug)]
+pub struct FetchRequest<'a, 'b> {
+    pub header: HeaderRequest_<'a>,
     pub replica: i32,
     pub max_wait_time: i32,
     pub min_bytes: i32,
-    pub topic_partitions: Vec<TopicPartitionFetchRequest>
+    pub topic_partitions: Vec<TopicPartitionFetchRequest<'b>>
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct TopicPartitionFetchRequest {
-    pub topic: String,
+#[derive(Debug)]
+pub struct TopicPartitionFetchRequest<'a> {
+    pub topic: &'a str,
     pub partitions: Vec<PartitionFetchRequest>
 }
 
@@ -545,12 +545,12 @@ impl PartitionProduceResponse {
     }
 }
 
-impl FetchRequest {
+impl<'a, 'b> FetchRequest<'a, 'b> {
 
-    pub fn new(correlation: i32, clientid: Rc<String>) -> FetchRequest{
-        FetchRequest{
-            header: HeaderRequest{key: FETCH_KEY, correlation: correlation,
-                                  clientid: clientid, version: API_VERSION},
+    pub fn new(correlation_id: i32, client_id: &'a str) -> FetchRequest<'a, 'b> {
+        FetchRequest {
+            header: HeaderRequest_::new(
+                API_KEY_FETCH, API_VERSION, correlation_id, client_id),
             replica: -1,
             max_wait_time: FETCH_MAX_WAIT_TIME,
             min_bytes: FETCH_MIN_BYTES,
@@ -558,7 +558,7 @@ impl FetchRequest {
         }
     }
 
-    pub fn add(&mut self, topic: String, partition: i32, offset: i64) {
+    pub fn add(&mut self, topic: &'b str, partition: i32, offset: i64) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
                 tp.add(partition, offset);
@@ -571,8 +571,8 @@ impl FetchRequest {
     }
 }
 
-impl TopicPartitionFetchRequest {
-    pub fn new(topic: String) -> TopicPartitionFetchRequest{
+impl<'a> TopicPartitionFetchRequest<'a> {
+    pub fn new(topic: &'a str) -> TopicPartitionFetchRequest<'a> {
         TopicPartitionFetchRequest {
             topic: topic,
             partitions: vec!()
@@ -901,8 +901,8 @@ impl ToByte for PartitionProduceRequest {
     }
 }
 
-impl ToByte for FetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a, 'b> ToByte for FetchRequest<'a, 'b> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.header.encode(buffer),
             self.replica.encode(buffer),
@@ -913,8 +913,8 @@ impl ToByte for FetchRequest {
     }
 }
 
-impl ToByte for TopicPartitionFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a> ToByte for TopicPartitionFetchRequest<'a> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.topic.encode(buffer),
             self.partitions.encode(buffer)

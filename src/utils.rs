@@ -31,10 +31,26 @@ pub struct PartitionOffset {
 }
 
 #[derive(Debug)]
-pub struct TopicPartitionOffset {
-    pub topic: String,
+pub struct TopicPartitionOffset<'a> {
+    pub topic: &'a str,
     pub partition: i32,
     pub offset: i64
+}
+
+impl<'a> TopicPartitionOffset<'a> {
+    pub fn new(topic: &'a str, partition: i32, offset: i64) -> TopicPartitionOffset<'a> {
+        TopicPartitionOffset {
+            topic: topic,
+            partition: partition,
+            offset: offset,
+        }
+    }
+}
+
+impl<'a> AsRef<TopicPartitionOffset<'a>> for TopicPartitionOffset<'a> {
+    fn as_ref(&self) -> &Self {
+        &self
+    }
 }
 
 #[derive(Debug)]
