@@ -4,17 +4,20 @@
 //!
 //! Provides implementation for `KafkaClient` which is used to interact with Kafka
 
+// pub re-export
+pub use compression::Compression;
+
 use error::{Result, Error};
 use utils;
 use protocol;
 use connection::KafkaConnection;
 use codecs::{ToByte, FromByte};
-use compression::Compression;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::io::Read;
 use std::mem;
 use std::rc::Rc;
+
 
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_TIMEOUT: i32 = 120; // seconds
@@ -229,9 +232,8 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
-    /// use kafka::compression::Compression;
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// client.set_compression(Compression::SNAPPY);
+    /// client.set_compression(kafka::client::Compression::SNAPPY);
     /// ```
     pub fn set_compression(&mut self, compression: Compression) {
         self.compression = compression;

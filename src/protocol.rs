@@ -8,7 +8,9 @@ use error::{Result, Error};
 use utils::{OffsetMessage, TopicMessage, TopicPartitionOffsetError};
 use crc32::Crc32;
 use codecs::{ToByte, FromByte};
-use compression::{Compression, snappy, gzip};
+use compression::Compression;
+use snappy;
+use gzip;
 
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {

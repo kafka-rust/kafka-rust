@@ -10,5 +10,3 @@ impl Default for Compression {
         Compression::NONE
     }
 }
-
-pub use super::{gzip, snappy};
