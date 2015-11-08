@@ -79,7 +79,7 @@ impl TopicPartitions {
 
 /// Possible values when querying a topic's offset.
 /// See `KafkaClient::fetch_offsets`.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum FetchOffset {
     /// Receive the earliest available offset.
     Earliest,
@@ -325,7 +325,12 @@ impl KafkaClient {
                                              -> Result<Vec<utils::PartitionOffset>>
     {
         let mut m = try!(self.fetch_offsets(&[topic.as_ref()], offset));
-        Ok(m.remove(topic.as_ref()).unwrap_or(vec!()))
+        let offs = m.remove(topic.as_ref()).unwrap_or(vec!());
+        if offs.is_empty() {
+            Err(Error::UnknownTopicOrPartition)
+        } else {
+            Ok(offs)
+        }
     }
 
     /// Fetch messages from Kafka (Multiple topic, partition, offset)
