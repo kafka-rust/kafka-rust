@@ -25,7 +25,7 @@ macro_rules! try_multi {
 }
 
 
-const PRODUCE_KEY: i16       = 0;
+const API_KEY_PRODUCE: i16   = 0;
 const API_KEY_FETCH: i16     = 1;
 const OFFSET_KEY: i16        = 2;
 const API_KEY_METADATA: i16  = 3;
@@ -80,9 +80,9 @@ pub struct MetadataResponse {
 }
 
 // Produce
-#[derive(Default, Debug, Clone)]
-pub struct ProduceRequest {
-    pub header: HeaderRequest,
+#[derive(Debug)]
+pub struct ProduceRequest<'a> {
+    pub header: HeaderRequest_<'a>,
     pub required_acks: i16,
     pub timeout: i32,
     pub topic_partitions: Vec<TopicPartitionProduceRequest>,
@@ -460,12 +460,15 @@ impl PartitionOffsetResponse {
     }
 }
 
-impl ProduceRequest {
+impl<'a> ProduceRequest<'a> {
     pub fn new(required_acks: i16, timeout: i32,
-               correlation: i32, clientid: Rc<String>, compression: Compression) -> ProduceRequest{
-        ProduceRequest{
-            header: HeaderRequest{key: PRODUCE_KEY, correlation: correlation,
-                                  clientid: clientid, version: API_VERSION},
+               correlation_id: i32, client_id: &'a str,
+               compression: Compression)
+               -> ProduceRequest<'a>
+    {
+        ProduceRequest {
+            header: HeaderRequest_::new(
+                API_KEY_PRODUCE, API_VERSION, correlation_id, client_id),
             required_acks: required_acks,
             timeout: timeout,
             topic_partitions: vec!(),
@@ -862,7 +865,7 @@ impl<'a> ToByte for OffsetRequest<'a> {
     }
 }
 
-impl ToByte for ProduceRequest {
+impl<'a> ToByte for ProduceRequest<'a> {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.header.encode(buffer),

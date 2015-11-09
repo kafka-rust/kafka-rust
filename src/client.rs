@@ -45,12 +45,68 @@ pub struct KafkaClient {
     // ~ a pool of re-usable connections to kafka brokers
     conn_pool: ConnectionPool,
 
+    // ~ the current state of this client
+    state: ClientState,
+
+
+    /// HashMap where `topic` is the key and list of `partitions` is the value
+    pub topic_partitions: HashMap<String, Vec<i32>>,
+}
+
+#[derive(Default, Debug)]
+struct ClientConfig {
+    client_id: Rc<String>,
+    hosts: Vec<String>,
+    // ~ compression to use when sending messages
+    compression: Compression,
+}
+
+#[derive(Default, Debug)]
+struct ClientState {
     // ~ the last correlation used when communicating with kafka
     // (see `#next_id`)
     correlation: i32,
 
-    /// HashMap where `topic` is the key and list of `partitions` is the value
-    pub topic_partitions: HashMap<String, Vec<i32>>,
+    // ~ a mapping of topic to information about its partitions
+    // ~ `TopicPartitions#partitions` are kept in ascending order by `partition_id`
+    topic_partitions_internal: HashMap<String, TopicPartitions>,
+}
+
+impl ClientState {
+    fn next_correlation_id(&mut self) -> i32 {
+        self.correlation = (self.correlation + 1) % (1i32 << 30);
+        self.correlation
+    }
+
+    /// Find the leader of the specified partition; the returned
+    /// string is the hostname:port of the leader - if any.
+    fn find_broker(&self, topic: &str, partition: i32) -> Option<Rc<String>> {
+        self.topic_partitions_internal.get(topic)
+            .and_then(|tp| {
+                // ~ XXX might also just normally iterate and try to
+                // find the element.  the number of partitions is
+                // typically very constrainted.
+                tp.partitions.binary_search_by(|e| {
+                    e.partition_id.cmp(&partition)
+                }).ok().and_then(|i| {
+                    Some(tp.partitions[i].broker_host.clone())
+                })
+            })
+    }
+
+    /// Chooses for the given topic a partition to write the next message to.
+    /// Returns the partition_id and the corresponding broker host.
+    fn choose_partition(&mut self, topic: &str) -> Option<(i32, Rc<String>)> {
+        match self.topic_partitions_internal.get_mut(topic) {
+            None => None,
+            Some(ref topic) if topic.partitions.is_empty() => None,
+            Some(ref mut topic) => {
+                topic.curr_partition_idx = (topic.curr_partition_idx + 1) % topic.partitions.len() as i32;
+                let p = &topic.partitions[topic.curr_partition_idx as usize];
+                Some((p.partition_id, p.broker_host.clone()))
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -129,35 +185,6 @@ impl ConnectionPool {
     }
 }
 
-#[derive(Default, Debug)]
-struct ClientConfig {
-    client_id: Rc<String>,
-    hosts: Vec<String>,
-
-    // ~ compression to use when sending messages
-    compression: Compression,
-
-    // ~ a mapping of topic to information about its partitions
-    // ~ `TopicPartitions#partitions` are kept in ascending order by `partition_id`
-    topic_partitions_internal: HashMap<String, TopicPartitions>,
-}
-
-impl ClientConfig {
-    fn find_broker(&self, topic: &str, partition: i32) -> Option<Rc<String>> {
-        self.topic_partitions_internal.get(topic)
-            .and_then(|tp| {
-                // ~ XXX might also just normally iterate and try to
-                // find the element.  the number of partitions is
-                // typically very constrainted.
-                tp.partitions.binary_search_by(|e| {
-                    e.partition_id.cmp(&partition)
-                }).ok().and_then(|i| {
-                    Some(tp.partitions[i].broker_host.clone())
-                })
-            })
-    }
-}
-
 impl KafkaClient {
     /// Create a new instance of KafkaClient
     ///
@@ -174,14 +201,14 @@ impl KafkaClient {
                 .. ClientConfig::default()
             },
             conn_pool: ConnectionPool::new(DEFAULT_TIMEOUT_SECS),
-            .. KafkaClient::default()}
+            state: ClientState::default(),
+            .. KafkaClient::default()
+        }
     }
 
     fn next_id(&mut self) -> i32 {
-        self.correlation = (self.correlation + 1) % (1i32 << 30);
-        self.correlation
+        self.state.next_correlation_id()
     }
-
 
     /// Resets and loads metadata for all topics.
     ///
@@ -248,7 +275,7 @@ impl KafkaClient {
 
             self.topic_partitions.insert(topic.topic.clone(), known_partitions);
             known_partitions_internal.sort_by(|a, b| a.partition_id.cmp(&b.partition_id));
-            self.config.topic_partitions_internal.insert(
+            self.state.topic_partitions_internal.insert(
                 topic.topic.clone(), TopicPartitions::new(known_partitions_internal));
         }
         Ok(())
@@ -257,7 +284,7 @@ impl KafkaClient {
     /// Clears metadata stored in the client. You must load metadata after this call if you want
     /// to use the client
     pub fn reset_metadata(&mut self) {
-        self.config.topic_partitions_internal.clear();
+        self.state.topic_partitions_internal.clear();
         self.topic_partitions.clear();
     }
 
@@ -274,20 +301,6 @@ impl KafkaClient {
             }
         }
         Err(Error::NoHostReachable)
-    }
-
-    /// Chooses for the given topic a partition to write the next message to.
-    /// Returns the partition_id and the corresponding broker host.
-    fn choose_partition(&mut self, topic: &str) -> Option<(i32, Rc<String>)> {
-        match self.config.topic_partitions_internal.get_mut(topic) {
-            None => None,
-            Some(ref topic) if topic.partitions.is_empty() => None,
-            Some(ref mut topic) => {
-                topic.curr_partition_idx = (topic.curr_partition_idx + 1) % topic.partitions.len() as i32;
-                let p = &topic.partitions[topic.curr_partition_idx as usize];
-                Some((p.partition_id, p.broker_host.clone()))
-            }
-        }
     }
 
     /// Set the compression algorithm to use
@@ -328,7 +341,7 @@ impl KafkaClient {
         // Map topic and partition to the corresponding broker
         for topic in topics {
             let topic = topic.as_ref();
-            if let Some(tp) = self.config.topic_partitions_internal.get(topic) {
+            if let Some(tp) = self.state.topic_partitions_internal.get(topic) {
                 for p in &tp.partitions {
                     let entry = reqs.entry(p.broker_host.clone())
                         .or_insert_with(|| protocol::OffsetRequest::new(correlation, self.config.client_id.clone()));
@@ -404,14 +417,15 @@ impl KafkaClient {
     {
         let correlation = self.next_id();
 
+        let config = &self.config;
+
         // Map topic and partition to the corresponding broker
-        let kcfg = &self.config;
         let mut reqs: HashMap<Rc<String>, protocol::FetchRequest> = HashMap::new();
         for tpo in input {
             let tpo = tpo.as_ref();
-            if let Some(broker) = kcfg.find_broker(tpo.topic, tpo.partition) {
+            if let Some(broker) = self.state.find_broker(tpo.topic, tpo.partition) {
                 reqs.entry(broker.clone())
-                    .or_insert_with(|| protocol::FetchRequest::new(correlation, &kcfg.client_id))
+                    .or_insert_with(|| protocol::FetchRequest::new(correlation, &config.client_id))
                     .add(tpo.topic, tpo.partition, tpo.offset);
             }
         }
@@ -471,24 +485,30 @@ impl KafkaClient {
     /// The return value will contain a vector of topic, partition, offset and error if any
     /// OR error:Error
     pub fn send_messages(&mut self, required_acks: i16, ack_timeout: i32,
-                         input: Vec<utils::ProduceMessage>) -> Result<Vec<utils::TopicPartitionOffsetError>> {
-
+                         messages: Vec<utils::ProduceMessage>)
+                         -> Result<Vec<utils::TopicPartitionOffsetError>>
+    {
         let correlation = self.next_id();
-        let mut reqs: HashMap<Rc<String>, protocol::ProduceRequest> = HashMap::new();
 
-        // Map topic and partition to the corresponding broker
-        for pm in input {
-            if let Some((partition, broker)) = self.choose_partition(&pm.topic) {
-                let entry = reqs.entry(broker).or_insert_with(
-                    || protocol::ProduceRequest::new(required_acks, ack_timeout, correlation, self.config.client_id.clone(), self.config.compression));
-                entry.add(pm.topic, partition, pm.message);
+        // Map topic and partition to the corresponding brokers
+        let state = &mut self.state;
+        let config = &self.config;
+
+        let mut reqs: HashMap<Rc<String>, protocol::ProduceRequest> = HashMap::new();
+        for msg in messages {
+            if let Some((partition, broker)) = state.choose_partition(&msg.topic) {
+                reqs.entry(broker)
+                    .or_insert_with(
+                        || protocol::ProduceRequest::new(required_acks, ack_timeout, correlation,
+                                                         &config.client_id, config.compression))
+                    .add(msg.topic, partition, msg.message);
             }
         }
 
         // Call each broker with the request formed earlier
         if required_acks == 0 {
             for (host, req) in reqs {
-                try!(self.send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(&host, req));
+                try!(__send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(&mut self.conn_pool, &host, req));
             }
             Ok(vec!())
         } else {
@@ -562,7 +582,7 @@ impl KafkaClient {
 
         // Map topic and partition to the corresponding broker
         for tp in input {
-            self.config.find_broker(&tp.topic, tp.partition).and_then(|broker| {
+            self.state.find_broker(&tp.topic, tp.partition).and_then(|broker| {
                 let entry = reqs.entry(broker.clone()).or_insert(
                             protocol::OffsetCommitRequest::new(group.clone(), correlation, self.config.client_id.clone()));
                 // XXX avoid this cloning of the topic
@@ -628,7 +648,7 @@ impl KafkaClient {
 
         // Map topic and partition to the corresponding broker
         for tp in input {
-            if let Some(broker) = self.config.find_broker(&tp.topic, tp.partition) {
+            if let Some(broker) = self.state.find_broker(&tp.topic, tp.partition) {
                 let entry = reqs.entry(broker.clone()).or_insert(
                     protocol::OffsetFetchRequest::new(group.clone(), correlation, self.config.client_id.clone()));
                 entry.add(tp.topic, tp.partition);
@@ -700,11 +720,6 @@ impl KafkaClient {
         }
         self.fetch_group_topics_offset(group, tps)
     }
-
-    fn send_noack<T: ToByte, V: FromByte>(&mut self, host: &str, req: T) -> Result<usize> {
-        let mut conn = try!(self.conn_pool.get_conn(&host));
-        __send_request(&mut conn, req)
-    }
 }
 
 /// ~ carries out the given fetch requests and returns the response
@@ -726,6 +741,13 @@ fn __send_receive<T: ToByte, V: FromByte>(conn_pool: &mut ConnectionPool, host: 
     let mut conn = try!(conn_pool.get_conn(host));
     try!(__send_request(&mut conn, req));
     __get_response::<V>(&mut conn)
+}
+
+fn __send_noack<T: ToByte, V: FromByte>(conn_pool: &mut ConnectionPool, host: &str, req: T)
+                                        -> Result<usize>
+{
+    let mut conn = try!(conn_pool.get_conn(&host));
+    __send_request(&mut conn, req)
 }
 
 fn __send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
