@@ -11,9 +11,9 @@ pub struct TopicMessage {
     pub message: Vec<u8>
 }
 
-#[derive(Clone, Debug)]
-pub struct ProduceMessage {
-    pub topic: String,
+#[derive(Debug)]
+pub struct ProduceMessage<'a> {
+    pub topic: &'a str,
     pub message: Vec<u8>
 }
 

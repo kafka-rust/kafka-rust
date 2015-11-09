@@ -81,17 +81,17 @@ pub struct MetadataResponse {
 
 // Produce
 #[derive(Debug)]
-pub struct ProduceRequest<'a> {
+pub struct ProduceRequest<'a, 'b> {
     pub header: HeaderRequest_<'a>,
     pub required_acks: i16,
     pub timeout: i32,
-    pub topic_partitions: Vec<TopicPartitionProduceRequest>,
+    pub topic_partitions: Vec<TopicPartitionProduceRequest<'b>>,
     pub compression: Compression
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct TopicPartitionProduceRequest {
-    pub topic: String,
+pub struct TopicPartitionProduceRequest<'a> {
+    pub topic: &'a str,
     pub partitions: Vec<PartitionProduceRequest>,
     pub compression: Compression
 }
@@ -460,11 +460,11 @@ impl PartitionOffsetResponse {
     }
 }
 
-impl<'a> ProduceRequest<'a> {
+impl<'a, 'b> ProduceRequest<'a, 'b> {
     pub fn new(required_acks: i16, timeout: i32,
                correlation_id: i32, client_id: &'a str,
                compression: Compression)
-               -> ProduceRequest<'a>
+               -> ProduceRequest<'a, 'b>
     {
         ProduceRequest {
             header: HeaderRequest_::new(
@@ -476,21 +476,21 @@ impl<'a> ProduceRequest<'a> {
         }
     }
 
-    pub fn add(&mut self, topic: String, partition: i32, message: Vec<u8>) {
+    pub fn add(&mut self, topic: &'b str, partition: i32, message: Vec<u8>) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
                 tp.add(partition, message);
                 return;
             }
         }
-        let mut tp = TopicPartitionProduceRequest::new(topic.clone(), self.compression);
+        let mut tp = TopicPartitionProduceRequest::new(topic, self.compression);
         tp.add(partition, message);
         self.topic_partitions.push(tp);
     }
 }
 
-impl TopicPartitionProduceRequest {
-    pub fn new(topic: String, compression: Compression) -> TopicPartitionProduceRequest {
+impl<'a> TopicPartitionProduceRequest<'a> {
+    pub fn new(topic: &'a str, compression: Compression) -> TopicPartitionProduceRequest<'a> {
         TopicPartitionProduceRequest {
             topic: topic,
             partitions: vec!(),
@@ -505,7 +505,7 @@ impl TopicPartitionProduceRequest {
                 return;
             }
         }
-        self.partitions.push(PartitionProduceRequest:: new(partition, message, self.compression))
+        self.partitions.push(PartitionProduceRequest::new(partition, message, self.compression))
     }
 }
 
@@ -865,8 +865,8 @@ impl<'a> ToByte for OffsetRequest<'a> {
     }
 }
 
-impl<'a> ToByte for ProduceRequest<'a> {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a, 'b> ToByte for ProduceRequest<'a, 'b> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.header.encode(buffer),
             self.required_acks.encode(buffer),
@@ -876,8 +876,8 @@ impl<'a> ToByte for ProduceRequest<'a> {
     }
 }
 
-impl ToByte for TopicPartitionProduceRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a> ToByte for TopicPartitionProduceRequest<'a> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.topic.encode(buffer),
             self.partitions.encode(buffer)

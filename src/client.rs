@@ -478,8 +478,8 @@ impl KafkaClient {
     /// let res = client.load_metadata_all();
     /// let m1 = "a".to_owned().into_bytes();
     /// let m2 = "b".to_owned().into_bytes();
-    /// let req = vec!(utils::ProduceMessage{topic: "my-topic".to_owned(), message: m1},
-    ///                 utils::ProduceMessage{topic: "my-topic-2".to_owned(), message: m2});
+    /// let req = vec!(utils::ProduceMessage{topic: "my-topic", message: m1},
+    ///                 utils::ProduceMessage{topic: "my-topic-2", message: m2});
     /// println!("{:?}", client.send_messages(1, 100, req));
     /// ```
     /// The return value will contain a vector of topic, partition, offset and error if any
@@ -544,12 +544,12 @@ impl KafkaClient {
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let msgs = client.send_message(1, 100, "my-topic".to_owned(), "msg".to_owned().into_bytes());
+    /// let msgs = client.send_message(1, 100, "my-topic", "msg".to_owned().into_bytes());
     /// ```
     /// The return value will contain topic, partition, offset and error if any
     /// OR error:Error
     pub fn send_message(&mut self, required_acks: i16, ack_timeout: i32,
-                      topic: String, message: Vec<u8>) -> Result<Vec<utils::TopicPartitionOffsetError>> {
+                      topic: &str, message: Vec<u8>) -> Result<Vec<utils::TopicPartitionOffsetError>> {
         self.send_messages(required_acks, ack_timeout, vec!(utils::ProduceMessage{
             topic: topic,
             message: message

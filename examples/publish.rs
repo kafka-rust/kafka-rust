@@ -25,6 +25,6 @@ fn main() {
     }
     // ~ now send a small message (if the specified topic would have
     // not been existent) the client would drop the message.
-    let r = client.send_message(1, 100, topic.to_owned(), data.as_bytes().to_owned());
+    let r = client.send_message(1, 100, topic, data.as_bytes().to_owned());
     println!("message sent: {:?}", r);
 }

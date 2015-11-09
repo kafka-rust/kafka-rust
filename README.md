@@ -69,7 +69,7 @@ use kafka::utils;
 fn main() {
     let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
-    client.send_message(1, 100, "my-topic".to_owned(), "msg".to_owned().into_bytes())
+    client.send_message(1, 100, "my-topic", "msg".to_owned().into_bytes())
 }
 ```
 
@@ -84,8 +84,8 @@ fn main() {
     client.load_metadata_all();
     let m1 = "a".to_owned().into_bytes();
     let m2 = "b".to_owned().into_bytes();
-    let req = vec!(utils::ProduceMessage{topic: "my-topic".to_owned(), message: m1},
-                    utils::ProduceMessage{topic: "my-topic-2".to_owned(), message: m2});
+    let req = vec!(utils::ProduceMessage{topic: "my-topic", message: m1},
+                    utils::ProduceMessage{topic: "my-topic-2", message: m2});
     client.send_messages(1, 100, req);  // required acks, timeout, messages
 }
 ```
