@@ -412,8 +412,8 @@ impl KafkaClient {
     ///                                                 offset: 0
     ///                                             }]);
     /// ```
-    pub fn fetch_messages_multi<'a, 'b, I, J>(&'a mut self, input: I) -> Result<Vec<utils::TopicMessage>>
-        where J: AsRef<utils::TopicPartitionOffset<'b>>, I: IntoIterator<Item=J>
+    pub fn fetch_messages_multi<'a, I, J>(&mut self, input: I) -> Result<Vec<utils::TopicMessage>>
+        where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J>
     {
         let correlation = self.next_id();
 
