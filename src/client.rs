@@ -451,7 +451,7 @@ impl KafkaClient {
     /// waiting for this number of acknowledgements to occur (but the server will never wait
     /// for more acknowledgements than there are in-sync replicas).
     ///
-    /// `timeout` - This provides a maximum time in milliseconds the server can await the
+    /// `ack_timeout` - This provides a maximum time in milliseconds the server can await the
     /// receipt of the number of acknowledgements in `required_acks`
     ///
     /// `input` - A vector of `utils::ProduceMessage`
@@ -470,7 +470,7 @@ impl KafkaClient {
     /// ```
     /// The return value will contain a vector of topic, partition, offset and error if any
     /// OR error:Error
-    pub fn send_messages(&mut self, required_acks: i16, timeout: i32,
+    pub fn send_messages(&mut self, required_acks: i16, ack_timeout: i32,
                          input: Vec<utils::ProduceMessage>) -> Result<Vec<utils::TopicPartitionOffsetError>> {
 
         let correlation = self.next_id();
@@ -480,7 +480,7 @@ impl KafkaClient {
         for pm in input {
             if let Some((partition, broker)) = self.choose_partition(&pm.topic) {
                 let entry = reqs.entry(broker).or_insert_with(
-                    || protocol::ProduceRequest::new(required_acks, timeout, correlation, self.config.client_id.clone(), self.config.compression));
+                    || protocol::ProduceRequest::new(required_acks, ack_timeout, correlation, self.config.client_id.clone(), self.config.compression));
                 entry.add(pm.topic, partition, pm.message);
             }
         }
@@ -514,7 +514,7 @@ impl KafkaClient {
     /// waiting for this number of acknowledgements to occur (but the server will never wait
     /// for more acknowledgements than there are in-sync replicas).
     ///
-    /// `timeout` - This provides a maximum time in milliseconds the server can await the
+    /// `ack_timeout` - This provides a maximum time in milliseconds the server can await the
     /// receipt of the number of acknowledgements in `required_acks`
     ///
     /// `message` - A single message as a vector of u8s
@@ -528,9 +528,9 @@ impl KafkaClient {
     /// ```
     /// The return value will contain topic, partition, offset and error if any
     /// OR error:Error
-    pub fn send_message(&mut self, required_acks: i16, timeout: i32,
+    pub fn send_message(&mut self, required_acks: i16, ack_timeout: i32,
                       topic: String, message: Vec<u8>) -> Result<Vec<utils::TopicPartitionOffsetError>> {
-        self.send_messages(required_acks, timeout, vec!(utils::ProduceMessage{
+        self.send_messages(required_acks, ack_timeout, vec!(utils::ProduceMessage{
             topic: topic,
             message: message
             }))
