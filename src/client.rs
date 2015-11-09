@@ -504,23 +504,7 @@ impl KafkaClient {
                     .add(msg.topic, partition, msg.message);
             }
         }
-
-        // Call each broker with the request formed earlier
-        if required_acks == 0 {
-            for (host, req) in reqs {
-                try!(__send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(&mut self.conn_pool, &host, req));
-            }
-            Ok(vec!())
-        } else {
-            let mut res: Vec<utils::TopicPartitionOffsetError> = vec!();
-            for (host, req) in reqs {
-                let resp = try!(__send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(&mut self.conn_pool, &host, req));
-                for tpo in resp.get_response() {
-                    res.push(tpo);
-                }
-            }
-            Ok(res)
-        }
+        __send_messages(&mut self.conn_pool, reqs, required_acks == 0)
     }
 
     /// Send a message to Kafka
@@ -723,8 +707,8 @@ impl KafkaClient {
 }
 
 /// ~ carries out the given fetch requests and returns the response
-fn __fetch_messages_multi<'a>(conn_pool: &mut ConnectionPool, reqs: HashMap<Rc<String>, protocol::FetchRequest>)
-                              -> Result<Vec<utils::TopicMessage>>
+fn __fetch_messages_multi(conn_pool: &mut ConnectionPool, reqs: HashMap<Rc<String>, protocol::FetchRequest>)
+                          -> Result<Vec<utils::TopicMessage>>
 {
     // Call each broker with the request formed earlier
     let mut res: Vec<utils::TopicMessage> = vec!();
@@ -733,6 +717,28 @@ fn __fetch_messages_multi<'a>(conn_pool: &mut ConnectionPool, reqs: HashMap<Rc<S
         res.extend(resp.into_messages());
     }
     Ok(res)
+}
+
+/// ~ carries out the given produce requests and returns the reponse
+fn __send_messages(conn_pool: &mut ConnectionPool, reqs: HashMap<Rc<String>, protocol::ProduceRequest>, no_acks: bool)
+                   -> Result<Vec<utils::TopicPartitionOffsetError>>
+{
+    // Call each broker with the request formed earlier
+    if no_acks {
+        for (host, req) in reqs {
+            try!(__send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(conn_pool, &host, req));
+        }
+        Ok(vec!())
+    } else {
+        let mut res: Vec<utils::TopicPartitionOffsetError> = vec!();
+        for (host, req) in reqs {
+            let resp = try!(__send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(conn_pool, &host, req));
+            for tpo in resp.get_response() {
+                res.push(tpo);
+            }
+        }
+        Ok(res)
+    }
 }
 
 fn __send_receive<T: ToByte, V: FromByte>(conn_pool: &mut ConnectionPool, host: &str, req: T)
