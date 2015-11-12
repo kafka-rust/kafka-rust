@@ -5,7 +5,7 @@ use std::rc::Rc;
 use num::traits::FromPrimitive;
 
 use error::{Result, Error};
-use utils::{TopicMessage, TopicPartitionOffsetError, PartitionOffset};
+use utils::{TopicMessage, TopicPartitionOffsetError};
 use crc32::Crc32;
 use codecs::{AsStrings, ToByte, FromByte};
 use compression::Compression;
@@ -22,9 +22,11 @@ macro_rules! try_multi {
 
 // ~ these modules will see the above defined macro
 mod produce;
+mod offset;
 
 // ~ re-exports for request/response types defined in submodules
 pub use self::produce::{ProduceRequest, ProduceResponse};
+pub use self::offset::{OffsetRequest, OffsetResponse};
 
 // --------------------------------------------------------------------
 
@@ -68,6 +70,7 @@ pub struct HeaderRequest_<'a> {
     pub client_id: &'a str,
 }
 
+
 // Metadata
 #[derive(Debug)]
 pub struct MetadataRequest<'a, T: 'a> {
@@ -82,46 +85,6 @@ pub struct MetadataResponse {
     pub topics: Vec<TopicMetadata>
 }
 
-// Offset
-#[derive(Default, Debug)]
-pub struct OffsetRequest<'a> {
-    pub header: HeaderRequest,
-    pub replica: i32,
-    pub topic_partitions: Vec<TopicPartitionOffsetRequest<'a>>
-}
-
-#[derive(Default, Debug)]
-pub struct TopicPartitionOffsetRequest<'a> {
-    pub topic: &'a str,
-    pub partitions: Vec<PartitionOffsetRequest>
-}
-
-#[derive(Default, Debug)]
-pub struct PartitionOffsetRequest {
-    pub partition: i32,
-    pub max_offsets: i32,
-    pub time: i64,
-}
-
-
-#[derive(Default, Debug)]
-pub struct OffsetResponse {
-    pub header: HeaderResponse,
-    pub topic_partitions: Vec<TopicPartitionOffsetResponse>,
-}
-
-#[derive(Default, Debug)]
-pub struct TopicPartitionOffsetResponse {
-    pub topic: String,
-    pub partitions: Vec<PartitionOffsetResponse>,
-}
-
-#[derive(Default, Debug)]
-pub struct PartitionOffsetResponse {
-    pub partition: i32,
-    pub error: i16,
-    pub offset: Vec<i64>
-}
 
 // Fetch
 #[derive(Debug)]
@@ -351,66 +314,6 @@ impl<'a, T: AsRef<str>> MetadataRequest<'a, T> {
     }
 }
 
-impl<'a> OffsetRequest<'a> {
-    pub fn new(correlation: i32, clientid: Rc<String>) -> OffsetRequest<'a> {
-        OffsetRequest{
-            header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
-                                  clientid: clientid, version: API_VERSION},
-            replica: -1,
-            topic_partitions: vec!()
-        }
-    }
-
-    pub fn add(&mut self, topic: &'a str, partition: i32, time: i64) {
-        for tp in &mut self.topic_partitions {
-            if tp.topic == topic {
-                tp.add(partition, time);
-                return;
-            }
-        }
-        let mut tp = TopicPartitionOffsetRequest::new(topic);
-        tp.add(partition, time);
-        self.topic_partitions.push(tp);
-    }
-}
-
-impl<'a> TopicPartitionOffsetRequest<'a> {
-    pub fn new(topic: &'a str) -> TopicPartitionOffsetRequest<'a> {
-        TopicPartitionOffsetRequest {
-            topic: topic,
-            partitions: vec!()
-        }
-    }
-
-    pub fn add(&mut self, partition: i32, time: i64) {
-        self.partitions.push(PartitionOffsetRequest::new(partition, time));
-    }
-}
-
-impl PartitionOffsetRequest {
-    pub fn new(partition: i32, time: i64) -> PartitionOffsetRequest {
-        PartitionOffsetRequest{
-            partition: partition,
-            max_offsets: 1,
-            time: time,
-        }
-    }
-}
-
-impl PartitionOffsetResponse {
-    pub fn into_offset(self) -> PartitionOffset {
-        PartitionOffset {
-            partition: self.partition,
-            offset: match Error::from_i16(self.error) {
-                None => Ok(match self.offset.first() {
-                    Some(offs) => *offs,
-                    None => -1,
-                }),
-                Some(e) => Err(e),
-            }
-        }
-    }
-}
 
 impl<'a, 'b> FetchRequest<'a, 'b> {
 
@@ -708,16 +611,6 @@ impl<'a, T: AsRef<str> + 'a> ToByte for MetadataRequest<'a, T> {
     }
 }
 
-impl<'a> ToByte for OffsetRequest<'a> {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.replica.encode(buffer),
-            self.topic_partitions.encode(buffer)
-        )
-    }
-}
-
 
 impl<'a, 'b> ToByte for FetchRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
@@ -832,43 +725,6 @@ impl FromByte for MetadataResponse {
             self.header.decode(buffer),
             self.brokers.decode(buffer),
             self.topics.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for OffsetResponse {
-    type R = OffsetResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.topic_partitions.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for TopicPartitionOffsetResponse {
-    type R = TopicPartitionOffsetResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for PartitionOffsetResponse {
-    type R = PartitionOffsetResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.decode(buffer),
-            self.error.decode(buffer),
-            self.offset.decode(buffer)
         )
     }
 }
@@ -1040,25 +896,6 @@ impl FromByte for PartitionMetadata {
             self.leader.decode(buffer),
             self.replicas.decode(buffer),
             self.isr.decode(buffer)
-        )
-    }
-}
-
-impl<'a> ToByte for TopicPartitionOffsetRequest<'a> {
-    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.encode(buffer),
-            self.partitions.encode(buffer)
-        )
-    }
-}
-
-impl ToByte for PartitionOffsetRequest {
-    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.encode(buffer),
-            self.time.encode(buffer),
-            self.max_offsets.encode(buffer)
         )
     }
 }
