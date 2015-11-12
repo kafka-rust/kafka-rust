@@ -5,7 +5,7 @@ use std::rc::Rc;
 use num::traits::FromPrimitive;
 
 use error::{Result, Error};
-use utils::{OffsetMessage, TopicMessage, TopicPartitionOffsetError};
+use utils::{OffsetMessage, TopicMessage, TopicPartitionOffsetError, PartitionOffset};
 use crc32::Crc32;
 use codecs::{ToByte, FromByte};
 use compression::Compression;
@@ -113,40 +113,40 @@ pub struct PartitionProduceResponse {
 }
 
 // Offset
-#[derive(Default, Debug, Clone)]
-pub struct OffsetRequest {
+#[derive(Default, Debug)]
+pub struct OffsetRequest<'a> {
     pub header: HeaderRequest,
     pub replica: i32,
-    pub topic_partitions: Vec<TopicPartitionOffsetRequest>
+    pub topic_partitions: Vec<TopicPartitionOffsetRequest<'a>>
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct TopicPartitionOffsetRequest {
-    pub topic: String,
+#[derive(Default, Debug)]
+pub struct TopicPartitionOffsetRequest<'a> {
+    pub topic: &'a str,
     pub partitions: Vec<PartitionOffsetRequest>
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug)]
 pub struct PartitionOffsetRequest {
     pub partition: i32,
+    pub max_offsets: i32,
     pub time: i64,
-    pub max_offsets: i32
 }
 
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug)]
 pub struct OffsetResponse {
     pub header: HeaderResponse,
     pub topic_partitions: Vec<TopicPartitionOffsetResponse>,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug)]
 pub struct TopicPartitionOffsetResponse {
     pub topic: String,
     pub partitions: Vec<PartitionOffsetResponse>,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug)]
 pub struct PartitionOffsetResponse {
     pub partition: i32,
     pub error: i16,
@@ -358,8 +358,8 @@ impl MetadataRequest {
     }
 }
 
-impl OffsetRequest {
-    pub fn new(correlation: i32, clientid: Rc<String>) -> OffsetRequest{
+impl<'a> OffsetRequest<'a> {
+    pub fn new(correlation: i32, clientid: Rc<String>) -> OffsetRequest<'a> {
         OffsetRequest{
             header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
                                   clientid: clientid, version: VERSION},
@@ -368,21 +368,21 @@ impl OffsetRequest {
         }
     }
 
-    pub fn add(&mut self, topic: &str, partition: i32, time: i64) {
+    pub fn add(&mut self, topic: &'a str, partition: i32, time: i64) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
                 tp.add(partition, time);
                 return;
             }
         }
-        let mut tp = TopicPartitionOffsetRequest::new(topic.to_owned());
+        let mut tp = TopicPartitionOffsetRequest::new(topic);
         tp.add(partition, time);
         self.topic_partitions.push(tp);
     }
 }
 
-impl TopicPartitionOffsetRequest {
-    pub fn new(topic: String) -> TopicPartitionOffsetRequest{
+impl<'a> TopicPartitionOffsetRequest<'a> {
+    pub fn new(topic: &'a str) -> TopicPartitionOffsetRequest<'a> {
         TopicPartitionOffsetRequest {
             topic: topic,
             partitions: vec!()
@@ -396,47 +396,28 @@ impl TopicPartitionOffsetRequest {
 
 impl PartitionOffsetRequest {
     pub fn new(partition: i32, time: i64) -> PartitionOffsetRequest {
-
         PartitionOffsetRequest{
             partition: partition,
+            max_offsets: 1,
             time: time,
-            max_offsets: 1
         }
-    }
-}
-
-impl OffsetResponse {
-    pub fn get_offsets(&self) -> Vec<TopicPartitionOffsetError> {
-        self.topic_partitions
-            .iter()
-            .flat_map(|ref tp| tp.get_offsets(tp.topic.clone()))
-            .collect()
-    }
-}
-
-impl TopicPartitionOffsetResponse {
-    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffsetError> {
-        self.partitions
-            .iter()
-            .map(|ref p| p.get_offsets(topic.clone()))
-            .collect()
     }
 }
 
 impl PartitionOffsetResponse {
-    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffsetError {
-        TopicPartitionOffsetError{
-            topic: topic,
+    pub fn into_offset(self) -> PartitionOffset {
+        PartitionOffset {
             partition: self.partition,
-            offset: match self.offset.first() {
-                Some(offs) => *offs,
-                None => -1,
-            },
-            error: Error::from_i16(self.error)
+            offset: match Error::from_i16(self.error) {
+                None => Ok(match self.offset.first() {
+                    Some(offs) => *offs,
+                    None => -1,
+                }),
+                Some(e) => Err(e),
+            }
         }
     }
 }
-
 
 impl ProduceRequest {
     pub fn new(required_acks: i16, timeout: i32,
@@ -834,7 +815,7 @@ impl ToByte for MetadataRequest {
     }
 }
 
-impl ToByte for OffsetRequest {
+impl<'a> ToByte for OffsetRequest<'a> {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.header.encode(buffer),
@@ -1247,7 +1228,7 @@ impl FromByte for PartitionMetadata {
     }
 }
 
-impl ToByte for TopicPartitionOffsetRequest {
+impl<'a> ToByte for TopicPartitionOffsetRequest<'a> {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.topic.encode(buffer),
