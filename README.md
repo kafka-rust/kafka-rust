@@ -4,7 +4,7 @@
 
 ### Documentation
 
-[Kafka Rust Client Documentation](http://fauzism.co/rustdoc/kafka/index.html)
+[Kafka Rust Client Documentation](https://spicavigo.github.io/kafka-rust/)
 
 The documentation includes some examples too.
 
@@ -21,7 +21,7 @@ kafka = "*"
 #### Usage:
 
 ##### Load topic metadata:
-[Load Metadata] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.load_metadata_all)
+[Load Metadata] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.load_metadata_all)
 ```rust
 extern crate kafka;
 use kafka::client::KafkaClient;
@@ -34,7 +34,7 @@ fn main() {
 ```
 ##### Fetch Offsets:
 
-[For one topic] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_topic_offset)
+[For one topic] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_topic_offset)
 
 ```rust
 extern crate kafka;
@@ -46,7 +46,7 @@ fn main() {
 }
 ```
 
-[For multiple topics] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_offsets)
+[For multiple topics] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_offsets)
 
 ```rust
 extern crate kafka;
@@ -60,7 +60,7 @@ fn main() {
 ```
 ##### Produce:
 
-[Single Message] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.send_message)
+[Single Message] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.send_message)
 
 ```rust
 extern crate kafka;
@@ -73,7 +73,7 @@ fn main() {
 }
 ```
 
-[Multiple Messages] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.send_messages)
+[Multiple Messages] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.send_messages)
 
 ```rust
 extern crate kafka;
@@ -92,7 +92,7 @@ fn main() {
 
 ##### Fetch Messages:
 
-[Single (topic, partition, offset)] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_messages)
+[Single (topic, partition, offset)] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_messages)
 
 ```rust
 extern crate kafka;
@@ -105,7 +105,7 @@ fn main() {
 }
 ```
 
-[Multiple (topic, partition, offset)] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_messages_multi)
+[Multiple (topic, partition, offset)] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_messages_multi)
 
 ```rust
 extern crate kafka;
@@ -129,7 +129,7 @@ fn main() {
 
 ##### Commit Offsets to a Consumer Group:
 
-[Single (group, topic, partition, offset)] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.commit_offset)
+[Single (group, topic, partition, offset)] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.commit_offset)
 
 ```rust
 extern crate kafka;
@@ -142,7 +142,7 @@ fn main() {
 }
 ```
 
-[Single group, Multiple (topic, partition, offset)] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.commit_offsets)
+[Single group, Multiple (topic, partition, offset)] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.commit_offsets)
 
 ```rust
 extern crate kafka;
@@ -166,7 +166,7 @@ fn main() {
 
 ##### Fetch Offsets of a Consumer Group:
 
-[Offsets for all topics/partitions in a group] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_group_offset)
+[Offsets for all topics/partitions in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_offset)
 
 ```rust
 extern crate kafka;
@@ -179,7 +179,7 @@ fn main() {
 }
 ```
 
-[Offsets for a topic and all its partitions in a group] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_group_topic_offset)
+[Offsets for a topic and all its partitions in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_topic_offset)
 
 ```rust
 extern crate kafka;
@@ -192,7 +192,7 @@ fn main() {
 }
 ```
 
-[Offsets for Multiple (topic, partition) in a group] (http://fauzism.co/rustdoc/kafka/client/struct.KafkaClient.html#method.fetch_group_topics_offset)
+[Offsets for Multiple (topic, partition) in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_topics_offset)
 
 ```rust
 extern crate kafka;
@@ -212,7 +212,7 @@ fn main() {
 }
 ```
 
-##### [Consumer] (http://fauzism.co/rustdoc/kafka/consumer/index.html)
+##### [Consumer] (https://spicavigo.github.io/kafka-rust/kafka/consumer/index.html)
 
 This is a simple Consumer for kafka. It handles offset management internally (Fetching offset for the group at the start and committing offsets at a pre-defined interval - 100 consumed messages currently) and provides an Iterator interface.
 
