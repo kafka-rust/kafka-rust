@@ -7,7 +7,7 @@ use num::traits::FromPrimitive;
 use error::{Result, Error};
 use utils::{TopicMessage, TopicPartitionOffsetError};
 use crc32::Crc32;
-use codecs::{AsStrings, ToByte, FromByte};
+use codecs::{ToByte, FromByte};
 use compression::Compression;
 use snappy;
 use gzip;
@@ -23,10 +23,12 @@ macro_rules! try_multi {
 // ~ these modules will see the above defined macro
 mod produce;
 mod offset;
+mod metadata;
 
 // ~ re-exports for request/response types defined in submodules
 pub use self::produce::{ProduceRequest, ProduceResponse};
 pub use self::offset::{OffsetRequest, OffsetResponse};
+pub use self::metadata::{MetadataRequest, MetadataResponse};
 
 // --------------------------------------------------------------------
 
@@ -68,21 +70,6 @@ pub struct HeaderRequest_<'a> {
     pub api_version: i16,
     pub correlation_id: i32,
     pub client_id: &'a str,
-}
-
-
-// Metadata
-#[derive(Debug)]
-pub struct MetadataRequest<'a, T: 'a> {
-    pub header: HeaderRequest_<'a>,
-    pub topics: &'a [T]
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct MetadataResponse {
-    pub header: HeaderResponse,
-    pub brokers: Vec<BrokerMetadata>,
-    pub topics: Vec<TopicMetadata>
 }
 
 
@@ -229,29 +216,6 @@ pub struct PartitionOffsetFetchResponse {
 // Helper Structs
 
 #[derive(Default, Debug, Clone)]
-pub struct BrokerMetadata {
-    pub nodeid: i32,
-    pub host: String,
-    pub port: i32
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct TopicMetadata {
-    pub error: i16,
-    pub topic: String,
-    pub partitions: Vec<PartitionMetadata>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct PartitionMetadata {
-    pub error: i16,
-    pub id: i32,
-    pub leader: i32,
-    pub replicas: Vec<i32>,
-    pub isr: Vec<i32>
-}
-
-#[derive(Default, Debug, Clone)]
 pub struct MessageSet {
     pub message: Vec<MessageSetInner>
 }
@@ -302,17 +266,6 @@ impl<'a> ToByte for HeaderRequest_<'a> {
 }
 
 // Constructors for Requests
-impl<'a, T: AsRef<str>> MetadataRequest<'a, T> {
-    pub fn new(correlation_id: i32, client_id: &'a str, topics: &'a [T])
-               -> MetadataRequest<'a, T>
-    {
-        MetadataRequest {
-            header: HeaderRequest_::new(
-                API_KEY_METADATA, API_VERSION, correlation_id, client_id),
-            topics: topics
-        }
-    }
-}
 
 
 impl<'a, 'b> FetchRequest<'a, 'b> {
@@ -603,14 +556,6 @@ impl ToByte for HeaderRequest {
     }
 }
 
-impl<'a, T: AsRef<str> + 'a> ToByte for MetadataRequest<'a, T> {
-    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            AsStrings(self.topics).encode(buffer))
-    }
-}
-
 
 impl<'a, 'b> ToByte for FetchRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
@@ -716,18 +661,6 @@ impl FromByte for HeaderResponse {
     }
 }
 
-impl FromByte for MetadataResponse {
-    type R = MetadataResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.brokers.decode(buffer),
-            self.topics.decode(buffer)
-        )
-    }
-}
 
 
 impl FromByte for FetchResponse {
@@ -858,47 +791,6 @@ impl FromByte for PartitionOffsetFetchResponse {
 }
 
 // For Helper Structs
-
-impl FromByte for BrokerMetadata {
-    type R = BrokerMetadata;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.nodeid.decode(buffer),
-            self.host.decode(buffer),
-            self.port.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for TopicMetadata {
-    type R = TopicMetadata;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.error.decode(buffer),
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for PartitionMetadata {
-    type R = PartitionMetadata;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.error.decode(buffer),
-            self.id.decode(buffer),
-            self.leader.decode(buffer),
-            self.replicas.decode(buffer),
-            self.isr.decode(buffer)
-        )
-    }
-}
 
 impl ToByte for MessageSet {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
