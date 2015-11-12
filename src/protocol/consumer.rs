@@ -10,46 +10,46 @@ use utils::TopicPartitionOffsetError;
 use super::{HeaderRequest, HeaderResponse};
 use super::{OFFSET_FETCH_KEY, OFFSET_COMMIT_KEY, API_VERSION};
 
-#[derive(Debug)]
-pub struct ConsumerMetadataRequest {
-    pub header: HeaderRequest,
-    pub group: String
-}
+// #[derive(Debug)]
+// pub struct ConsumerMetadataRequest {
+//     pub header: HeaderRequest,
+//     pub group: String
+// }
 
-impl ToByte for ConsumerMetadataRequest {
-    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.group.encode(buffer)
-        )
-    }
-}
+// impl ToByte for ConsumerMetadataRequest {
+//     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+//         try_multi!(
+//             self.header.encode(buffer),
+//             self.group.encode(buffer)
+//         )
+//     }
+// }
 
-// --------------------------------------------------------------------
+// // --------------------------------------------------------------------
 
-#[derive(Default, Debug)]
-pub struct ConsumerMetadataResponse {
-    pub header: HeaderResponse,
-    pub error: i16,
-    pub id: i32,
-    pub host: String,
-    pub port: i32
-}
+// #[derive(Default, Debug)]
+// pub struct ConsumerMetadataResponse {
+//     pub header: HeaderResponse,
+//     pub error: i16,
+//     pub id: i32,
+//     pub host: String,
+//     pub port: i32
+// }
 
-impl FromByte for ConsumerMetadataResponse {
-    type R = ConsumerMetadataResponse;
+// impl FromByte for ConsumerMetadataResponse {
+//     type R = ConsumerMetadataResponse;
 
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.error.decode(buffer),
-            self.id.decode(buffer),
-            self.host.decode(buffer),
-            self.port.decode(buffer)
-        )
-    }
-}
+//     #[allow(unused_must_use)]
+//     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+//         try_multi!(
+//             self.header.decode(buffer),
+//             self.error.decode(buffer),
+//             self.id.decode(buffer),
+//             self.host.decode(buffer),
+//             self.port.decode(buffer)
+//         )
+//     }
+// }
 
 // --------------------------------------------------------------------
 

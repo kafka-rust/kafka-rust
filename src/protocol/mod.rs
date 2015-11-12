@@ -29,8 +29,8 @@ pub use self::produce::{ProduceRequest, ProduceResponse};
 pub use self::offset::{OffsetRequest, OffsetResponse};
 pub use self::metadata::{MetadataRequest, MetadataResponse};
 pub use self::fetch::{FetchRequest, FetchResponse};
-pub use self::consumer::{ConsumerMetadataRequest, ConsumerMetadataResponse,
-                         OffsetFetchRequest, OffsetFetchResponse,
+// pub use self::consumer::{ConsumerMetadataRequest, ConsumerMetadataResponse};
+pub use self::consumer::{OffsetFetchRequest, OffsetFetchResponse,
                          OffsetCommitRequest, OffsetCommitResponse};
 
 // --------------------------------------------------------------------
