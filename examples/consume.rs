@@ -1,5 +1,6 @@
 extern crate kafka;
-use kafka::client::KafkaClient;
+
+use kafka::client::{KafkaClient, FetchOffset};
 
 /// This program demonstrates consuming messages through `KafkaClient`. This is the top level
 /// client that will fit most use cases. Note that consumed messages are tracked by Kafka so you
@@ -26,7 +27,7 @@ fn main() {
     }
 
     let con = kafka::consumer::Consumer::new(client, "test-group".to_owned(), topic.to_owned())
-        .fallback_offset(-2);
+        .fallback_offset(FetchOffset::Earliest);
 
     for msg in con {
         println!("{:?}", msg);

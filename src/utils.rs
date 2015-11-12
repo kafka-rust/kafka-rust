@@ -1,7 +1,8 @@
 //! Some utility structures
 
-use error::Error;
+use error::{Result,Error};
 
+// XXX move to protocol module
 #[derive(Clone, Debug)]
 pub struct OffsetMessage {
     pub offset: i64,
@@ -23,11 +24,10 @@ pub struct ProduceMessage {
     pub message: Vec<u8>
 }
 
-
 #[derive(Debug)]
 pub struct PartitionOffset {
     pub partition: i32,
-    pub offset: i64
+    pub offset: Result<i64>,
 }
 
 #[derive(Debug)]

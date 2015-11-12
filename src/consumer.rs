@@ -11,7 +11,7 @@
 //! let res = client.load_metadata_all();
 //! let con = kafka::consumer::Consumer::new(client, "test-group".to_owned(), "my-topic".to_owned())
 //!             .partition(0)
-//!             .fallback_offset(-2);
+//!             .fallback_offset(kafka::client::FetchOffset::Earliest);
 //! for msg in con {
 //!     println!("{:?}", msg);
 //! }
@@ -24,8 +24,8 @@
 
 use std::collections::HashMap;
 use error::{Error, Result};
-use utils::{TopicMessage, TopicPartitionOffset, TopicPartitionOffsetError};
-use client::KafkaClient;
+use utils::{TopicMessage, TopicPartitionOffset, TopicPartitionOffsetError, PartitionOffset};
+use client::{KafkaClient, FetchOffset};
 
 const COMMIT_INTERVAL: i32 = 100; // Commit after every 100 message
 
@@ -41,7 +41,7 @@ pub struct Consumer {
     offsets: HashMap<i32, i64>,
     consumed: i32,
 
-    fallback_offset: Option<i64>,
+    fallback_offset: Option<FetchOffset>,
 }
 
 impl Consumer {
@@ -84,7 +84,7 @@ impl Consumer {
     /// Unless this method is called and there is no offset committed
     /// for the underlying group yet, this consumer will _not_ retrieve
     /// any messages from the underlying topic.
-    pub fn fallback_offset(mut self, fallback_offset_time: i64) -> Consumer {
+    pub fn fallback_offset(mut self, fallback_offset_time: FetchOffset) -> Consumer {
         self.fallback_offset = Some(fallback_offset_time);
         self
     }
@@ -135,18 +135,14 @@ impl Consumer {
             // and start consuming starting at those
             if let Some(fallback_offset) = self.fallback_offset {
                 // ~ now fetch the offset according to the specified strategy
-                let new_offs = {
-                    let mut r = try!(self.client.fetch_topic_offset(self.topic.clone(), fallback_offset));
-                    match r.remove(&self.topic) {
-                        None => return Err(Error::UnknownTopicOrPartition),
-                        Some(pts) => pts,
-                    }
-                };
+                let new_offs = try!(self.client.fetch_topic_offset(&self.topic, fallback_offset));
                 // ehm ... not really fast (O(n^2))
                 for tpo in tpos.iter_mut() {
                     if tpo.offset == -1 {
-                        if let Some(new_off) = new_offs.iter().find(|pt| pt.partition == tpo.partition) {
-                            tpo.offset = new_off.offset;
+                        if let Some(&PartitionOffset {offset: Ok(offset), ..})
+                            = new_offs.iter().find(|pt| pt.partition == tpo.partition)
+                        {
+                            tpo.offset = offset;
                             tpo.error = None;
                         }
                     }
