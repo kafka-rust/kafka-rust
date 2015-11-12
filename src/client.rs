@@ -126,15 +126,15 @@ impl KafkaClient {
     /// Reloads metadata for a list of supplied topics.
     ///
     /// Note: if any of the specified topics does not exist yet on the
-    /// underlying brokers and those have the [configuration for "auto
+    /// underlying brokers and these have the [configuration for "auto
     /// create topics"
     /// enabled](https://kafka.apache.org/documentation.html#configuration),
-    /// the remote kafka instance will create them on the fly as a
-    /// result of explicitely loading their metadata.  This is in
-    /// contrast to other methods of this `KafkaClient` which will
-    /// silently filter out requests not-yet-loaded/not-yet-known
-    /// topics and, thus, not cause topics to be automatically
-    /// created.
+    /// the remote kafka instance will create the yet missing topics
+    /// on the fly as a result of explicitely loading their metadata.
+    /// This is in contrast to other methods of this `KafkaClient`
+    /// which will silently filter out requests to
+    /// not-yet-loaded/not-yet-known topics and, thus, not cause
+    /// topics to be automatically created.
     ///
     /// # Examples
     ///
