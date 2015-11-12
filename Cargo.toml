@@ -1,6 +1,6 @@
 [package]
 name = "kafka"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Yousuf Fauzan https://github.com/spicavigo"]
 description = "Rust client for Apache Kafka"
 homepage = "https://github.com/spicavigo/kafka-rust"
@@ -15,7 +15,7 @@ build = "build.rs"
 [dependencies]
 num = "0.1"
 byteorder = "0.3"
-libc="0.1"
+libc = "0.1"
 flate2 = "0.2"
 
 [build-dependencies]
