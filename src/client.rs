@@ -577,7 +577,7 @@ impl KafkaClient {
 
         // Call each broker with the request formed earlier
         for (host, req) in reqs {
-            try!(__send_receive::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(&mut self.conn_pool, &host, req.clone()));
+            try!(__send_receive::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(&mut self.conn_pool, &host, req));
         }
         Ok(())
     }

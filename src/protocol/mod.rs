@@ -2,10 +2,7 @@ use std::io::{Read, Write};
 use std::io::Cursor;
 use std::rc::Rc;
 
-use num::traits::FromPrimitive;
-
 use error::{Result, Error};
-use utils::TopicPartitionOffsetError;
 use crc32::Crc32;
 use codecs::{ToByte, FromByte};
 use compression::Compression;
@@ -25,12 +22,16 @@ mod produce;
 mod offset;
 mod metadata;
 mod fetch;
+mod consumer;
 
 // ~ re-exports for request/response types defined in submodules
 pub use self::produce::{ProduceRequest, ProduceResponse};
 pub use self::offset::{OffsetRequest, OffsetResponse};
 pub use self::metadata::{MetadataRequest, MetadataResponse};
 pub use self::fetch::{FetchRequest, FetchResponse};
+pub use self::consumer::{ConsumerMetadataRequest, ConsumerMetadataResponse,
+                         OffsetFetchRequest, OffsetFetchResponse,
+                         OffsetCommitRequest, OffsetCommitResponse};
 
 // --------------------------------------------------------------------
 
@@ -75,101 +76,6 @@ pub struct HeaderRequest_<'a> {
 }
 
 
-// Consumer Metadata
-#[derive(Default, Debug, Clone)]
-pub struct ConsumerMetadataRequest {
-    pub header: HeaderRequest,
-    pub group: String
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct ConsumerMetadataResponse {
-    pub header: HeaderResponse,
-    pub error: i16,
-    pub id: i32,
-    pub host: String,
-    pub port: i32
-}
-
-// Offset Commit
-#[derive(Default, Debug, Clone)]
-pub struct OffsetCommitRequest {
-    pub header: HeaderRequest,
-    pub group: String,
-    pub topic_partitions: Vec<TopicPartitionOffsetCommitRequest>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct TopicPartitionOffsetCommitRequest {
-    pub topic: String,
-    pub partitions: Vec<PartitionOffsetCommitRequest>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct PartitionOffsetCommitRequest {
-    pub partition: i32,
-    pub offset: i64,
-    pub metadata: String
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct OffsetCommitResponse {
-    pub header: HeaderResponse,
-    pub topic_partitions: Vec<TopicPartitionOffsetCommitResponse>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct TopicPartitionOffsetCommitResponse {
-    pub topic: String,
-    pub partitions: Vec<PartitionOffsetCommitResponse>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct PartitionOffsetCommitResponse {
-    pub partition: i32,
-    pub error: i16
-}
-
-// Offset Fetch
-#[derive(Default, Debug, Clone)]
-pub struct OffsetFetchRequest {
-    pub header: HeaderRequest,
-    pub group: String,
-    pub topic_partitions: Vec<TopicPartitionOffsetFetchRequest>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct TopicPartitionOffsetFetchRequest {
-    pub topic: String,
-    pub partitions: Vec<PartitionOffsetFetchRequest>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct PartitionOffsetFetchRequest {
-    pub partition: i32
-}
-
-
-#[derive(Default, Debug, Clone)]
-pub struct OffsetFetchResponse {
-    pub header: HeaderResponse,
-    pub topic_partitions: Vec<TopicPartitionOffsetFetchResponse>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct TopicPartitionOffsetFetchResponse {
-    pub topic: String,
-    pub partitions: Vec<PartitionOffsetFetchResponse>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct PartitionOffsetFetchResponse {
-    pub partition: i32,
-    pub offset: i64,
-    pub metadata: String,
-    pub error: i16
-}
-
 // Helper Structs
 
 #[derive(Debug)]
@@ -212,119 +118,7 @@ impl<'a> ToByte for HeaderRequest_<'a> {
 
 // Constructors for Requests
 
-impl OffsetCommitRequest {
-    pub fn new(group: String, correlation: i32, clientid: Rc<String>) -> OffsetCommitRequest {
-        OffsetCommitRequest{
-            header: HeaderRequest{key: OFFSET_COMMIT_KEY, correlation: correlation,
-                                  clientid: clientid, version: API_VERSION},
-            group: group,
-            topic_partitions: vec!()
-            }
-    }
 
-    pub fn add(&mut self, topic: String, partition: i32, offset: i64, metadata: String) {
-        for tp in &mut self.topic_partitions {
-            if tp.topic == topic {
-                tp.add(partition, offset, metadata);
-                return;
-            }
-        }
-        let mut tp = TopicPartitionOffsetCommitRequest::new(topic.clone());
-        tp.add(partition, offset, metadata);
-        self.topic_partitions.push(tp);
-    }
-}
-
-impl TopicPartitionOffsetCommitRequest {
-    pub fn new(topic: String) -> TopicPartitionOffsetCommitRequest{
-        TopicPartitionOffsetCommitRequest {
-            topic: topic,
-            partitions: vec!()
-        }
-    }
-
-    pub fn add(&mut self, partition: i32, offset: i64, metadata: String) {
-        self.partitions.push(PartitionOffsetCommitRequest::new(partition, offset, metadata))
-    }
-}
-
-impl PartitionOffsetCommitRequest {
-    pub fn new(partition: i32, offset: i64, metadata: String) -> PartitionOffsetCommitRequest {
-
-        PartitionOffsetCommitRequest{
-            partition: partition,
-            offset: offset,
-            metadata: metadata
-        }
-    }
-}
-
-impl OffsetFetchRequest {
-    pub fn new(group: String, correlation: i32, clientid: Rc<String>) -> OffsetFetchRequest {
-        OffsetFetchRequest{
-            header: HeaderRequest{key: OFFSET_FETCH_KEY, correlation: correlation,
-                                  clientid: clientid, version: API_VERSION},
-            group: group,
-            topic_partitions: vec!()}
-    }
-
-    pub fn add(&mut self, topic: String, partition: i32) {
-        for tp in &mut self.topic_partitions {
-            if tp.topic == topic {
-                tp.add(partition);
-                return;
-            }
-        }
-        let mut tp = TopicPartitionOffsetFetchRequest::new(topic.clone());
-        tp.add(partition);
-        self.topic_partitions.push(tp);
-    }
-}
-
-impl TopicPartitionOffsetFetchRequest {
-    pub fn new(topic: String) -> TopicPartitionOffsetFetchRequest {
-        TopicPartitionOffsetFetchRequest{topic: topic, partitions: vec!()}
-    }
-
-    pub fn add(&mut self, partition: i32) {
-        self.partitions.push(PartitionOffsetFetchRequest::new(partition));
-    }
-}
-
-impl PartitionOffsetFetchRequest {
-    pub fn new(partition: i32) -> PartitionOffsetFetchRequest {
-        PartitionOffsetFetchRequest{partition: partition}
-    }
-}
-
-impl OffsetFetchResponse {
-    pub fn get_offsets(&self) -> Vec<TopicPartitionOffsetError>{
-        self.topic_partitions
-            .iter()
-            .flat_map(|ref tp| tp.get_offsets(tp.topic.clone()))
-            .collect()
-    }
-}
-
-impl TopicPartitionOffsetFetchResponse {
-    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffsetError>{
-        self.partitions
-            .iter()
-            .map(|ref p| p.get_offsets(topic.clone()))
-            .collect()
-    }
-}
-
-impl PartitionOffsetFetchResponse {
-    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffsetError{
-        TopicPartitionOffsetError{
-            topic: topic,
-            partition: self.partition,
-            offset: self.offset,
-            error: Error::from_i16(self.error)
-        }
-    }
-}
 
 impl MessageSet {
     pub fn new(message: Vec<u8>) -> MessageSet {
@@ -415,69 +209,6 @@ impl ToByte for HeaderRequest {
 }
 
 
-impl ToByte for ConsumerMetadataRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.group.encode(buffer)
-        )
-    }
-}
-
-impl ToByte for OffsetCommitRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.group.encode(buffer),
-            self.topic_partitions.encode(buffer)
-        )
-    }
-}
-
-impl ToByte for TopicPartitionOffsetCommitRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.encode(buffer),
-            self.partitions.encode(buffer)
-        )
-    }
-}
-
-impl ToByte for PartitionOffsetCommitRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.encode(buffer),
-            self.offset.encode(buffer),
-            self.metadata.encode(buffer)
-        )
-    }
-}
-
-impl ToByte for OffsetFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.group.encode(buffer),
-            self.topic_partitions.encode(buffer)
-        )
-    }
-}
-
-impl ToByte for TopicPartitionOffsetFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.encode(buffer),
-            self.partitions.encode(buffer)
-        )
-    }
-}
-
-impl ToByte for PartitionOffsetFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        self.partition.encode(buffer)
-    }
-}
-
 // Responses
 impl FromByte for HeaderResponse {
     type R = HeaderResponse;
@@ -488,95 +219,6 @@ impl FromByte for HeaderResponse {
     }
 }
 
-
-impl FromByte for ConsumerMetadataResponse {
-    type R = ConsumerMetadataResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.error.decode(buffer),
-            self.id.decode(buffer),
-            self.host.decode(buffer),
-            self.port.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for OffsetCommitResponse {
-    type R = OffsetCommitResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.topic_partitions.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for TopicPartitionOffsetCommitResponse {
-    type R = TopicPartitionOffsetCommitResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for PartitionOffsetCommitResponse {
-    type R = PartitionOffsetCommitResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.decode(buffer),
-            self.error.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for OffsetFetchResponse {
-    type R = OffsetFetchResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.topic_partitions.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for TopicPartitionOffsetFetchResponse {
-    type R = TopicPartitionOffsetFetchResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for PartitionOffsetFetchResponse {
-    type R = PartitionOffsetFetchResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.decode(buffer),
-            self.offset.decode(buffer),
-            self.metadata.decode(buffer),
-            self.error.decode(buffer)
-        )
-    }
-}
 
 // For Helper Structs
 
