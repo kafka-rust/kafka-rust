@@ -66,6 +66,26 @@ pub struct HeaderResponse {
     pub correlation: i32
 }
 
+impl ToByte for HeaderRequest {
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.key.encode(buffer),
+            self.version.encode(buffer),
+            self.correlation.encode(buffer),
+            self.clientid.encode(buffer)
+        )
+    }
+}
+
+impl FromByte for HeaderResponse {
+    type R = HeaderResponse;
+
+    #[allow(unused_must_use)]
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        self.correlation.decode(buffer)
+    }
+}
+
 // this is a replacement for the old HeaderRequest
 #[derive(Debug)]
 pub struct HeaderRequest_<'a> {
@@ -73,24 +93,6 @@ pub struct HeaderRequest_<'a> {
     pub api_version: i16,
     pub correlation_id: i32,
     pub client_id: &'a str,
-}
-
-
-// Helper Structs
-
-#[derive(Debug)]
-pub struct OffsetMessage {
-    pub offset: i64,
-    pub message: Vec<u8>
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct Message {
-    pub crc: i32,
-    pub magic: i8,
-    pub attributes: i8,
-    pub key: Vec<u8>,
-    pub value: Vec<u8>
 }
 
 impl<'a> HeaderRequest_<'a> {
@@ -116,9 +118,24 @@ impl<'a> ToByte for HeaderRequest_<'a> {
     }
 }
 
-// Constructors for Requests
+// Helper Structs
 
+// XXX we want this to end up in fetch.rs since produce.rs will have its own version
 
+#[derive(Debug)]
+pub struct OffsetMessage {
+    pub offset: i64,
+    pub message: Vec<u8>
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct Message {
+    pub crc: i32,
+    pub magic: i8,
+    pub attributes: i8,
+    pub key: Vec<u8>,
+    pub value: Vec<u8>
+}
 
 impl MessageSet {
     pub fn new(message: Vec<u8>) -> MessageSet {
@@ -195,32 +212,6 @@ fn message_decode_loop_gzip<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>
     let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
     Ok(mset.into_messages())
 }
-
-// Encoder and Decoder implementations
-impl ToByte for HeaderRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.key.encode(buffer),
-            self.version.encode(buffer),
-            self.correlation.encode(buffer),
-            self.clientid.encode(buffer)
-        )
-    }
-}
-
-
-// Responses
-impl FromByte for HeaderResponse {
-    type R = HeaderResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        self.correlation.decode(buffer)
-    }
-}
-
-
-// For Helper Structs
 
 #[derive(Default, Debug)]
 pub struct MessageSet {
