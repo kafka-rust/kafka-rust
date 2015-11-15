@@ -10,9 +10,6 @@ use error::{Result, Error};
 
 pub trait ToByte {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()>;
-    fn encode_nolen<T: Write>(&self, buffer: &mut T)  -> Result<()> {
-        self.encode(buffer)
-    }
 }
 
 
@@ -50,7 +47,7 @@ impl ToByte for str {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try!(self.len().to_i16().ok_or(Error::CodecError));
         try!(buffer.write_i16::<BigEndian>(l));
-        self.as_bytes().encode_nolen(buffer)
+        buffer.write_all(self.as_bytes()).or_else(|e| Err(From::from(e)))
     }
 }
 
@@ -58,9 +55,6 @@ impl <V: ToByte> ToByte for [V] {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try!(self.len().to_i32().ok_or(Error::CodecError));
         try!(buffer.write_i32::<BigEndian>(l));
-        self.encode_nolen(buffer)
-    }
-    fn encode_nolen<T:Write>(&self, buffer: &mut T) -> Result<()> {
         for e in self {
             try!(e.encode(buffer));
         }
@@ -72,9 +66,6 @@ impl ToByte for [u8] {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try!(self.len().to_i32().ok_or(Error::CodecError));
         try!(buffer.write_i32::<BigEndian>(l));
-        self.encode_nolen(buffer)
-    }
-    fn encode_nolen<T: Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
 }
@@ -88,12 +79,8 @@ impl<'a, T: AsRef<str> + 'a> ToByte for AsStrings<'a, T> {
         let &AsStrings(xs) = self;
         let l = try!(xs.len().to_i32().ok_or(Error::CodecError));
         try!(buffer.write_i32::<BigEndian>(l));
-        self.encode_nolen(buffer)
-    }
-    fn encode_nolen<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        let &AsStrings(xs) = self;
-        for e in xs {
-            try!(e.as_ref().encode(buffer));
+        for x in xs {
+            try!(x.as_ref().encode(buffer));
         }
         Ok(())
     }
