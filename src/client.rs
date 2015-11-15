@@ -388,9 +388,6 @@ impl KafkaClient {
 
     /// Send a message to Kafka
     ///
-    /// You can figure out the appropriate partition and offset using client's
-    /// `client.topic_partitions` and `client.fetch_topic_offset(topic)`
-    ///
     /// `required_acks` - indicates how many acknowledgements the servers should receive before
     /// responding to the request. If it is 0 the server will not send any response
     /// (this is the only case where the server will not reply to a request).
