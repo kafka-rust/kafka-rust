@@ -1,14 +1,15 @@
-use std::io::{Read, Write};
-
-use num::traits::FromPrimitive;
+use std::io::{Cursor, Read, Write};
 
 use codecs::{ToByte, FromByte};
+use compression::Compression;
 use error::{Error, Result};
+use gzip;
+use num::traits::FromPrimitive;
+use snappy;
 use utils::{TopicMessage};
 
 use super::{HeaderRequest_, HeaderResponse};
 use super::{API_KEY_FETCH, API_VERSION, FETCH_MAX_WAIT_TIME, FETCH_MIN_BYTES, MAX_FETCH_BUFFER_SIZE_BYTES};
-use super::{MessageSet};
 
 #[derive(Debug)]
 pub struct FetchRequest<'a, 'b> {
@@ -208,6 +209,154 @@ impl FromByte for PartitionFetchResponse {
             self.error.decode(buffer),
             self.offset.decode(buffer),
             self.messageset.decode(buffer)
+        )
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct MessageSet {
+    pub message: Vec<MessageSetInner>
+}
+
+#[derive(Default, Debug)]
+pub struct MessageSetInner {
+    pub offset: i64,
+    pub messagesize: i32,
+    pub message: Message
+}
+
+#[derive(Default, Debug)]
+pub struct Message {
+    pub crc: i32,
+    pub magic: i8,
+    pub attributes: i8,
+    pub key: Vec<u8>,
+    pub value: Vec<u8>
+}
+
+#[derive(Debug)]
+pub struct OffsetMessage {
+    pub offset: i64,
+    pub message: Vec<u8>
+}
+
+impl MessageSet {
+    fn into_messages(self) -> Vec<OffsetMessage> {
+        self.message
+            .into_iter()
+            .flat_map(|m| m.into_messages())
+            .collect()
+    }
+}
+
+impl MessageSetInner {
+    fn into_messages(self) -> Vec<OffsetMessage>{
+        self.message.into_messages(self.offset)
+    }
+}
+
+impl Message {
+    fn into_messages(self, offset: i64) -> Vec<OffsetMessage>{
+        match self.attributes & 3 {
+            codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{offset:offset, message: self.value}),
+            codec if codec == Compression::GZIP as i8 => message_decode_gzip(self.value),
+            codec if codec == Compression::SNAPPY as i8 => message_decode_snappy(self.value),
+            _ => vec!()
+        }
+    }
+}
+
+fn message_decode_snappy(value: Vec<u8>) -> Vec<OffsetMessage>{
+    // SNAPPY
+    let mut buffer = Cursor::new(value);
+    let _ = snappy::SnappyHeader::decode_new(&mut buffer);
+    //if (!snappy::check_header(&header)) return;
+
+    let mut v = vec!();
+    while let Ok(x) = message_decode_loop_snappy(&mut buffer) {
+        v.extend(x);
+    }
+    v
+}
+
+fn message_decode_loop_snappy<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
+    let sms = try!(snappy::SnappyMessage::decode_new(buffer));
+    let msg = try!(snappy::uncompress(sms.message));
+    let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
+    Ok(mset.into_messages())
+}
+
+fn message_decode_gzip(value: Vec<u8>) -> Vec<OffsetMessage>{
+    // Gzip
+    let mut buffer = Cursor::new(value);
+    match message_decode_loop_gzip(&mut buffer) {
+        Ok(x) => x,
+        Err(_) => vec!()
+    }
+}
+
+fn message_decode_loop_gzip<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
+    let msg = try!(gzip::uncompress(buffer));
+    let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
+    Ok(mset.into_messages())
+}
+
+impl FromByte for MessageSet {
+    type R = MessageSet;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        let mssize = try!(i32::decode_new(buffer));
+        if mssize <= 0 { return Ok(()); }
+
+        let mssize = mssize as u64;
+        let mut buf = buffer.take(mssize);
+
+        while buf.limit() > 0 {
+            match MessageSetInner::decode_new(&mut buf) {
+                Ok(val) => self.message.push(val),
+                // handle partial trailing messages (see #17)
+                Err(Error::UnexpectedEOF) => (),
+                Err(err) => return Err(err)
+            }
+        }
+        Ok(())
+    }
+
+    fn decode_new<T: Read>(buffer: &mut T) -> Result<Self::R> {
+        let mut temp: Self::R = Default::default();
+        while let Ok(mi) = MessageSetInner::decode_new(buffer) {
+            temp.message.push(mi);
+        }
+        if temp.message.is_empty() {
+            return Err(Error::UnexpectedEOF)
+        }
+        Ok(temp)
+    }
+}
+
+impl FromByte for MessageSetInner {
+    type R = MessageSetInner;
+
+    #[allow(unused_must_use)]
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.offset.decode(buffer),
+            self.messagesize.decode(buffer),
+            self.message.decode(buffer)
+        )
+    }
+}
+
+impl FromByte for Message {
+    type R = Message;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.crc.decode(buffer),
+            self.magic.decode(buffer),
+            self.attributes.decode(buffer),
+            self.key.decode(buffer),
+            self.value.decode(buffer)
         )
     }
 }

@@ -1,14 +1,19 @@
 use std::io::{Read, Write};
 
-use num::traits::FromPrimitive;
-
 use codecs::{ToByte, FromByte};
 use compression::Compression;
+use crc32::Crc32;
 use error::{Error, Result};
+use gzip;
+use num::traits::FromPrimitive;
+use snappy;
 use utils::TopicPartitionOffsetError;
-use super::{HeaderRequest_, HeaderResponse, MessageSet, Message};
+
+use super::{HeaderRequest_, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
 
+/// The magic byte (a.k.a version) we use for sent messages.
+const MESSAGE_MAGIC_BYTE: i8 = 0;
 
 #[derive(Debug)]
 pub struct ProduceRequest<'a, 'b> {
@@ -16,22 +21,26 @@ pub struct ProduceRequest<'a, 'b> {
     pub required_acks: i16,
     pub timeout: i32,
     pub topic_partitions: Vec<TopicPartitionProduceRequest<'b>>,
-    pub compression: Compression
+    pub compression: Compression,
 }
 
 #[derive(Debug)]
 pub struct TopicPartitionProduceRequest<'a> {
     pub topic: &'a str,
-    pub partitions: Vec<PartitionProduceRequest>,
-    pub compression: Compression
+    pub partitions: Vec<PartitionProduceRequest<'a>>,
+    pub compression: Compression,
 }
 
 #[derive(Debug)]
-pub struct PartitionProduceRequest {
+pub struct PartitionProduceRequest<'a> {
     pub partition: i32,
-    pub messageset_size: i32,
-    pub messageset: MessageSet,
-    pub compression: Compression
+    pub messages: Vec<MessageProduceRequest<'a>>,
+}
+
+#[derive(Debug)]
+pub struct MessageProduceRequest<'a> {
+    key: Option<&'a [u8]>,
+    value: Option<&'a [u8]>,
 }
 
 impl<'a, 'b> ProduceRequest<'a, 'b> {
@@ -50,7 +59,7 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
         }
     }
 
-    pub fn add(&mut self, topic: &'b str, partition: i32, message: Vec<u8>) {
+    pub fn add(&mut self, topic: &'b str, partition: i32, message: &'b [u8]) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
                 tp.add(partition, message);
@@ -72,29 +81,36 @@ impl<'a> TopicPartitionProduceRequest<'a> {
         }
     }
 
-    pub fn add(&mut self, partition: i32, message: Vec<u8>) {
+    pub fn add(&mut self, partition: i32, message: &'a[u8]) {
         for pp in &mut self.partitions {
             if pp.partition == partition {
                 pp.add(message);
                 return;
             }
         }
-        self.partitions.push(PartitionProduceRequest::new(partition, message, self.compression))
+        self.partitions.push(PartitionProduceRequest::new(partition, message))
     }
 }
 
-impl PartitionProduceRequest {
-    pub fn new(partition: i32, message: Vec<u8>, compression: Compression) -> PartitionProduceRequest {
-        PartitionProduceRequest{
+impl<'a> PartitionProduceRequest<'a> {
+    pub fn new(partition: i32, message: &[u8]) -> PartitionProduceRequest {
+        PartitionProduceRequest {
             partition: partition,
-            messageset_size: 0,
-            messageset: MessageSet::new(message),
-            compression: compression
+            messages: vec![MessageProduceRequest::from_value(message)],
         }
     }
 
-    pub fn add(&mut self, message: Vec<u8>) {
-        self.messageset.add(message)
+    pub fn add(&mut self, message: &'a [u8]) {
+        self.messages.push(MessageProduceRequest::from_value(message))
+    }
+}
+
+impl<'a> MessageProduceRequest<'a> {
+    fn from_value(value: &[u8]) -> MessageProduceRequest {
+        MessageProduceRequest {
+            key: None,
+            value: Some(value),
+        }
     }
 }
 
@@ -108,53 +124,97 @@ impl<'a, 'b> ToByte for ProduceRequest<'a, 'b> {
 }
 
 impl<'a> ToByte for TopicPartitionProduceRequest<'a> {
+    // render: TopicName [Partition MessageSetSize MessageSet]
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(self.topic.encode(buffer),
-                   self.partitions.encode(buffer))
+        try!(self.topic.encode(buffer));
+        try!((self.partitions.len() as i32).encode(buffer));
+        for e in &self.partitions {
+            try!(e._encode(buffer, self.compression))
+        }
+        Ok(())
     }
 }
 
-impl ToByte for PartitionProduceRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        let mut buf_msgset = vec!();
-        try!(self.partition.encode(buffer));
-        try!(self.messageset.encode(&mut buf_msgset));
-        match self.compression {
-            Compression::NONE => buf_msgset.encode(buffer),
-            Compression::GZIP | Compression::SNAPPY => {
-                let mut msg = Message::new(buf_msgset);
-                msg.attributes |= self.compression as i8;
-                let mut buf_msg = vec!();
-                try!(msg.encode(&mut buf_msg));
-                let outer_msgset = MessageSetOuter::new(buf_msg);
-                let mut buf_outer_msgset = vec!();
-                try!(outer_msgset.encode(&mut buf_outer_msgset));
-                buf_outer_msgset.encode(buffer)
-            }
+impl<'a> PartitionProduceRequest<'a> {
+    // render: Partition MessageSetSize MessageSet
+    //
+    // MessetSet => [Offset MessageSize Message]
+    // MessageSets are not preceded by an int32 like other array elements in the protocol.
+    fn _encode<W: Write>(&self, out: &mut W, compression: Compression)
+                         -> Result<()> {
+        try!(self.partition.encode(out));
+
+        // ~ render the whole MessageSet first to a temporary buffer
+        let mut buf = Vec::new();
+        for msg in &self.messages {
+            try!(msg._encode_to_buf(&mut buf, MESSAGE_MAGIC_BYTE, 0));
+        }
+        if let Compression::NONE = compression {
+            buf.encode(out)
+        } else {
+            // ~ Compress the so far produced MessageSet (into a newly allocated buffer)
+            let cdata = match compression {
+                Compression::GZIP => try!(gzip::compress(&buf)),
+                Compression::SNAPPY => try!(snappy::compress(&buf)),
+                c => panic!("Unknown compression type: {:?}", c),
+            };
+            // ~ now wrap the compressed data into a new MessagesSet
+            // with exactly one Message
+            buf.clear();
+            let cmsg = MessageProduceRequest::from_value(&cdata);
+            try!(cmsg._encode_to_buf(&mut buf, MESSAGE_MAGIC_BYTE, compression as i8));
+            buf.encode(out)
         }
     }
 }
 
-/// ~ a helper struct for serializing a compressed messages set of a
-/// ProduceRequest
-pub struct MessageSetOuter {
-    pub offset: i64,
-    pub messagesize: i32,
-    pub message: Vec<u8>
-}
+impl<'a> MessageProduceRequest<'a> {
+    // render a single message as: Offset MessageSize Message
+    //
+    // Offset => int64 (always encoded as zero here)
+    // MessageSize => int32
+    // Message => Crc MagicByte Attributes Key Value
+    // Crc => int32
+    // MagicByte => int8
+    // Attributes => int8
+    // Key => bytes
+    // Value => bytes
+    //
+    // note: the rendered data corresponds to a single MessageSet in the kafka protocol
+    fn _encode_to_buf(&self, buffer: &mut Vec<u8>, magic: i8, attributes: i8) -> Result<()> {
 
-impl MessageSetOuter {
-    fn new(message: Vec<u8>) -> MessageSetOuter {
-        MessageSetOuter{offset:0, messagesize:0, message: message}
+        try!((0i64).encode(buffer)); // offset in the response request can be anything
+
+        let size_pos = buffer.len();
+        let mut size: i32 = 0;
+        try!(size.encode(buffer)); // reserve space for the size to be computed later
+
+        let crc_pos = buffer.len(); // remember the position where to update the crc later
+        let mut crc: i32 = 0;
+        try!(crc.encode(buffer)); // reserve space for the crc to be computed later
+        try!(magic.encode(buffer));
+        try!(attributes.encode(buffer));
+        try!(self.key.encode(buffer));
+        try!(self.value.encode(buffer));
+
+        // compute the crc and store it back in the reserved space
+        crc = Crc32::tocrc(&buffer[(crc_pos + 4)..]) as i32;
+        try!(crc.encode(&mut &mut buffer[crc_pos .. crc_pos + 4]));
+
+        // compute the size and store it back in the reserved space
+        size = (buffer.len() - crc_pos) as i32;
+        try!(size.encode(&mut &mut buffer[size_pos .. size_pos + 4]));
+
+        Ok(())
     }
 }
 
-impl ToByte for MessageSetOuter {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        let mut buf = vec!();
-        try_multi!(self.offset.encode(buffer),
-                   self.message.encode(&mut buf),
-                   buf.encode_nolen(buffer))
+impl<'a> ToByte for Option<&'a [u8]> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        match *self {
+            Some(xs) => xs.encode(buffer),
+            None => (-1i32).encode(buffer),
+        }
     }
 }
 

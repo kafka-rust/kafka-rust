@@ -485,6 +485,7 @@ impl KafkaClient {
     /// The return value will contain a vector of topic, partition, offset and error if any
     /// OR error:Error
     pub fn send_messages(&mut self, required_acks: i16, ack_timeout: i32,
+                         // XXX avoid consuming the messages
                          messages: Vec<utils::ProduceMessage>)
                          -> Result<Vec<utils::TopicPartitionOffsetError>>
     {
@@ -495,13 +496,13 @@ impl KafkaClient {
         let config = &self.config;
 
         let mut reqs: HashMap<Rc<String>, protocol::ProduceRequest> = HashMap::new();
-        for msg in messages {
+        for msg in &messages {
             if let Some((partition, broker)) = state.choose_partition(&msg.topic) {
                 reqs.entry(broker)
                     .or_insert_with(
                         || protocol::ProduceRequest::new(required_acks, ack_timeout, correlation,
                                                          &config.client_id, config.compression))
-                    .add(msg.topic, partition, msg.message);
+                    .add(msg.topic, partition, &msg.message);
             }
         }
         __send_messages(&mut self.conn_pool, reqs, required_acks == 0)
