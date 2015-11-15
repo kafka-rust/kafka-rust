@@ -69,7 +69,7 @@ fn produce_impl(src: &mut BufRead, client: &mut KafkaClient, cfg: &Config) -> Re
         // ~ buffer the line for later sending it as part of a bigger
         // batch
         msg_buf.push(kafka::utils::ProduceMessage {
-            topic: cfg.topic.clone(),
+            topic: &cfg.topic,
             message: s.as_bytes().into(),
         });
         // ~ if we filled our batch send it out to kafka
