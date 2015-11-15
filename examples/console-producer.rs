@@ -3,17 +3,14 @@ extern crate getopts;
 
 use std::{env, fmt, process};
 use std::fs::File;
-use std::io::{self, Write, BufRead, BufReader};
+use std::io::{self, stdin, Write, BufRead, BufReader};
 
-use kafka::client::KafkaClient;
+use kafka::client::{KafkaClient, Compression};
 
 // how many brokers do we require to acknowledge the send messages
 const REQUIRED_ACKS: i16 = 1;
 // how long do we allow wainting for the acknowledgement
 const ACK_TIMEOUT: i32 = 100;
-// number of messages to send to kafka in one go/batch (only used for
-// the file-based scenario)
-const BATCH_SIZE: usize = 100;
 
 /// This is a very simple command line application sending every
 /// non-empty line of standard input to a specified kafka topic; one
@@ -37,6 +34,7 @@ fn main() {
 
 fn produce(cfg: &Config) -> Result<(), Error> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
+    client.set_compression(cfg.compression);
     try!(client.load_metadata_all());
 
     // ~ verify that the remote brokers do know about the target topic
@@ -44,47 +42,24 @@ fn produce(cfg: &Config) -> Result<(), Error> {
         return Err(Error::Literal(format!("No such topic at {:?}: {}", cfg.brokers, cfg.topic)));
     }
     match cfg.input_file {
-        None => produce_from_stdin(&mut client, &cfg.topic),
-        Some(ref file) => produce_from_file(&mut client, &cfg.topic, &file),
+        None => {
+            let stdin = stdin();
+            let mut stdin = stdin.lock();
+            produce_impl(&mut stdin, &mut client, &cfg)
+        }
+        Some(ref file) => {
+            let mut r = BufReader::new(try!(File::open(file)));
+            produce_impl(&mut r, &mut client, &cfg)
+        }
     }
 }
 
-/// Read stdin and send every non-empty line one by one to kafka.
-fn produce_from_stdin(client: &mut KafkaClient, topic: &str) -> Result<(), Error> {
-    let mut line_buf = String::new();
-    let stdin = io::stdin();
-    let mut stderr = io::stderr();
-    loop {
-        line_buf.clear();
-        if try!(stdin.read_line(&mut line_buf)) == 0 {
-            break; // ~ EOF reached
-        }
-        let s = line_buf.trim();
-        if s.is_empty() {
-            continue; // ~ skip empty lines
-        }
-        // ~ now send the non-empty line to kafka
-        let rs = try!(client.send_message(REQUIRED_ACKS, ACK_TIMEOUT, topic.to_owned(), s.as_bytes().into()));
-        // ~ we can assert that there is exactly one returned response
-        // for the sent message, since we already verified that the
-        // underlying brokers do know about the target topic (see the
-        // calling function) and the send message will end up in
-        // exactly on partition.
-        assert_eq!(1, rs.len());
-        let _ = write!(stderr, "debug: {:?}\n", rs.get(0));
-    }
-    Ok(())
-}
-
-/// Read the specified file and send every non-empty line to kafka in
-/// batches.
-fn produce_from_file(client: &mut KafkaClient, topic: &str, filename: &str) -> Result<(), Error> {
-    let mut r = BufReader::new(try!(File::open(filename)));
-    let mut msg_buf = Vec::with_capacity(BATCH_SIZE);
+fn produce_impl(src: &mut BufRead, client: &mut KafkaClient, cfg: &Config) -> Result<(), Error> {
+    let mut msg_buf = Vec::with_capacity(cfg.batch_size);
     let mut line_buf = String::new();
     loop {
         line_buf.clear();
-        if try!(r.read_line(&mut line_buf)) == 0 {
+        if try!(src.read_line(&mut line_buf)) == 0 {
             break; // ~ EOF reached
         }
         let s = line_buf.trim();
@@ -94,13 +69,13 @@ fn produce_from_file(client: &mut KafkaClient, topic: &str, filename: &str) -> R
         // ~ buffer the line for later sending it as part of a bigger
         // batch
         msg_buf.push(kafka::utils::ProduceMessage {
-            topic: topic.to_owned(),
+            topic: cfg.topic.clone(),
             message: s.as_bytes().into(),
         });
         // ~ if we filled our batch send it out to kafka
-        if msg_buf.len() >= BATCH_SIZE {
+        if msg_buf.len() >= cfg.batch_size {
             try!(client.send_messages(REQUIRED_ACKS, ACK_TIMEOUT, msg_buf));
-            msg_buf = Vec::with_capacity(BATCH_SIZE);
+            msg_buf = Vec::with_capacity(cfg.batch_size);
         }
     }
     // ~ flush pending messages
@@ -142,6 +117,8 @@ struct Config {
     brokers: Vec<String>,
     topic: String,
     input_file: Option<String>,
+    compression: Compression,
+    batch_size: usize,
 }
 
 impl Config {
@@ -152,6 +129,8 @@ impl Config {
         opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
         opts.optopt("", "topic", "Specify target topic", "NAME");
         opts.optopt("", "input", "Specify input file", "FILE");
+        opts.optopt("", "compression", "Compress messages [NONE, GZIP, SNAPPY]", "TYPE");
+        opts.optopt("", "batch-size", "Send N message in one batch.", "N");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -170,6 +149,27 @@ impl Config {
             topic: m.opt_str("topic")
                 .unwrap_or_else(|| "my-topic".to_owned()),
             input_file: m.opt_str("input"),
+            compression: {
+                let s = m.opt_str("compression")
+                    .unwrap_or_else(|| "NONE".to_owned());
+                match s.trim() {
+                    "none" | "NONE" => Compression::NONE,
+                    "gzip" | "GZIP" => Compression::GZIP,
+                    "snappy" | "SNAPPY" => Compression::SNAPPY,
+                    _ => return Err(Error::Literal(format!("Unknown compression type: {}", s))),
+                }
+            },
+            batch_size: {
+                match m.opt_str("batch-size") {
+                    None => 1,
+                    Some(s) => {
+                        match s.parse::<usize>() {
+                            Ok(n) => n,
+                            Err(_) => return Err(Error::Literal(format!("Not a number: {}", s))),
+                        }
+                    }
+                }
+            },
         })
     }
 }
