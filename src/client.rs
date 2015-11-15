@@ -432,7 +432,6 @@ impl KafkaClient {
         __fetch_messages_multi(&mut self.conn_pool, reqs)
     }
 
-
     /// Fetch messages from Kafka (Single topic, partition, offset)
     ///
     /// It takes a single topic, parition and offset and return a vector of messages (`utils::TopicMessage`)
@@ -476,33 +475,31 @@ impl KafkaClient {
     /// use kafka::utils;
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let m1 = "a".to_owned().into_bytes();
-    /// let m2 = "b".to_owned().into_bytes();
-    /// let req = vec!(utils::ProduceMessage{topic: "my-topic", message: m1},
-    ///                 utils::ProduceMessage{topic: "my-topic-2", message: m2});
+    /// let req = vec!(utils::ProduceMessage{topic: "my-topic", message: "a".as_bytes()},
+    ///                 utils::ProduceMessage{topic: "my-topic-2", message: "b".as_bytes()});
     /// println!("{:?}", client.send_messages(1, 100, req));
     /// ```
     /// The return value will contain a vector of topic, partition, offset and error if any
     /// OR error:Error
-    pub fn send_messages(&mut self, required_acks: i16, ack_timeout: i32,
-                         // XXX avoid consuming the messages
-                         messages: Vec<utils::ProduceMessage>)
-                         -> Result<Vec<utils::TopicPartitionOffsetError>>
+    pub fn send_messages<'a, 'b, I, J>(&mut self, required_acks: i16, ack_timeout: i32, messages: I)
+                                       -> Result<Vec<utils::TopicPartitionOffsetError>>
+        where J: AsRef<utils::ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
         let correlation = self.next_id();
 
-        // Map topic and partition to the corresponding brokers
+        // ~ map topic and partition to the corresponding brokers
         let state = &mut self.state;
         let config = &self.config;
 
         let mut reqs: HashMap<Rc<String>, protocol::ProduceRequest> = HashMap::new();
-        for msg in &messages {
-            if let Some((partition, broker)) = state.choose_partition(&msg.topic) {
+        for msg in messages {
+            let msg = msg.as_ref();
+            if let Some((partition, broker)) = state.choose_partition(msg.topic) {
                 reqs.entry(broker)
                     .or_insert_with(
                         || protocol::ProduceRequest::new(required_acks, ack_timeout, correlation,
                                                          &config.client_id, config.compression))
-                    .add(msg.topic, partition, &msg.message);
+                    .add(msg.topic, partition, msg.message);
             }
         }
         __send_messages(&mut self.conn_pool, reqs, required_acks == 0)
@@ -529,17 +526,14 @@ impl KafkaClient {
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let msgs = client.send_message(1, 100, "my-topic", "msg".to_owned().into_bytes());
+    /// let msgs = client.send_message(1, 100, "my-topic", "msg".as_bytes());
     /// ```
     /// The return value will contain topic, partition, offset and error if any
     /// OR error:Error
-    pub fn send_message(&mut self, required_acks: i16, ack_timeout: i32,
-                      topic: &str, message: Vec<u8>) -> Result<Vec<utils::TopicPartitionOffsetError>> {
-        self.send_messages(required_acks, ack_timeout, vec!(utils::ProduceMessage{
-            topic: topic,
-            message: message
-            }))
-
+    pub fn send_message(&mut self, required_acks: i16, ack_timeout: i32, topic: &str, message: &[u8])
+                        -> Result<Vec<utils::TopicPartitionOffsetError>> {
+        self.send_messages(required_acks, ack_timeout,
+                           &[utils::ProduceMessage { topic: topic, message: message }])
     }
 
     /// Commit offset to topic, partition of a consumer group

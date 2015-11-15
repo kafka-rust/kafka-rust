@@ -12,9 +12,15 @@ pub struct TopicMessage {
 }
 
 #[derive(Debug)]
-pub struct ProduceMessage<'a> {
+pub struct ProduceMessage<'a, 'b> {
     pub topic: &'a str,
-    pub message: Vec<u8>
+    pub message: &'b [u8],
+}
+
+impl<'a, 'b> AsRef<ProduceMessage<'a, 'b>> for ProduceMessage<'a, 'b> {
+    fn as_ref(&self) -> &Self {
+        &self
+    }
 }
 
 #[derive(Debug)]

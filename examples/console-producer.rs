@@ -3,7 +3,7 @@ extern crate getopts;
 
 use std::{env, fmt, process};
 use std::fs::File;
-use std::io::{self, stdin, Write, BufRead, BufReader};
+use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
 
 use kafka::client::{KafkaClient, Compression};
 
@@ -55,7 +55,15 @@ fn produce(cfg: &Config) -> Result<(), Error> {
 }
 
 fn produce_impl(src: &mut BufRead, client: &mut KafkaClient, cfg: &Config) -> Result<(), Error> {
-    let mut msg_buf = Vec::with_capacity(cfg.batch_size);
+    if cfg.batch_size < 2 {
+        produce_impl_nobatch(src, client, cfg)
+    } else {
+        produce_impl_inbatches(src, client, cfg)
+    }
+}
+
+fn produce_impl_nobatch(src: &mut BufRead, client: &mut KafkaClient, cfg: &Config) -> Result<(), Error> {
+    let mut stderr = stderr();
     let mut line_buf = String::new();
     loop {
         line_buf.clear();
@@ -66,22 +74,52 @@ fn produce_impl(src: &mut BufRead, client: &mut KafkaClient, cfg: &Config) -> Re
         if s.is_empty() {
             continue; // ~ skip empty lines
         }
-        // ~ buffer the line for later sending it as part of a bigger
-        // batch
-        msg_buf.push(kafka::utils::ProduceMessage {
-            topic: &cfg.topic,
-            message: s.as_bytes().into(),
-        });
-        // ~ if we filled our batch send it out to kafka
-        if msg_buf.len() >= cfg.batch_size {
-            try!(client.send_messages(REQUIRED_ACKS, ACK_TIMEOUT, msg_buf));
-            msg_buf = Vec::with_capacity(cfg.batch_size);
+        // ~ directly send to kafka
+        let r = try!(client.send_message(REQUIRED_ACKS, ACK_TIMEOUT, &cfg.topic, s.as_bytes()));
+        let _ = write!(stderr, "debug: {:?}\n", r);
+    }
+    Ok(())
+}
+
+fn produce_impl_inbatches(src: &mut BufRead, client: &mut KafkaClient, cfg: &Config) -> Result<(), Error> {
+    // this implementation buffers N lines from the source and send
+    // these in batches to Kafka. we try to reuse the line buffers
+    // across batches.
+    assert!(cfg.batch_size > 1);
+    let mut line_stash: Vec<String> = vec![String::new(); cfg.batch_size];
+    let mut next_line = 0; // if `next_line` reaches `line_stash.len()` we'll send `line_stash` to kafka
+    loop {
+        // ~ send out a batch if it's ready
+        if next_line == line_stash.len() {
+            try!(send_lines_batch(client, &cfg.topic, &line_stash));
+            next_line = 0;
         }
+        let mut line = &mut line_stash[next_line];
+        line.clear();
+        if try!(src.read_line(&mut line)) == 0 {
+            break; // ~ EOF reached
+        }
+        let s = line.trim();
+        if s.is_empty() {
+            continue; // ~ skip empty lines
+        }
+        // ~ ok, we got a line. read the next one in a new buffer
+        next_line += 1;
     }
-    // ~ flush pending messages
-    if msg_buf.len() > 0 {
-        try!(client.send_messages(REQUIRED_ACKS, ACK_TIMEOUT, msg_buf));
+    // ~ flush pending messages - if any
+    if next_line > 0 {
+        try!(send_lines_batch(client, &cfg.topic, &line_stash[..next_line]));
     }
+    Ok(())
+}
+
+fn send_lines_batch(client: &mut KafkaClient, topic: &str, lines: &[String]) -> Result<(), Error> {
+    try!(client.send_messages(REQUIRED_ACKS, ACK_TIMEOUT, lines.iter().map(|line| {
+        kafka::utils::ProduceMessage {
+            topic: topic,
+            message: line.trim().as_bytes(),
+        }
+    })));
     Ok(())
 }
 
