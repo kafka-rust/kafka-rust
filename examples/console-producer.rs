@@ -93,8 +93,8 @@ impl Config {
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
-        opts.optopt("", "brokers", "Specify remove kafka brokers (comma separated)", "HOSTS");
-        opts.optopt("", "topic", "Specify the target topic", "NAME");
+        opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+        opts.optopt("", "topic", "Specify target topic", "NAME");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
