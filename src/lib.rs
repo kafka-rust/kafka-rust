@@ -1,10 +1,10 @@
 extern crate num;
 extern crate byteorder;
 extern crate flate2;
+extern crate crc;
 
 pub mod error;
 pub mod utils;
-mod crc32;
 mod codecs;
 mod connection;
 mod protocol;

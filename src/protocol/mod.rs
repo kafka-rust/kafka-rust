@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::rc::Rc;
 
 use codecs::{ToByte, FromByte};
+use crc::crc32;
 use error::Result;
 
 /// Macro to return Result<()> from multiple statements
@@ -111,4 +112,8 @@ impl<'a> ToByte for HeaderRequest_<'a> {
             self.correlation_id.encode(buffer),
             self.client_id.encode(buffer))
     }
+}
+
+pub fn tocrc(data: &[u8]) -> u32 {
+    crc32::checksum_ieee(data)
 }

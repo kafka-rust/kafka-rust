@@ -2,7 +2,6 @@ use std::io::{Read, Write};
 
 use codecs::{ToByte, FromByte};
 use compression::Compression;
-use crc32::Crc32;
 use error::{Error, Result};
 use gzip;
 use num::traits::FromPrimitive;
@@ -11,6 +10,7 @@ use utils::TopicPartitionOffsetError;
 
 use super::{HeaderRequest_, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
+use super::tocrc;
 
 /// The magic byte (a.k.a version) we use for sent messages.
 const MESSAGE_MAGIC_BYTE: i8 = 0;
@@ -198,7 +198,7 @@ impl<'a> MessageProduceRequest<'a> {
         try!(self.value.encode(buffer));
 
         // compute the crc and store it back in the reserved space
-        crc = Crc32::tocrc(&buffer[(crc_pos + 4)..]) as i32;
+        crc = tocrc(&buffer[(crc_pos + 4)..]) as i32;
         try!(crc.encode(&mut &mut buffer[crc_pos .. crc_pos + 4]));
 
         // compute the size and store it back in the reserved space
