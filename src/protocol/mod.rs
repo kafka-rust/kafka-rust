@@ -33,7 +33,7 @@ pub use self::consumer::{OffsetFetchRequest, OffsetFetchResponse,
 
 const API_KEY_PRODUCE: i16   = 0;
 const API_KEY_FETCH: i16     = 1;
-const OFFSET_KEY: i16        = 2;
+const API_KEY_OFFSET: i16    = 2;
 const API_KEY_METADATA: i16  = 3;
 // 4-7 reserved for non-public kafka api services
 const OFFSET_COMMIT_KEY: i16 = 8;

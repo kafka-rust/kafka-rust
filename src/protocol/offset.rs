@@ -1,18 +1,17 @@
 use std::io::{Read, Write};
-use std::rc::Rc;
 
 use num::traits::FromPrimitive;
 
 use codecs::{ToByte, FromByte};
 use error::{Error, Result};
 use utils::PartitionOffset;
-use super::{HeaderRequest, HeaderResponse};
-use super::{OFFSET_KEY, API_VERSION};
+use super::{HeaderRequest_, HeaderResponse};
+use super::{API_KEY_OFFSET, API_VERSION};
 
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct OffsetRequest<'a> {
-    pub header: HeaderRequest,
+    pub header: HeaderRequest_<'a>,
     pub replica: i32,
     pub topic_partitions: Vec<TopicPartitionOffsetRequest<'a>>
 }
@@ -31,11 +30,10 @@ pub struct PartitionOffsetRequest {
 }
 
 impl<'a> OffsetRequest<'a> {
-    // XXX clientid shall be a &str
-    pub fn new(correlation: i32, clientid: Rc<String>) -> OffsetRequest<'a> {
-        OffsetRequest{
-            header: HeaderRequest{key: OFFSET_KEY, correlation: correlation,
-                                  clientid: clientid, version: API_VERSION},
+    pub fn new(correlation_id: i32, client_id: &'a str) -> OffsetRequest<'a> {
+        OffsetRequest {
+            header: HeaderRequest_::new(
+                API_KEY_OFFSET, API_VERSION, correlation_id, client_id),
             replica: -1,
             topic_partitions: vec!()
         }

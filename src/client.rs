@@ -336,15 +336,18 @@ impl KafkaClient {
         let n_topics = topics.len();
 
         let correlation = self.next_id();
-        let mut reqs: HashMap<Rc<String>, protocol::OffsetRequest> = HashMap::with_capacity(n_topics);
 
         // Map topic and partition to the corresponding broker
+        let config = &self.config;
+        let state = &self.state;
+
+        let mut reqs: HashMap<Rc<String>, protocol::OffsetRequest> = HashMap::with_capacity(n_topics);
         for topic in topics {
             let topic = topic.as_ref();
-            if let Some(tp) = self.state.topic_partitions_internal.get(topic) {
+            if let Some(tp) = state.topic_partitions_internal.get(topic) {
                 for p in &tp.partitions {
                     let entry = reqs.entry(p.broker_host.clone())
-                        .or_insert_with(|| protocol::OffsetRequest::new(correlation, self.config.client_id.clone()));
+                        .or_insert_with(|| protocol::OffsetRequest::new(correlation, &config.client_id));
                     entry.add(topic, p.partition_id, time);
                 }
             }
