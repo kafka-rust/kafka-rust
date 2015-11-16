@@ -20,7 +20,19 @@ use std::rc::Rc;
 
 
 const CLIENTID: &'static str = "kafka-rust";
-const DEFAULT_TIMEOUT_SECS: i32 = 120; // seconds
+const DEFAULT_SO_TIMEOUT_SECS: i32 = 120; // socket read, write timeout seconds
+
+/// The default value for `KafkaClient::set_compression(..)`
+pub const DEFAULT_COMPRESSION: Compression = Compression::NONE;
+
+/// The default value for `KafkaClient::set_fetch_max_wait_time(..)`
+pub const DEFAULT_FETCH_MAX_WAIT_TIME: i32 = 100; // milliseconds
+
+/// The default value for `KafkaClient::set_fetch_min_bytes(..)`
+pub const DEFAULT_FETCH_MIN_BYTES: i32 = 4096;
+
+/// The default value for `KafkaClient::set_fetch_max_bytes(..)`
+pub const DEFAULT_FETCH_MAX_BYTES_PER_PARTITION: i32 = 32 * 1024;
 
 
 /// Client struct.
@@ -37,7 +49,7 @@ const DEFAULT_TIMEOUT_SECS: i32 = 120; // seconds
 /// ```
 ///
 /// You will have to load metadata before making any other request.
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct KafkaClient {
     // ~ this kafka client configuration
     config: ClientConfig,
@@ -52,15 +64,20 @@ pub struct KafkaClient {
     pub topic_partitions: HashMap<String, Vec<i32>>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct ClientConfig {
     client_id: String,
     hosts: Vec<String>,
     // ~ compression to use when sending messages
     compression: Compression,
+    // ~ these are the defaults when fetching messages for details
+    // refer to the kafka wire protocol
+    fetch_max_wait_time: i32,
+    fetch_min_bytes: i32,
+    fetch_max_bytes_per_partition: i32,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct ClientState {
     // ~ the last correlation used when communicating with kafka
     // (see `#next_id`)
@@ -156,7 +173,7 @@ impl FetchOffset {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ConnectionPool {
     conns: HashMap<String, KafkaConnection>,
     timeout: i32,
@@ -193,18 +210,98 @@ impl KafkaClient {
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// ```
     pub fn new(hosts: Vec<String>) -> KafkaClient {
+        let n_hosts = hosts.len();
         KafkaClient {
             config: ClientConfig {
                 client_id: CLIENTID.to_owned(),
                 hosts: hosts,
-                .. ClientConfig::default()
+                compression: DEFAULT_COMPRESSION,
+                fetch_max_wait_time: DEFAULT_FETCH_MAX_WAIT_TIME,
+                fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
+                fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
             },
-            conn_pool: ConnectionPool::new(DEFAULT_TIMEOUT_SECS),
-            state: ClientState::default(),
-            .. KafkaClient::default()
+            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
+            state: ClientState {
+                correlation: 0,
+                topic_partitions_internal: HashMap::with_capacity(n_hosts),
+            },
+            topic_partitions: HashMap::with_capacity(n_hosts),
         }
     }
 
+    /// Set the compression algorithm to use when sending out messages.
+    ///
+    /// `compression` - one of compression::Compression::{NONE, GZIP, SNAPPY}
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// client.set_compression(kafka::client::Compression::SNAPPY);
+    /// ```
+    #[inline]
+    pub fn set_compression(&mut self, compression: Compression) {
+        self.config.compression = compression;
+    }
+
+    /// Set the maximum time in milliseconds to wait for insufficient
+    /// data to become available when fetching messages.
+    ///
+    /// See also `KafkaClient::set_fetch_min_bytes(..)` and
+    /// `KafkaClient::set_fetch_max_bytes_per_partition(..)`.
+    #[inline]
+    pub fn set_fetch_max_wait_time(&mut self, max_wait_time: i32) {
+        self.config.fetch_max_wait_time = max_wait_time;
+    }
+
+    /// Set the minimum number of bytes of available data to wait for
+    /// as long as specified by `KafkaClient::set_fetch_max_wait_time`
+    /// when fetching messages.
+    ///
+    /// By setting higher values in combination with the timeout the
+    /// consumer can tune for throughput and trade a little additional
+    /// latency for reading only large chunks of data (e.g. setting
+    /// MaxWaitTime to 100 ms and setting MinBytes to 64k would allow
+    /// the server to wait up to 100ms to try to accumulate 64k of
+    /// data before responding).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.set_fetch_max_wait_time(100);
+    /// client.set_fetch_min_bytes(64 * 1024);
+    /// let r = client.fetch_messages("my-topic", 0, 0);
+    /// ```
+    ///
+    /// See also `KafkaClient::set_fetch_max_wait_time(..)` and
+    /// `KafkaClient::set_fetch_max_bytes_per_partition(..)`.
+    #[inline]
+    pub fn set_fetch_min_bytes(&mut self, min_bytes: i32) {
+        self.config.fetch_min_bytes = min_bytes;
+    }
+
+    /// Set the maximum number of bytes to fetch from _a single kafka
+    /// partition_ when fetching messages.
+    ///
+    /// This basically determines the maximum message size this client
+    /// will be able to fetch.  If a topic partition contains a
+    /// message larger than this specified number of bytes, the server
+    /// will not deliver it.
+    ///
+    /// Note that this setting is related to a single partition. The
+    /// overall maximum possible data size in a fetch messages
+    /// response will thus be determined by the number of partitions
+    /// in the fetch messages request.
+    ///
+    /// See also `KafkaClient::set_fetch_max_wait_time(..)` and
+    /// `KafkaClient::set_fetch_min_bytes(..)`.
+    #[inline]
+    pub fn set_fetch_max_bytes_per_partition(&mut self, max_bytes: i32) {
+        self.config.fetch_max_bytes_per_partition = max_bytes;
+    }
+
+    // XXX drop
     fn next_id(&mut self) -> i32 {
         self.state.next_correlation_id()
     }
@@ -218,6 +315,7 @@ impl KafkaClient {
     /// let res = client.load_metadata_all();
     /// ```
     ///
+    #[inline]
     pub fn load_metadata_all(&mut self) -> Result<()>{
         self.reset_metadata();
         self.load_metadata::<&str>(&[])
@@ -244,6 +342,7 @@ impl KafkaClient {
     /// ```
     ///
     /// returns `Result<(), error::Error>`
+    #[inline]
     pub fn load_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<()> {
         let resp = try!(self.get_metadata(topics));
         self.__load_metadata(resp)
@@ -282,6 +381,7 @@ impl KafkaClient {
 
     /// Clears metadata stored in the client. You must load metadata after this call if you want
     /// to use the client
+    #[inline]
     pub fn reset_metadata(&mut self) {
         self.state.topic_partitions_internal.clear();
         self.topic_partitions.clear();
@@ -300,20 +400,6 @@ impl KafkaClient {
             }
         }
         Err(Error::NoHostReachable)
-    }
-
-    /// Set the compression algorithm to use
-    ///
-    /// `compression` - one of compression::Compression::{NONE, GZIP, SNAPPY}
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// client.set_compression(kafka::client::Compression::SNAPPY);
-    /// ```
-    pub fn set_compression(&mut self, compression: Compression) {
-        self.config.compression = compression;
     }
 
     /// Fetch offsets for a list of topics.
@@ -429,8 +515,11 @@ impl KafkaClient {
             let tpo = tpo.as_ref();
             if let Some(broker) = self.state.find_broker(tpo.topic, tpo.partition) {
                 reqs.entry(broker.clone())
-                    .or_insert_with(|| protocol::FetchRequest::new(correlation, &config.client_id))
-                    .add(tpo.topic, tpo.partition, tpo.offset);
+                    .or_insert_with(|| {
+                        protocol::FetchRequest::new(correlation, &config.client_id,
+                                                    config.fetch_max_wait_time, config.fetch_min_bytes)
+                    })
+                    .add(tpo.topic, tpo.partition, tpo.offset, config.fetch_max_bytes_per_partition);
             }
         }
         __fetch_messages_multi(&mut self.conn_pool, reqs)

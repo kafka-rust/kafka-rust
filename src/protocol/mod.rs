@@ -42,11 +42,6 @@ const API_KEY_OFFSET_FETCH: i16  = 9;
 // the version of Kafka API we are requesting
 const API_VERSION: i16 = 0;
 
-const FETCH_MAX_WAIT_TIME: i32 = 100;
-const FETCH_MIN_BYTES: i32 = 4096;
-const FETCH_BUFFER_SIZE_BYTES: i32 = 4096;
-const MAX_FETCH_BUFFER_SIZE_BYTES: i32 = FETCH_BUFFER_SIZE_BYTES * 8;
-
 // --------------------------------------------------------------------
 
 #[derive(Debug)]

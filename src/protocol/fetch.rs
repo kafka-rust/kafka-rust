@@ -9,7 +9,7 @@ use snappy;
 use utils::{TopicMessage};
 
 use super::{HeaderRequest, HeaderResponse};
-use super::{API_KEY_FETCH, API_VERSION, FETCH_MAX_WAIT_TIME, FETCH_MIN_BYTES, MAX_FETCH_BUFFER_SIZE_BYTES};
+use super::{API_KEY_FETCH, API_VERSION};
 
 #[derive(Debug)]
 pub struct FetchRequest<'a, 'b> {
@@ -33,29 +33,29 @@ pub struct PartitionFetchRequest {
     pub max_bytes: i32
 }
 
-
 impl<'a, 'b> FetchRequest<'a, 'b> {
 
-    pub fn new(correlation_id: i32, client_id: &'a str) -> FetchRequest<'a, 'b> {
+    pub fn new(correlation_id: i32, client_id: &'a str, max_wait_time: i32, min_bytes: i32)
+               -> FetchRequest<'a, 'b> {
         FetchRequest {
             header: HeaderRequest::new(
                 API_KEY_FETCH, API_VERSION, correlation_id, client_id),
             replica: -1,
-            max_wait_time: FETCH_MAX_WAIT_TIME,
-            min_bytes: FETCH_MIN_BYTES,
+            max_wait_time: max_wait_time,
+            min_bytes: min_bytes,
             topic_partitions: vec!()
         }
     }
 
-    pub fn add(&mut self, topic: &'b str, partition: i32, offset: i64) {
+    pub fn add(&mut self, topic: &'b str, partition: i32, offset: i64, max_bytes: i32) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
-                tp.add(partition, offset);
+                tp.add(partition, offset, max_bytes);
                 return;
             }
         }
         let mut tp = TopicPartitionFetchRequest::new(topic);
-        tp.add(partition, offset);
+        tp.add(partition, offset, max_bytes);
         self.topic_partitions.push(tp);
     }
 }
@@ -68,17 +68,17 @@ impl<'a> TopicPartitionFetchRequest<'a> {
         }
     }
 
-    pub fn add(&mut self, partition: i32, offset: i64) {
-        self.partitions.push(PartitionFetchRequest:: new(partition, offset))
+    pub fn add(&mut self, partition: i32, offset: i64, max_bytes: i32) {
+        self.partitions.push(PartitionFetchRequest:: new(partition, offset, max_bytes))
     }
 }
 
 impl PartitionFetchRequest {
-    pub fn new(partition: i32, offset: i64) -> PartitionFetchRequest {
-        PartitionFetchRequest{
+    pub fn new(partition: i32, offset: i64, max_bytes: i32) -> PartitionFetchRequest {
+        PartitionFetchRequest {
             partition: partition,
             offset: offset,
-            max_bytes: MAX_FETCH_BUFFER_SIZE_BYTES
+            max_bytes: max_bytes,
         }
     }
 }

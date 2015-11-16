@@ -29,7 +29,7 @@ use client::{KafkaClient, FetchOffset};
 
 const COMMIT_INTERVAL: i32 = 100; // Commit after every 100 message
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Consumer {
     state: ConsumerState,
     client: KafkaClient,
