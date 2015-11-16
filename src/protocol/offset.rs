@@ -5,13 +5,13 @@ use num::traits::FromPrimitive;
 use codecs::{ToByte, FromByte};
 use error::{Error, Result};
 use utils::PartitionOffset;
-use super::{HeaderRequest_, HeaderResponse};
+use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET, API_VERSION};
 
 
 #[derive(Debug)]
 pub struct OffsetRequest<'a> {
-    pub header: HeaderRequest_<'a>,
+    pub header: HeaderRequest<'a>,
     pub replica: i32,
     pub topic_partitions: Vec<TopicPartitionOffsetRequest<'a>>
 }
@@ -32,7 +32,7 @@ pub struct PartitionOffsetRequest {
 impl<'a> OffsetRequest<'a> {
     pub fn new(correlation_id: i32, client_id: &'a str) -> OffsetRequest<'a> {
         OffsetRequest {
-            header: HeaderRequest_::new(
+            header: HeaderRequest::new(
                 API_KEY_OFFSET, API_VERSION, correlation_id, client_id),
             replica: -1,
             topic_partitions: vec!()

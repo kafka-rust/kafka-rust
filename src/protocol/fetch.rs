@@ -8,12 +8,12 @@ use num::traits::FromPrimitive;
 use snappy;
 use utils::{TopicMessage};
 
-use super::{HeaderRequest_, HeaderResponse};
+use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_FETCH, API_VERSION, FETCH_MAX_WAIT_TIME, FETCH_MIN_BYTES, MAX_FETCH_BUFFER_SIZE_BYTES};
 
 #[derive(Debug)]
 pub struct FetchRequest<'a, 'b> {
-    pub header: HeaderRequest_<'a>,
+    pub header: HeaderRequest<'a>,
     pub replica: i32,
     pub max_wait_time: i32,
     pub min_bytes: i32,
@@ -38,7 +38,7 @@ impl<'a, 'b> FetchRequest<'a, 'b> {
 
     pub fn new(correlation_id: i32, client_id: &'a str) -> FetchRequest<'a, 'b> {
         FetchRequest {
-            header: HeaderRequest_::new(
+            header: HeaderRequest::new(
                 API_KEY_FETCH, API_VERSION, correlation_id, client_id),
             replica: -1,
             max_wait_time: FETCH_MAX_WAIT_TIME,

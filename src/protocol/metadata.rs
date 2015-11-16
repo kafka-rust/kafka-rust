@@ -3,12 +3,12 @@ use std::io::{Read, Write};
 use error::Result;
 use codecs::{AsStrings, ToByte, FromByte};
 
-use super::{HeaderRequest_, HeaderResponse};
+use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_METADATA, API_VERSION};
 
 #[derive(Debug)]
 pub struct MetadataRequest<'a, T: 'a> {
-    pub header: HeaderRequest_<'a>,
+    pub header: HeaderRequest<'a>,
     pub topics: &'a [T]
 }
 
@@ -17,7 +17,7 @@ impl<'a, T: AsRef<str>> MetadataRequest<'a, T> {
                -> MetadataRequest<'a, T>
     {
         MetadataRequest {
-            header: HeaderRequest_::new(
+            header: HeaderRequest::new(
                 API_KEY_METADATA, API_VERSION, correlation_id, client_id),
             topics: topics
         }

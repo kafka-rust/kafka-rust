@@ -8,7 +8,7 @@ use num::traits::FromPrimitive;
 use snappy;
 use utils::TopicPartitionOffsetError;
 
-use super::{HeaderRequest_, HeaderResponse};
+use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
 use super::tocrc;
 
@@ -17,7 +17,7 @@ const MESSAGE_MAGIC_BYTE: i8 = 0;
 
 #[derive(Debug)]
 pub struct ProduceRequest<'a, 'b> {
-    pub header: HeaderRequest_<'a>,
+    pub header: HeaderRequest<'a>,
     pub required_acks: i16,
     pub timeout: i32,
     pub topic_partitions: Vec<TopicPartitionProduceRequest<'b>>,
@@ -50,7 +50,7 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
                -> ProduceRequest<'a, 'b>
     {
         ProduceRequest {
-            header: HeaderRequest_::new(
+            header: HeaderRequest::new(
                 API_KEY_PRODUCE, API_VERSION, correlation_id, client_id),
             required_acks: required_acks,
             timeout: timeout,

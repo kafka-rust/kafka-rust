@@ -1,5 +1,4 @@
 use std::io::{Read, Write};
-use std::rc::Rc;
 
 use num::traits::FromPrimitive;
 
@@ -7,12 +6,12 @@ use codecs::{ToByte, FromByte};
 use error::{Error, Result};
 use utils::TopicPartitionOffsetError;
 
-use super::{HeaderRequest, HeaderRequest_, HeaderResponse};
-use super::{API_KEY_OFFSET_FETCH, OFFSET_COMMIT_KEY, API_VERSION};
+use super::{HeaderRequest, HeaderResponse};
+use super::{API_KEY_OFFSET_FETCH, API_KEY_OFFSET_COMMIT, API_VERSION};
 
 // #[derive(Debug)]
 // pub struct ConsumerMetadataRequest<'a> {
-//     pub header: HeaderRequest_<'a>,
+//     pub header: HeaderRequest<'a>,
 //     pub group: &'a str,
 // }
 
@@ -55,7 +54,7 @@ use super::{API_KEY_OFFSET_FETCH, OFFSET_COMMIT_KEY, API_VERSION};
 
 #[derive(Debug)]
 pub struct OffsetFetchRequest<'a, 'b, 'c> {
-    pub header: HeaderRequest_<'a>,
+    pub header: HeaderRequest<'a>,
     pub group: &'b str,
     pub topic_partitions: Vec<TopicPartitionOffsetFetchRequest<'c>>
 }
@@ -74,7 +73,7 @@ pub struct PartitionOffsetFetchRequest {
 impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
     pub fn new(group: &'b str, correlation_id: i32, client_id: &'a str) -> OffsetFetchRequest<'a, 'b, 'c> {
         OffsetFetchRequest {
-            header: HeaderRequest_::new(
+            header: HeaderRequest::new(
                 API_KEY_OFFSET_FETCH, API_VERSION, correlation_id, client_id),
             group: group,
             topic_partitions: vec!()
@@ -227,64 +226,63 @@ impl FromByte for PartitionOffsetFetchResponse {
 // --------------------------------------------------------------------
 
 #[derive(Debug)]
-pub struct OffsetCommitRequest {
-    pub header: HeaderRequest,
-    pub group: String,
-    pub topic_partitions: Vec<TopicPartitionOffsetCommitRequest>
+pub struct OffsetCommitRequest<'a, 'b> {
+    pub header: HeaderRequest<'a>,
+    pub group: &'b str,
+    pub topic_partitions: Vec<TopicPartitionOffsetCommitRequest<'b>>
 }
 
 #[derive(Debug)]
-pub struct TopicPartitionOffsetCommitRequest {
-    pub topic: String,
-    pub partitions: Vec<PartitionOffsetCommitRequest>
+pub struct TopicPartitionOffsetCommitRequest<'a> {
+    pub topic: &'a str,
+    pub partitions: Vec<PartitionOffsetCommitRequest<'a>>
 }
 
 #[derive(Debug)]
-pub struct PartitionOffsetCommitRequest {
+pub struct PartitionOffsetCommitRequest<'a> {
     pub partition: i32,
     pub offset: i64,
-    pub metadata: String
+    pub metadata: &'a str,
 }
 
-impl OffsetCommitRequest {
-    pub fn new(group: String, correlation: i32, clientid: Rc<String>) -> OffsetCommitRequest {
+impl<'a, 'b> OffsetCommitRequest<'a, 'b> {
+    pub fn new(group: &'b str, correlation_id: i32, client_id: &'a str) -> OffsetCommitRequest<'a, 'b> {
         OffsetCommitRequest{
-            header: HeaderRequest{key: OFFSET_COMMIT_KEY, correlation: correlation,
-                                  clientid: clientid, version: API_VERSION},
+            header: HeaderRequest::new(
+                API_KEY_OFFSET_COMMIT, API_VERSION, correlation_id, client_id),
             group: group,
             topic_partitions: vec!()
-            }
+        }
     }
 
-    pub fn add(&mut self, topic: String, partition: i32, offset: i64, metadata: String) {
+    pub fn add(&mut self, topic: &'b str, partition: i32, offset: i64, metadata: &'b str) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
                 tp.add(partition, offset, metadata);
                 return;
             }
         }
-        let mut tp = TopicPartitionOffsetCommitRequest::new(topic.clone());
+        let mut tp = TopicPartitionOffsetCommitRequest::new(topic);
         tp.add(partition, offset, metadata);
         self.topic_partitions.push(tp);
     }
 }
 
-impl TopicPartitionOffsetCommitRequest {
-    pub fn new(topic: String) -> TopicPartitionOffsetCommitRequest{
+impl<'a> TopicPartitionOffsetCommitRequest<'a> {
+    pub fn new(topic: &'a str) -> TopicPartitionOffsetCommitRequest<'a> {
         TopicPartitionOffsetCommitRequest {
             topic: topic,
             partitions: vec!()
         }
     }
 
-    pub fn add(&mut self, partition: i32, offset: i64, metadata: String) {
+    pub fn add(&mut self, partition: i32, offset: i64, metadata: &'a str) {
         self.partitions.push(PartitionOffsetCommitRequest::new(partition, offset, metadata))
     }
 }
 
-impl PartitionOffsetCommitRequest {
-    pub fn new(partition: i32, offset: i64, metadata: String) -> PartitionOffsetCommitRequest {
-
+impl<'a> PartitionOffsetCommitRequest<'a> {
+    pub fn new(partition: i32, offset: i64, metadata: &'a str) -> PartitionOffsetCommitRequest<'a> {
         PartitionOffsetCommitRequest{
             partition: partition,
             offset: offset,
@@ -293,8 +291,8 @@ impl PartitionOffsetCommitRequest {
     }
 }
 
-impl ToByte for OffsetCommitRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a, 'b> ToByte for OffsetCommitRequest<'a, 'b> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.header.encode(buffer),
             self.group.encode(buffer),
@@ -303,8 +301,8 @@ impl ToByte for OffsetCommitRequest {
     }
 }
 
-impl ToByte for TopicPartitionOffsetCommitRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a> ToByte for TopicPartitionOffsetCommitRequest<'a> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.topic.encode(buffer),
             self.partitions.encode(buffer)
@@ -312,8 +310,8 @@ impl ToByte for TopicPartitionOffsetCommitRequest {
     }
 }
 
-impl ToByte for PartitionOffsetCommitRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a> ToByte for PartitionOffsetCommitRequest<'a> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.partition.encode(buffer),
             self.offset.encode(buffer),

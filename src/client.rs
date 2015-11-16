@@ -48,14 +48,13 @@ pub struct KafkaClient {
     // ~ the current state of this client
     state: ClientState,
 
-
     /// HashMap where `topic` is the key and list of `partitions` is the value
     pub topic_partitions: HashMap<String, Vec<i32>>,
 }
 
 #[derive(Default, Debug)]
 struct ClientConfig {
-    client_id: Rc<String>,
+    client_id: String,
     hosts: Vec<String>,
     // ~ compression to use when sending messages
     compression: Compression,
@@ -196,7 +195,7 @@ impl KafkaClient {
     pub fn new(hosts: Vec<String>) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
-                client_id: Rc::new(CLIENTID.to_owned()),
+                client_id: CLIENTID.to_owned(),
                 hosts: hosts,
                 .. ClientConfig::default()
             },
@@ -553,22 +552,21 @@ impl KafkaClient {
     /// use kafka::utils;
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let resp = client.commit_offsets("my-group".to_owned(), vec!(
+    /// let resp = client.commit_offsets("my-group", vec!(
     ///                 utils::TopicPartitionOffset{topic: "my-topic", partition: 0, offset: 100},
     ///                 utils::TopicPartitionOffset{topic: "my-topic", partition: 1, offset: 100}));
     /// ```
-    pub fn commit_offsets(&mut self, group: String, input: Vec<utils::TopicPartitionOffset>) -> Result<()>{
-
+    pub fn commit_offsets(&mut self, group: &str, input: Vec<utils::TopicPartitionOffset>) -> Result<()> {
         let correlation = self.next_id();
-        let mut reqs: HashMap<Rc<String>, protocol::OffsetCommitRequest> = HashMap:: new();
 
         // Map topic and partition to the corresponding broker
+        let config = &self.config;
+        let mut reqs: HashMap<Rc<String>, protocol::OffsetCommitRequest> = HashMap:: new();
         for tp in input {
             self.state.find_broker(&tp.topic, tp.partition).and_then(|broker| {
                 let entry = reqs.entry(broker.clone()).or_insert(
-                            protocol::OffsetCommitRequest::new(group.clone(), correlation, self.config.client_id.clone()));
-                // XXX avoid this cloning of the topic
-                entry.add(tp.topic.to_owned(), tp.partition, tp.offset, "".to_owned());
+                            protocol::OffsetCommitRequest::new(group, correlation, &config.client_id));
+                entry.add(tp.topic, tp.partition, tp.offset, "");
                 Some(())
             });
         }
@@ -594,14 +592,14 @@ impl KafkaClient {
     /// use kafka::utils;
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let resp = client.commit_offset("my-group".to_owned(), "my-topic".to_owned(), 0, 100);
+    /// let resp = client.commit_offset("my-group", "my-topic", 0, 100);
     /// ```
-    pub fn commit_offset(&mut self, group: String, topic: String,
-                         partition: i32, offset: i64) -> Result<()>{
+    pub fn commit_offset(&mut self, group: &str, topic: &str, partition: i32, offset: i64) -> Result<()> {
         self.commit_offsets(group, vec!(utils::TopicPartitionOffset{
-                topic: &topic,
-                partition: partition,
-                offset: offset}))
+            topic: topic,
+            partition: partition,
+            offset: offset
+        }))
     }
 
     /// Fetch offset for vector of topic, partition of a consumer group

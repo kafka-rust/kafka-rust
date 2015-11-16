@@ -58,7 +58,7 @@ impl ConsumerState {
                                 offset: *o
                             })
                         .collect();
-        client.commit_offsets(self.group.clone(), tpos)
+        client.commit_offsets(&self.group, tpos)
     }
 
     fn fetch_offsets(&mut self, client: &mut KafkaClient) -> Result<()> {

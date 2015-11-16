@@ -1,5 +1,4 @@
 use std::io::{Read, Write};
-use std::rc::Rc;
 
 use codecs::{ToByte, FromByte};
 use crc::crc32;
@@ -36,9 +35,9 @@ const API_KEY_FETCH: i16     = 1;
 const API_KEY_OFFSET: i16    = 2;
 const API_KEY_METADATA: i16  = 3;
 // 4-7 reserved for non-public kafka api services
-const OFFSET_COMMIT_KEY: i16 = 8;
+const API_KEY_OFFSET_COMMIT: i16 = 8;
 const API_KEY_OFFSET_FETCH: i16  = 9;
-//const CONSUMER_METADATA_KEY: i16 = 10;
+//const API_KEY_CONSUMER_METADATA: i16 = 10;
 
 // the version of Kafka API we are requesting
 const API_VERSION: i16 = 0;
@@ -48,29 +47,42 @@ const FETCH_MIN_BYTES: i32 = 4096;
 const FETCH_BUFFER_SIZE_BYTES: i32 = 4096;
 const MAX_FETCH_BUFFER_SIZE_BYTES: i32 = FETCH_BUFFER_SIZE_BYTES * 8;
 
-// Header
+// --------------------------------------------------------------------
+
 #[derive(Debug)]
-pub struct HeaderRequest {
-    pub key: i16,
-    pub version: i16,
-    pub correlation: i32,
-    pub clientid: Rc<String>
+pub struct HeaderRequest<'a> {
+    pub api_key: i16,
+    pub api_version: i16,
+    pub correlation_id: i32,
+    pub client_id: &'a str,
 }
+
+impl<'a> HeaderRequest<'a> {
+    fn new(api_key: i16, api_version: i16, correlation_id: i32, client_id: &'a str) -> HeaderRequest {
+        HeaderRequest {
+            api_key: api_key,
+            api_version: api_version,
+            correlation_id: correlation_id,
+            client_id: client_id,
+        }
+    }
+}
+
+impl<'a> ToByte for HeaderRequest<'a> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        try_multi!(
+            self.api_key.encode(buffer),
+            self.api_version.encode(buffer),
+            self.correlation_id.encode(buffer),
+            self.client_id.encode(buffer))
+    }
+}
+
+// --------------------------------------------------------------------
 
 #[derive(Default, Debug, Clone)]
 pub struct HeaderResponse {
     pub correlation: i32
-}
-
-impl ToByte for HeaderRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.key.encode(buffer),
-            self.version.encode(buffer),
-            self.correlation.encode(buffer),
-            self.clientid.encode(buffer)
-        )
-    }
 }
 
 impl FromByte for HeaderResponse {
@@ -82,37 +94,7 @@ impl FromByte for HeaderResponse {
     }
 }
 
-// this is a replacement for the old HeaderRequest
-#[derive(Debug)]
-pub struct HeaderRequest_<'a> {
-    pub api_key: i16,
-    pub api_version: i16,
-    pub correlation_id: i32,
-    pub client_id: &'a str,
-}
-
-impl<'a> HeaderRequest_<'a> {
-    fn new(api_key: i16, api_version: i16, correlation_id: i32, client_id: &'a str)
-           -> HeaderRequest_
-    {
-        HeaderRequest_ {
-            api_key: api_key,
-            api_version: api_version,
-            correlation_id: correlation_id,
-            client_id: client_id,
-        }
-    }
-}
-
-impl<'a> ToByte for HeaderRequest_<'a> {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.api_key.encode(buffer),
-            self.api_version.encode(buffer),
-            self.correlation_id.encode(buffer),
-            self.client_id.encode(buffer))
-    }
-}
+// --------------------------------------------------------------------
 
 pub fn tocrc(data: &[u8]) -> u32 {
     crc32::checksum_ieee(data)
