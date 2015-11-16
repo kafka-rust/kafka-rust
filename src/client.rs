@@ -80,7 +80,7 @@ struct ClientConfig {
 #[derive(Debug)]
 struct ClientState {
     // ~ the last correlation used when communicating with kafka
-    // (see `#next_id`)
+    // (see `#next_correlation_id`)
     correlation: i32,
 
     // ~ a mapping of topic to information about its partitions
@@ -301,11 +301,6 @@ impl KafkaClient {
         self.config.fetch_max_bytes_per_partition = max_bytes;
     }
 
-    // XXX drop
-    fn next_id(&mut self) -> i32 {
-        self.state.next_correlation_id()
-    }
-
     /// Resets and loads metadata for all topics.
     ///
     /// # Examples
@@ -390,7 +385,7 @@ impl KafkaClient {
     /// Loads metadata about the specified topics from all of the
     /// underlying brokers (`self.hosts`).
     fn get_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<protocol::MetadataResponse> {
-        let correlation = self.next_id();
+        let correlation = self.state.next_correlation_id();
         for host in &self.config.hosts {
             if let Ok(conn) = self.conn_pool.get_conn(host) {
                 let req = protocol::MetadataRequest::new(correlation, &self.config.client_id, topics);
@@ -420,12 +415,11 @@ impl KafkaClient {
         let time = offset.to_kafka_value();
         let n_topics = topics.len();
 
-        let correlation = self.next_id();
+        let state = &mut self.state;
+        let correlation = state.next_correlation_id();
 
         // Map topic and partition to the corresponding broker
         let config = &self.config;
-        let state = &self.state;
-
         let mut reqs: HashMap<Rc<String>, protocol::OffsetRequest> = HashMap::with_capacity(n_topics);
         for topic in topics {
             let topic = topic.as_ref();
@@ -505,15 +499,15 @@ impl KafkaClient {
     pub fn fetch_messages_multi<'a, I, J>(&mut self, input: I) -> Result<Vec<utils::TopicMessage>>
         where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J>
     {
-        let correlation = self.next_id();
-
-        let config = &self.config;
+        let state = &mut self.state;
+        let correlation = state.next_correlation_id();
 
         // Map topic and partition to the corresponding broker
+        let config = &self.config;
         let mut reqs: HashMap<Rc<String>, protocol::FetchRequest> = HashMap::new();
         for tpo in input {
             let tpo = tpo.as_ref();
-            if let Some(broker) = self.state.find_broker(tpo.topic, tpo.partition) {
+            if let Some(broker) = state.find_broker(tpo.topic, tpo.partition) {
                 reqs.entry(broker.clone())
                     .or_insert_with(|| {
                         protocol::FetchRequest::new(correlation, &config.client_id,
@@ -578,12 +572,11 @@ impl KafkaClient {
                                        -> Result<Vec<utils::TopicPartitionOffsetError>>
         where J: AsRef<utils::ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
-        let correlation = self.next_id();
+        let state = &mut self.state;
+        let correlation = state.next_correlation_id();
 
         // ~ map topic and partition to the corresponding brokers
-        let state = &mut self.state;
         let config = &self.config;
-
         let mut reqs: HashMap<Rc<String>, protocol::ProduceRequest> = HashMap::new();
         for msg in messages {
             let msg = msg.as_ref();
@@ -648,18 +641,18 @@ impl KafkaClient {
     ///                 utils::TopicPartitionOffset{topic: "my-topic", partition: 1, offset: 100}));
     /// ```
     pub fn commit_offsets(&mut self, group: &str, input: Vec<utils::TopicPartitionOffset>) -> Result<()> {
-        let correlation = self.next_id();
+        let state = &mut self.state;
+        let correlation = state.next_correlation_id();
 
         // Map topic and partition to the corresponding broker
         let config = &self.config;
         let mut reqs: HashMap<Rc<String>, protocol::OffsetCommitRequest> = HashMap:: new();
         for tp in input {
-            self.state.find_broker(&tp.topic, tp.partition).and_then(|broker| {
-                let entry = reqs.entry(broker.clone()).or_insert(
-                            protocol::OffsetCommitRequest::new(group, correlation, &config.client_id));
-                entry.add(tp.topic, tp.partition, tp.offset, "");
-                Some(())
-            });
+            if let Some(broker) = state.find_broker(&tp.topic, tp.partition) {
+                reqs.entry(broker.clone()).or_insert(
+                            protocol::OffsetCommitRequest::new(group, correlation, &config.client_id))
+                    .add(tp.topic, tp.partition, tp.offset, "");
+            }
         }
 
         // Call each broker with the request formed earlier
@@ -713,7 +706,7 @@ impl KafkaClient {
     /// ```
     pub fn fetch_group_offsets_multi(&mut self, group: &str, input: Vec<utils::TopicPartition>)
                                      -> Result<Vec<utils::TopicPartitionOffsetError>>{
-        let correlation = self.next_id();
+        let correlation = self.state.next_correlation_id();
 
         // Map topic and partition to the corresponding broker
         let mut reqs: HashMap<Rc<String>, protocol::OffsetFetchRequest> = HashMap:: new();
