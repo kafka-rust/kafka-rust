@@ -380,8 +380,10 @@ impl KafkaClient {
     pub fn fetch_topic_offset<T: AsRef<str>>(&mut self, topic: T, offset: FetchOffset)
                                              -> Result<Vec<utils::PartitionOffset>>
     {
-        let mut m = try!(self.fetch_offsets(&[topic.as_ref()], offset));
-        let offs = m.remove(topic.as_ref()).unwrap_or(vec!());
+        let topic = topic.as_ref();
+
+        let mut m = try!(self.fetch_offsets(&[topic], offset));
+        let offs = m.remove(topic).unwrap_or(vec!());
         if offs.is_empty() {
             Err(Error::UnknownTopicOrPartition)
         } else {
