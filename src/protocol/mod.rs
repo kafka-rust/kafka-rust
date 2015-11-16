@@ -37,7 +37,7 @@ const API_KEY_OFFSET: i16    = 2;
 const API_KEY_METADATA: i16  = 3;
 // 4-7 reserved for non-public kafka api services
 const OFFSET_COMMIT_KEY: i16 = 8;
-const OFFSET_FETCH_KEY: i16  = 9;
+const API_KEY_OFFSET_FETCH: i16  = 9;
 //const CONSUMER_METADATA_KEY: i16 = 10;
 
 // the version of Kafka API we are requesting
@@ -49,7 +49,7 @@ const FETCH_BUFFER_SIZE_BYTES: i32 = 4096;
 const MAX_FETCH_BUFFER_SIZE_BYTES: i32 = FETCH_BUFFER_SIZE_BYTES * 8;
 
 // Header
-#[derive(Default, Debug, Clone)]
+#[derive(Debug)]
 pub struct HeaderRequest {
     pub key: i16,
     pub version: i16,

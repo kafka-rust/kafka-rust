@@ -7,16 +7,16 @@ use codecs::{ToByte, FromByte};
 use error::{Error, Result};
 use utils::TopicPartitionOffsetError;
 
-use super::{HeaderRequest, HeaderResponse};
-use super::{OFFSET_FETCH_KEY, OFFSET_COMMIT_KEY, API_VERSION};
+use super::{HeaderRequest, HeaderRequest_, HeaderResponse};
+use super::{API_KEY_OFFSET_FETCH, OFFSET_COMMIT_KEY, API_VERSION};
 
 // #[derive(Debug)]
-// pub struct ConsumerMetadataRequest {
-//     pub header: HeaderRequest,
-//     pub group: String
+// pub struct ConsumerMetadataRequest<'a> {
+//     pub header: HeaderRequest_<'a>,
+//     pub group: &'a str,
 // }
 
-// impl ToByte for ConsumerMetadataRequest {
+// impl<'a> ToByte for ConsumerMetadataRequest<'a> {
 //     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
 //         try_multi!(
 //             self.header.encode(buffer),
@@ -53,48 +53,49 @@ use super::{OFFSET_FETCH_KEY, OFFSET_COMMIT_KEY, API_VERSION};
 
 // --------------------------------------------------------------------
 
-#[derive(Default, Debug, Clone)]
-pub struct OffsetFetchRequest {
-    pub header: HeaderRequest,
-    pub group: String,
-    pub topic_partitions: Vec<TopicPartitionOffsetFetchRequest>
+#[derive(Debug)]
+pub struct OffsetFetchRequest<'a, 'b, 'c> {
+    pub header: HeaderRequest_<'a>,
+    pub group: &'b str,
+    pub topic_partitions: Vec<TopicPartitionOffsetFetchRequest<'c>>
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct TopicPartitionOffsetFetchRequest {
-    pub topic: String,
+#[derive(Debug)]
+pub struct TopicPartitionOffsetFetchRequest<'a> {
+    pub topic: &'a str,
     pub partitions: Vec<PartitionOffsetFetchRequest>
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug)]
 pub struct PartitionOffsetFetchRequest {
     pub partition: i32
 }
 
-impl OffsetFetchRequest {
-    pub fn new(group: String, correlation: i32, clientid: Rc<String>) -> OffsetFetchRequest {
-        OffsetFetchRequest{
-            header: HeaderRequest{key: OFFSET_FETCH_KEY, correlation: correlation,
-                                  clientid: clientid, version: API_VERSION},
+impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
+    pub fn new(group: &'b str, correlation_id: i32, client_id: &'a str) -> OffsetFetchRequest<'a, 'b, 'c> {
+        OffsetFetchRequest {
+            header: HeaderRequest_::new(
+                API_KEY_OFFSET_FETCH, API_VERSION, correlation_id, client_id),
             group: group,
-            topic_partitions: vec!()}
+            topic_partitions: vec!()
+        }
     }
 
-    pub fn add(&mut self, topic: String, partition: i32) {
+    pub fn add(&mut self, topic: &'c str, partition: i32) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
                 tp.add(partition);
                 return;
             }
         }
-        let mut tp = TopicPartitionOffsetFetchRequest::new(topic.clone());
+        let mut tp = TopicPartitionOffsetFetchRequest::new(topic);
         tp.add(partition);
         self.topic_partitions.push(tp);
     }
 }
 
-impl TopicPartitionOffsetFetchRequest {
-    pub fn new(topic: String) -> TopicPartitionOffsetFetchRequest {
+impl<'a> TopicPartitionOffsetFetchRequest<'a> {
+    pub fn new(topic: &'a str) -> TopicPartitionOffsetFetchRequest<'a> {
         TopicPartitionOffsetFetchRequest{topic: topic, partitions: vec!()}
     }
 
@@ -109,8 +110,8 @@ impl PartitionOffsetFetchRequest {
     }
 }
 
-impl ToByte for OffsetFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a, 'b, 'c> ToByte for OffsetFetchRequest<'a, 'b, 'c> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.header.encode(buffer),
             self.group.encode(buffer),
@@ -119,8 +120,8 @@ impl ToByte for OffsetFetchRequest {
     }
 }
 
-impl ToByte for TopicPartitionOffsetFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<'a> ToByte for TopicPartitionOffsetFetchRequest<'a> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         try_multi!(
             self.topic.encode(buffer),
             self.partitions.encode(buffer)
@@ -129,7 +130,7 @@ impl ToByte for TopicPartitionOffsetFetchRequest {
 }
 
 impl ToByte for PartitionOffsetFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         self.partition.encode(buffer)
     }
 }

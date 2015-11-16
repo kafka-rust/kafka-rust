@@ -618,21 +618,20 @@ impl KafkaClient {
     /// use kafka::utils;
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let resp = client.fetch_group_topics_offset("my-group".to_owned(), vec!(
-    ///                 utils::TopicPartition{topic: "my-topic".to_owned(), partition: 0},
-    ///                 utils::TopicPartition{topic: "my-topic".to_owned(), partition: 1}));
+    /// let resp = client.fetch_group_offsets_multi("my-group", vec!(
+    ///                 utils::TopicPartition{topic: "my-topic", partition: 0},
+    ///                 utils::TopicPartition{topic: "my-topic", partition: 1}));
     /// ```
-    pub fn fetch_group_topics_offset(&mut self, group: String, input: Vec<utils::TopicPartition>)
-        -> Result<Vec<utils::TopicPartitionOffsetError>>{
-
+    pub fn fetch_group_offsets_multi(&mut self, group: &str, input: Vec<utils::TopicPartition>)
+                                     -> Result<Vec<utils::TopicPartitionOffsetError>>{
         let correlation = self.next_id();
-        let mut reqs: HashMap<Rc<String>, protocol::OffsetFetchRequest> = HashMap:: new();
 
         // Map topic and partition to the corresponding broker
+        let mut reqs: HashMap<Rc<String>, protocol::OffsetFetchRequest> = HashMap:: new();
         for tp in input {
             if let Some(broker) = self.state.find_broker(&tp.topic, tp.partition) {
                 let entry = reqs.entry(broker.clone()).or_insert(
-                    protocol::OffsetFetchRequest::new(group.clone(), correlation, self.config.client_id.clone()));
+                    protocol::OffsetFetchRequest::new(group, correlation, &self.config.client_id));
                 entry.add(tp.topic, tp.partition);
             }
         }
@@ -664,43 +663,16 @@ impl KafkaClient {
     /// use kafka::utils;
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// let res = client.load_metadata_all();
-    /// let resp = client.fetch_group_topic_offset("my-group".to_owned(),"my-topic".to_owned());
+    /// let resp = client.fetch_group_offsets("my-group","my-topic");
     /// ```
-    pub fn fetch_group_topic_offset(&mut self, group: String, topic: String)
-        -> Result<Vec<utils::TopicPartitionOffsetError>> {
-        let tps = self.topic_partitions.get(&topic)
+    pub fn fetch_group_offsets(&mut self, group: &str, topic: &str)
+                               -> Result<Vec<utils::TopicPartitionOffsetError>> {
+        let tps = self.topic_partitions.get(topic)
                         .unwrap()
                         .iter()
-                        .map(|p| utils::TopicPartition{topic: topic.clone(), partition: p.clone()})
+                        .map(|p| utils::TopicPartition{topic: topic, partition: *p})
                         .collect();
-        self.fetch_group_topics_offset(group, tps)
-    }
-
-    /// Fetch offset for all partitions of all topics of a consumer group
-    ///
-    /// It takes a group name and returns `utils::TopicPartitionOffsetError`
-    /// or `error::Error`
-    ///
-    /// You can figure out the topics using client's
-    /// `client.topic_partitions`
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use kafka::utils;
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let resp = client.fetch_group_offset("my-group".to_owned());
-    /// ```
-    pub fn fetch_group_offset(&mut self, group: String)
-        -> Result<Vec<utils::TopicPartitionOffsetError>> {
-        let mut tps = vec!();
-        for (topic, partitions) in &self.topic_partitions {
-            for p in partitions {
-                tps.push(utils::TopicPartition{topic: topic.clone(), partition: p.clone()})
-            }
-        }
-        self.fetch_group_topics_offset(group, tps)
+        self.fetch_group_offsets_multi(group, tps)
     }
 }
 

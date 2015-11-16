@@ -166,20 +166,7 @@ fn main() {
 
 ##### Fetch Offsets of a Consumer Group:
 
-[Offsets for all topics/partitions in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_offset)
-
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    // Group, Topic, Partition, Offset
-    let resp = client.fetch_group_offset("my-group".to_owned());
-}
-```
-
-[Offsets for a topic and all its partitions in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_topic_offset)
+[Offsets for a topic and all its partitions in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_offsets)
 
 ```rust
 extern crate kafka;
@@ -188,11 +175,11 @@ use kafka::utils;
 fn main() {
     let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
-    let msgs = client.fetch_group_topic_offset("my-group".to_owned(), "my-topic".to_owned());
+    let msgs = client.fetch_group_offsets("my-group", "my-topic");
 }
 ```
 
-[Offsets for Multiple (topic, partition) in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_topics_offset)
+[Offsets for Multiple (topic, partition) in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_offsets_multi)
 
 ```rust
 extern crate kafka;
@@ -201,12 +188,12 @@ use kafka::utils;
 fn main() {
     let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     client.load_metadata_all();
-    let msgs = client.fetch_group_topics_offset("my-group".to_owned(), vec!(utils::TopicPartition{
-                                                    topic: "my-topic".to_owned(),
+    let msgs = client.fetch_group_offsets_multi("my-group", vec!(utils::TopicPartition{
+                                                    topic: "my-topic",
                                                     partition: 0
                                                     },
                                                 utils::TopicPartition{
-                                                    topic: "my-topic-2".to_owned(),
+                                                    topic: "my-topic-2",
                                                     partition: 0
                                                 })));
 }

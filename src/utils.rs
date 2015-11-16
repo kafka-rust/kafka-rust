@@ -67,7 +67,7 @@ pub struct TopicPartitions {
 }
 
 #[derive(Debug)]
-pub struct TopicPartition {
-    pub topic: String,
+pub struct TopicPartition<'a> {
+    pub topic: &'a str,
     pub partition: i32
 }
