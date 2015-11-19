@@ -27,7 +27,7 @@ fn main() {
         return;
     }
 
-    match client.fetch_messages(topic.to_owned(), partition, offset) {
+    match client.fetch_messages(topic, partition, offset) {
         Err(e) => {
             println!("Failed to fetch messages: {}", e);
         }
