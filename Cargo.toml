@@ -24,3 +24,6 @@ pkg-config = "0.3"
 
 [dev-dependencies]
 getopts = "0.2"
+
+[features]
+nightly = []

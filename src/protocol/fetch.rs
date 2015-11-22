@@ -352,73 +352,22 @@ impl FromByte for Message {
 
 #[cfg(test)]
 mod tests {
-
-    use std::io::Cursor;
     use std::str;
 
     use super::FetchResponse;
     use codecs::FromByte;
 
-    macro_rules! assert_message {
-        ($msg:expr, $topic:expr, $partition:expr, $msgdata:expr) => {
-            assert_eq!($topic, &$msg.topic[..]);
-            assert_eq!($partition, $msg.partition);
-            assert_eq!($msgdata, &$msg.message[..]);
-        }
-    }
+    static FETCH1_TXT: &'static str =
+        include_str!("../../test-data/fetch1.txt");
+    static FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.nocompression.kafka.0821");
+    static FETCH1_FETCH_RESPONSE_SNAPPY_K0821: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0821");
+    static FETCH1_FETCH_RESPONSE_SNAPPY_K0822: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
 
-    #[test]
-    fn decode_new_fetch_response_nocompression() {
-
-        // - one topic
-        // - 2 x message of 10 bytes (0..10)
-        // - 2 x message of 5 bytes (0..5)
-        // - 3 x message of 10 bytes (0..10)
-        // - 1 x message of 5 bytes (0..5) static
-        static FETCH_RESPONSE_RAW_DATA: &'static [u8] = &[
-            0, 0, 0, 3, 0, 0, 0, 1, 0, 13, 116, 101, 115, 116, 95,
-            116, 111, 112, 105, 99, 95, 49, 112, 0, 0, 0, 1, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 1, 17, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 24, 211, 120, 76, 139, 0, 0, 255,
-            255, 255, 255, 0, 0, 0, 10, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-            0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 24, 211, 120, 76, 139, 0,
-            0, 255, 255, 255, 255, 0, 0, 0, 10, 0, 1, 2, 3, 4, 5, 6,
-            7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 19, 224, 237,
-            15, 248, 0, 0, 255, 255, 255, 255, 0, 0, 0, 5, 0, 1, 2, 3,
-            4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 19, 224, 237, 15, 248,
-            0, 0, 255, 255, 255, 255, 0, 0, 0, 5, 0, 1, 2, 3, 4, 0, 0,
-            0, 0, 0, 0, 0, 4, 0, 0, 0, 24, 211, 120, 76, 139, 0, 0,
-            255, 255, 255, 255, 0, 0, 0, 10, 0, 1, 2, 3, 4, 5, 6, 7,
-            8, 9, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 24, 211, 120, 76,
-            139, 0, 0, 255, 255, 255, 255, 0, 0, 0, 10, 0, 1, 2, 3, 4,
-            5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 24, 211,
-            120, 76, 139, 0, 0, 255, 255, 255, 255, 0, 0, 0, 10, 0, 1,
-            2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0,
-            19, 224, 237, 15, 248, 0, 0, 255, 255, 255, 255, 0, 0, 0,
-            5, 0, 1, 2, 3, 4];
-
-        let r = FetchResponse::decode_new(&mut Cursor::new(FETCH_RESPONSE_RAW_DATA));
-        let msgs = r.unwrap().into_messages();
-
-        assert_eq!(8, msgs.len());
-        let zero_to_ten: Vec<u8> = (0..10).collect();
-        assert_message!(msgs[0], "test_topic_1p", 0, &zero_to_ten[..]);
-        assert_message!(msgs[1], "test_topic_1p", 0, &zero_to_ten[..]);
-
-        assert_message!(msgs[2], "test_topic_1p", 0, &zero_to_ten[0..5]);
-        assert_message!(msgs[3], "test_topic_1p", 0, &zero_to_ten[0..5]);
-
-        assert_message!(msgs[4], "test_topic_1p", 0, &zero_to_ten[..]);
-        assert_message!(msgs[5], "test_topic_1p", 0, &zero_to_ten[..]);
-        assert_message!(msgs[6], "test_topic_1p", 0, &zero_to_ten[..]);
-
-        assert_message!(msgs[7], "test_topic_1p", 0, &zero_to_ten[0..5]);
-    }
-
-    // ~ --------------------------------------------------------------
-
-    fn test_decode_new_fetch_response_snappy(msg_per_line: &str, fetch_response_bytes: &[u8]) {
-        let resp = FetchResponse::decode_new(&mut Cursor::new(fetch_response_bytes));
+    fn test_decode_new_fetch_response(msg_per_line: &str, mut fetch_response_bytes: &[u8]) {
+        let resp = FetchResponse::decode_new(&mut fetch_response_bytes);
         let resp = resp.unwrap();
 
         // ~ response for exactly one topic expected
@@ -432,20 +381,49 @@ mod tests {
         }
     }
 
-    static FETCH1_TXT: &'static str =
-        include_str!("../../test-data/fetch1.txt");
-    static FETCH1_FETCH_RESPONSE_K0821: &'static [u8] =
-        include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0821");
-    static FETCH1_FETCH_RESPONSE_K0822: &'static [u8] =
-        include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
+    #[test]
+    fn test_decode_new_fetch_response_nocompression_k0821() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821);
+    }
 
     #[test]
     fn test_decode_new_fetch_response_snappy_k0821() {
-        test_decode_new_fetch_response_snappy(FETCH1_TXT, FETCH1_FETCH_RESPONSE_K0821);
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821);
     }
 
     #[test]
     fn test_decode_new_fetch_response_snappy_k0822() {
-        test_decode_new_fetch_response_snappy(FETCH1_TXT, FETCH1_FETCH_RESPONSE_K0822);
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822);
+    }
+
+    #[cfg(feature = "nightly")]
+    mod benches {
+        use std::io::Cursor;
+        use test::Bencher;
+
+        use codecs::FromByte;
+        use protocol::fetch::FetchResponse;
+
+        fn bench_decode_new_fetch_response(b: &mut Bencher, data: &[u8]) {
+            b.bytes = data.len() as u64;
+            b.iter(|| FetchResponse::decode_new(&mut Cursor::new(data))
+                   .unwrap()
+                   .into_messages());
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_nocompression_k0821(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_snappy_k0821(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822)
+        }
     }
 }
