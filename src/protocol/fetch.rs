@@ -5,8 +5,8 @@ use compression::Compression;
 use error::{Error, Result};
 use gzip;
 use num::traits::FromPrimitive;
-use snappy;
-use utils::{TopicMessage};
+use snappy::SnappyReader;
+use utils::TopicMessage;
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_FETCH, API_VERSION};
@@ -133,7 +133,7 @@ pub struct TopicPartitionFetchResponse {
 pub struct PartitionFetchResponse {
     pub partition: i32,
     pub error: i16,
-    pub offset: i64,
+    pub offset: i64, // XXX rename to highwatermark
     pub messageset: MessageSet
 }
 
@@ -256,7 +256,7 @@ impl MessageSetInner {
 }
 
 impl Message {
-    fn into_messages(self, offset: i64) -> Vec<OffsetMessage>{
+    fn into_messages(self, offset: i64) -> Vec<OffsetMessage> {
         match self.attributes & 3 {
             codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{offset:offset, message: self.value}),
             codec if codec == Compression::GZIP as i8 => message_decode_gzip(self.value),
@@ -266,29 +266,17 @@ impl Message {
     }
 }
 
-fn message_decode_snappy(value: Vec<u8>) -> Vec<OffsetMessage>{
-    // SNAPPY
-    let mut buffer = Cursor::new(value);
-    let _ = snappy::SnappyHeader::decode_new(&mut buffer);
-    //if (!snappy::check_header(&header)) return;
-
-    let mut v = vec!();
-    while let Ok(x) = message_decode_loop_snappy(&mut buffer) {
-        v.extend(x);
-    }
-    v
-}
-
-fn message_decode_loop_snappy<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
-    let sms = try!(snappy::SnappyMessage::decode_new(buffer));
-    let msg = try!(snappy::uncompress(sms.message));
-    let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
-    Ok(mset.into_messages())
+fn message_decode_snappy(value: Vec<u8>) -> Vec<OffsetMessage> {
+    // XXX avoid unwrap, have this return an error!!!
+    let mut r = SnappyReader::new(&value).unwrap();
+    let mset = MessageSet::decode_new(&mut r).unwrap();
+    mset.into_messages()
 }
 
 fn message_decode_gzip(value: Vec<u8>) -> Vec<OffsetMessage>{
     // Gzip
     let mut buffer = Cursor::new(value);
+    // XXX is the loop really necessary?
     match message_decode_loop_gzip(&mut buffer) {
         Ok(x) => x,
         Err(_) => vec!()
@@ -367,12 +355,21 @@ impl FromByte for Message {
 mod tests {
 
     use std::io::Cursor;
+    use std::str;
 
     use super::FetchResponse;
     use codecs::FromByte;
 
+    macro_rules! assert_message {
+        ($msg:expr, $topic:expr, $partition:expr, $msgdata:expr) => {
+            assert_eq!($topic, &$msg.topic[..]);
+            assert_eq!($partition, $msg.partition);
+            assert_eq!($msgdata, &$msg.message[..]);
+        }
+    }
+
     #[test]
-    fn decode_new_fetch_response() {
+    fn decode_new_fetch_response_nocompression() {
 
         // - one topic
         // - 2 x message of 10 bytes (0..10)
@@ -404,26 +401,52 @@ mod tests {
         let r = FetchResponse::decode_new(&mut Cursor::new(FETCH_RESPONSE_RAW_DATA));
         let msgs = r.unwrap().into_messages();
 
-        macro_rules! assert_msg {
-            ($msg:expr, $topic:expr, $partition:expr, $msgdata:expr) => {
-                assert_eq!($topic, &$msg.topic[..]);
-                assert_eq!($partition, $msg.partition);
-                assert_eq!($msgdata, &$msg.message[..]);
-            }
-        }
-
         assert_eq!(8, msgs.len());
         let zero_to_ten: Vec<u8> = (0..10).collect();
-        assert_msg!(msgs[0], "test_topic_1p", 0, &zero_to_ten[..]);
-        assert_msg!(msgs[1], "test_topic_1p", 0, &zero_to_ten[..]);
+        assert_message!(msgs[0], "test_topic_1p", 0, &zero_to_ten[..]);
+        assert_message!(msgs[1], "test_topic_1p", 0, &zero_to_ten[..]);
 
-        assert_msg!(msgs[2], "test_topic_1p", 0, &zero_to_ten[0..5]);
-        assert_msg!(msgs[3], "test_topic_1p", 0, &zero_to_ten[0..5]);
+        assert_message!(msgs[2], "test_topic_1p", 0, &zero_to_ten[0..5]);
+        assert_message!(msgs[3], "test_topic_1p", 0, &zero_to_ten[0..5]);
 
-        assert_msg!(msgs[4], "test_topic_1p", 0, &zero_to_ten[..]);
-        assert_msg!(msgs[5], "test_topic_1p", 0, &zero_to_ten[..]);
-        assert_msg!(msgs[6], "test_topic_1p", 0, &zero_to_ten[..]);
+        assert_message!(msgs[4], "test_topic_1p", 0, &zero_to_ten[..]);
+        assert_message!(msgs[5], "test_topic_1p", 0, &zero_to_ten[..]);
+        assert_message!(msgs[6], "test_topic_1p", 0, &zero_to_ten[..]);
 
-        assert_msg!(msgs[7], "test_topic_1p", 0, &zero_to_ten[0..5]);
+        assert_message!(msgs[7], "test_topic_1p", 0, &zero_to_ten[0..5]);
+    }
+
+    // ~ --------------------------------------------------------------
+
+    fn test_decode_new_fetch_response_snappy(msg_per_line: &str, fetch_response_bytes: &[u8]) {
+        let resp = FetchResponse::decode_new(&mut Cursor::new(fetch_response_bytes));
+        let resp = resp.unwrap();
+
+        // ~ response for exactly one topic expected
+        assert_eq!(1, resp.topic_partitions.len());
+
+        let msgs = resp.into_messages();
+        let original: Vec<_> = msg_per_line.lines().collect();
+        assert_eq!(original.len(), msgs.len());
+        for (msg, orig) in msgs.iter().zip(original.iter()) {
+            assert_eq!(str::from_utf8(&msg.message).unwrap(), *orig);
+        }
+    }
+
+    static FETCH1_TXT: &'static str =
+        include_str!("../../test-data/fetch1.txt");
+    static FETCH1_FETCH_RESPONSE_K0821: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0821");
+    static FETCH1_FETCH_RESPONSE_K0822: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
+
+    #[test]
+    fn test_decode_new_fetch_response_snappy_k0821() {
+        test_decode_new_fetch_response_snappy(FETCH1_TXT, FETCH1_FETCH_RESPONSE_K0821);
+    }
+
+    #[test]
+    fn test_decode_new_fetch_response_snappy_k0822() {
+        test_decode_new_fetch_response_snappy(FETCH1_TXT, FETCH1_FETCH_RESPONSE_K0822);
     }
 }

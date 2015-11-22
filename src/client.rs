@@ -828,5 +828,19 @@ fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
     let size = try!(i32::decode_new(&mut Cursor::new(v)));
 
     let resp = try!(conn.read_exact(size as u64));
+
+    // {
+    //     use std::fs::OpenOptions;
+    //     use std::io::Write;
+    //     let mut f = OpenOptions::new()
+    //         .write(true)
+    //         .append(true)
+    //         .truncate(true)
+    //         .create(true)
+    //         .open("/tmp/dump.dat")
+    //         .unwrap();
+    //     f.write_all(&resp[..]).unwrap();
+    // }
+
     T::decode_new(&mut Cursor::new(resp))
 }
