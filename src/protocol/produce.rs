@@ -1,11 +1,9 @@
 use std::io::{Read, Write};
 
 use codecs::{ToByte, FromByte};
-use compression::Compression;
+use compression::{Compression, gzip, snappy};
 use error::{Error, Result};
-use gzip;
 use num::traits::FromPrimitive;
-use snappy;
 use utils::TopicPartitionOffsetError;
 
 use super::{HeaderRequest, HeaderResponse};

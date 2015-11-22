@@ -227,9 +227,9 @@ mod tests {
     #[test]
     fn test_snappy_reader() {
         static ORIGINAL: &'static str =
-            include_str!("../test-data/fetch1.txt");
+            include_str!("../../test-data/fetch1.txt");
         static COMPRESSED: &'static [u8] =
-            include_bytes!("../test-data/fetch1.snappy.chunked.4k");
+            include_bytes!("../../test-data/fetch1.snappy.chunked.4k");
 
         let mut buf = Vec::new();
         let mut r = SnappyReader::new(COMPRESSED).unwrap();

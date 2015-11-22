@@ -11,5 +11,3 @@ mod protocol;
 pub mod client;
 pub mod consumer;
 mod compression;
-mod gzip;
-mod snappy;

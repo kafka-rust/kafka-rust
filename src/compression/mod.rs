@@ -1,3 +1,6 @@
+pub mod snappy;
+pub mod gzip;
+
 /// Compression types supported by kafka. The numeral values of this
 /// enumeration correspond to the compression encoding in the
 /// attributes of a Message in the protocol.

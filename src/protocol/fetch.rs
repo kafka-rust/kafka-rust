@@ -1,11 +1,10 @@
 use std::io::{Cursor, Read, Write};
 
 use codecs::{ToByte, FromByte};
-use compression::Compression;
+use compression::snappy::SnappyReader;
+use compression::{Compression, gzip};
 use error::{Error, Result};
-use gzip;
 use num::traits::FromPrimitive;
-use snappy::SnappyReader;
 use utils::TopicMessage;
 
 use super::{HeaderRequest, HeaderResponse};
