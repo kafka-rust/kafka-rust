@@ -51,22 +51,26 @@ struct ConsumerState {
 
 impl ConsumerState {
     fn commit_offsets(&mut self, client: &mut KafkaClient) -> Result<()> {
-        let tpos = self.offsets.iter()
-                        .map(|(p, o)| TopicPartitionOffset{
-                                topic: &self.topic,
-                                partition: *p,
-                                offset: *o
-                            })
-                        .collect();
-        client.commit_offsets(&self.group, tpos)
+        client.commit_offsets(&self.group,
+                              self.offsets.iter()
+                              .map(|(p, o)| TopicPartitionOffset{
+                                  topic: &self.topic,
+                                  partition: *p,
+                                  offset: *o
+                              }))
     }
 
     fn fetch_offsets(&mut self, client: &mut KafkaClient) -> Result<()> {
+        if self.partitions.is_empty() {
+            // ~ fails if the underlygin topic is unkonwn to the given
+            // client; this actually is what we want
+            self.partitions = try!(client.iter_topic_partitions(&self.topic))
+                .map(|p| p.id())
+                .collect();
+        }
+
         // ~ fetch the so far commited group offsets
         let mut tpos = try!(client.fetch_group_offsets(&self.group, &self.topic));
-        if self.partitions.is_empty() {
-            self.partitions = client.topic_partitions.get(&self.topic).unwrap_or(&vec!()).clone();
-        }
 
         // ~ it might well that there were no group offsets committed
         // yet ... fallback to default offsets.

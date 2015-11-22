@@ -19,7 +19,7 @@ fn main() {
     }
     // ~ make sure to print out a warning message when the target
     // topic does not yet exist
-    if !client.topic_partitions.contains_key(topic) {
+    if !client.contains_topic(topic) {
         println!("No such topic at {}: {}", broker, topic);
         return;
     }

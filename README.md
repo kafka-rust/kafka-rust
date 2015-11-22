@@ -4,227 +4,56 @@
 
 ### Documentation
 
-[Kafka Rust Client Documentation](https://spicavigo.github.io/kafka-rust/)
-
-The documentation includes some examples too.
+The [documentation](https://spicavigo.github.io/kafka-rust/) include some examples, too.
 
 
 ### Installation
 
-This crate works with Cargo and is on [crates.io](https://crates.io/crates/kafka). I will be updating the package frequently till we move out of pre-release. So add this to your `Cargo.toml` (instead of a specific version):
+This crate works with Cargo and is on [crates.io](https://crates.io/crates/kafka).  The API is currently under heavy movement although we do follow semantic versioning.
 
 ```toml
 [dependencies]
 kafka = "*"
 ```
 
-#### Usage:
+To build kafka-rust you'll need `libsnappy-dev` on your local machine. If that library is not installed in the usual path, you can export the `LD_LIBRARY_PATH` environment variable before issueing `cargo build`.
 
-##### Load topic metadata:
-[Load Metadata] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.load_metadata_all)
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    // OR
-    // client.load_metadata(vec!("my-topic".to_owned())); // Loads metadata for vector of topics
- }
-```
-##### Fetch Offsets:
 
-[For one topic] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_topic_offset)
+### Example:
 
-```rust
-extern crate kafka;
-use kafka::client::{KafkaClient, FetchOffset};
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    let offsets = client.fetch_topic_offset("my-topic", FetchOffset::Latest);
-}
-```
+As mentioned, the cargo generated documentation constains some examples. Further, standalone, compilable example programs are provided in the [examples directory of the repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
 
-[For multiple topics] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_offsets)
+[KafkaClient](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html)
+is the main entry point into the API. This is a mid-level abstraction
+for Kafka.  Its main methods are:
 
-```rust
-extern crate kafka;
-use kafka::client::{KafkaClient, FetchOffset};
-fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    let topics: Vec<String> = client.topic_partitions.keys().cloned().collect();
-    let offsets = client.fetch_offsets(&topics, FetchOffset::Latest);
-}
-```
-##### Produce:
+* [Loading metadata](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.load_metadata_all)
+* [Fetching topic offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_offsets)
+* [Sending messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.send_messages)
+* [Fetching message](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.send_messages)
+* [Committing a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.commit_offsets)
+* [Fetching a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_topics_offset)
 
-[Single Message] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.send_message)
+Many of these methods also have convenience partners acting on a
+single topic or partition.
 
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-use kafka::utils;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    client.send_message(1, 100, "my-topic", "msg".to_owned().into_bytes())
-}
-```
 
-[Multiple Messages] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.send_messages)
+### [Consumer] (https://spicavigo.github.io/kafka-rust/kafka/consumer/index.html)
 
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-use kafka::utils;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    let m1 = "a".to_owned().into_bytes();
-    let m2 = "b".to_owned().into_bytes();
-    let req = vec!(utils::ProduceMessage{topic: "my-topic", message: m1},
-                    utils::ProduceMessage{topic: "my-topic-2", message: m2});
-    client.send_messages(1, 100, req);  // required acks, timeout, messages
-}
-```
+This is a simple higher-level Consumer for Kafka. It handles offset
+management internally on behalf of a specified group and provides an
+`Iterator` interface.
 
-##### Fetch Messages:
 
-[Single (topic, partition, offset)] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_messages)
+### [Creating a topic] (https://kafka.apache.org/08/quickstart.html)
 
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-fn main() {
-    let mut client = KafkaClient::new(&vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    // Topic, Partition, Offset
-    let msgs = client.fetch_messages("my-topic".to_owned(), 0, 0);
-}
-```
+Note unless otherwise explicitely stated in the documentation, this
+library will ignore requests to topics which it doesn't know about. In
+particular it will not send to or try to retrieve messages from not
+yet existing topics.  Give your local kafka server installation you
+can create topics if the following command (`kafka-topics.sh` is part
+of the Kafka distribution):
 
-[Multiple (topic, partition, offset)] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_messages_multi)
-
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-use kafka::utils;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    let msgs = client.fetch_messages_multi(vec!(utils::TopicPartitionOffset{
-                                                    topic: "my-topic".to_owned(),
-                                                    partition: 0,
-                                                    offset: 0
-                                                    },
-                                                utils::TopicPartitionOffset{
-                                                    topic: "my-topic-2".to_owned(),
-                                                    partition: 0,
-                                                    offset: 0
-                                                })));
-}
-```
-
-##### Commit Offsets to a Consumer Group:
-
-[Single (group, topic, partition, offset)] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.commit_offset)
-
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    // Group, Topic, Partition, Offset
-    let resp = client.commit_offset("my-group".to_owned(), "my-topic".to_owned(), 0, 100);
-}
-```
-
-[Single group, Multiple (topic, partition, offset)] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.commit_offsets)
-
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-use kafka::utils;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    let msgs = client.commit_offsets("my-group".to_owned(), vec!(utils::TopicPartitionOffset{
-                                                    topic: "my-topic".to_owned(),
-                                                    partition: 0,
-                                                    offset: 0
-                                                    },
-                                                utils::TopicPartitionOffset{
-                                                    topic: "my-topic-2".to_owned(),
-                                                    partition: 0,
-                                                    offset: 0
-                                                })));
-}
-```
-
-##### Fetch Offsets of a Consumer Group:
-
-[Offsets for a topic and all its partitions in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_offsets)
-
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-use kafka::utils;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    let msgs = client.fetch_group_offsets("my-group", "my-topic");
-}
-```
-
-[Offsets for Multiple (topic, partition) in a group] (https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_offsets_multi)
-
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-use kafka::utils;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    let msgs = client.fetch_group_offsets_multi("my-group", vec!(utils::TopicPartition{
-                                                    topic: "my-topic",
-                                                    partition: 0
-                                                    },
-                                                utils::TopicPartition{
-                                                    topic: "my-topic-2",
-                                                    partition: 0
-                                                })));
-}
-```
-
-##### [Consumer] (https://spicavigo.github.io/kafka-rust/kafka/consumer/index.html)
-
-This is a simple Consumer for kafka. It handles offset management internally (Fetching offset for the group at the start and committing offsets at a pre-defined interval - 100 consumed messages currently) and provides an Iterator interface.
-
-```rust
-extern crate kafka;
-use kafka::client::KafkaClient;
-use kafka::utils;
-fn main() {
-    let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-    client.load_metadata_all();
-    let con = kafka::consumer::Consumer::new(client, "test-group".to_owned(), "my-topic".to_owned())
-             .partition(0);
-    for msg in con {
-        println!("{:?}", msg);
-    }
-}
-```
-
-#### [Create a topic] (https://kafka.apache.org/08/quickstart.html)
-
-The examples above assume you will create the topic my-topic, for example with
 ```
 kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181  --partition 1 --replication-factor 1
 ```
-
-#### TODO:
-
-* Tests - (Added tests for gzip.rs, snappy.rs, and codecs.rs)
