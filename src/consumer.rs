@@ -144,7 +144,7 @@ impl ConsumerState {
                 let _ = self.commit_offsets(client);
             }
             if self.index <= self.messages.len() {
-                if self.messages[self.index-1].error.is_none() {
+                if self.messages[self.index-1].message.is_ok() {
                     let curr = self.offsets.entry(self.messages[self.index-1].partition).or_insert(0);
                     *curr = *curr+1;
                     return Some(self.messages[self.index-1].clone());

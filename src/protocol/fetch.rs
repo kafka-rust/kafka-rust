@@ -121,7 +121,6 @@ pub struct FetchResponse {
     pub topic_partitions: Vec<TopicPartitionFetchResponse>,
 }
 
-
 #[derive(Default, Debug)]
 pub struct TopicPartitionFetchResponse {
     pub topic: String,
@@ -132,8 +131,8 @@ pub struct TopicPartitionFetchResponse {
 pub struct PartitionFetchResponse {
     pub partition: i32,
     pub error: i16,
-    pub offset: i64, // XXX rename to highwatermark
-    pub messageset: MessageSet
+    pub highwatermark_offset: i64,
+    pub message_set: MessageSet
 }
 
 
@@ -158,19 +157,22 @@ impl TopicPartitionFetchResponse {
 
 impl PartitionFetchResponse {
     pub fn into_messages(self, topic: String) -> Vec<TopicMessage> {
-        if self.error != 0 {
-            return vec!(TopicMessage{topic: topic, partition: self.partition.clone(),
-                                     offset: self.offset, message: vec!(),
-                                     error: Error::from_i16(self.error)});
+        if let Some(e) = Error::from_i16(self.error) {
+            return vec!(TopicMessage {
+                topic: topic,
+                partition: self.partition,
+                message: Err(e),
+            });
         }
         let partition = self.partition;
-        let error = self.error;
-        self.messageset.into_messages()
-                       .into_iter()
-                       .map(|om| TopicMessage{topic: topic.clone(), partition: partition.clone(),
-                                              offset: om.offset, message: om.message,
-                                              error: Error::from_i16(error)})
-                       .collect()
+        self.message_set
+            .into_messages()
+            .into_iter()
+            .map(|om| TopicMessage {
+                topic: topic.clone(),
+                partition: partition,
+                message: Ok(om.message)})
+            .collect()
     }
 }
 
@@ -206,8 +208,8 @@ impl FromByte for PartitionFetchResponse {
         try_multi!(
             self.partition.decode(buffer),
             self.error.decode(buffer),
-            self.offset.decode(buffer),
-            self.messageset.decode(buffer)
+            self.highwatermark_offset.decode(buffer),
+            self.message_set.decode(buffer)
         )
     }
 }
@@ -376,8 +378,8 @@ mod tests {
         let msgs = resp.into_messages();
         let original: Vec<_> = msg_per_line.lines().collect();
         assert_eq!(original.len(), msgs.len());
-        for (msg, orig) in msgs.iter().zip(original.iter()) {
-            assert_eq!(str::from_utf8(&msg.message).unwrap(), *orig);
+        for (msg, orig) in msgs.into_iter().zip(original.iter()) {
+            assert_eq!(str::from_utf8(&msg.message.unwrap()).unwrap(), *orig);
         }
     }
 

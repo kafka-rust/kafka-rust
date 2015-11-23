@@ -6,9 +6,7 @@ use error::{Result,Error};
 pub struct TopicMessage {
     pub topic: String,
     pub partition: i32,
-    pub offset: i64,
-    pub error: Option<Error>,
-    pub message: Vec<u8>
+    pub message: Result<Vec<u8>>,
 }
 
 #[derive(Debug)]
