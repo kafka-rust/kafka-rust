@@ -36,18 +36,9 @@ pub const DEFAULT_FETCH_MIN_BYTES: i32 = 4096;
 pub const DEFAULT_FETCH_MAX_BYTES_PER_PARTITION: i32 = 32 * 1024;
 
 
-/// Client struct.
-///
-/// It keeps track of brokers and topic metadata.
+/// Client struct keeping track of brokers and topic metadata.
 ///
 /// Implements methods described by the [Kafka Protocol](https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol).
-///
-/// # Examples
-///
-/// ```no_run
-/// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-/// let res = client.load_metadata_all();
-/// ```
 ///
 /// You will have to load metadata before making any other request.
 #[derive(Debug)]
@@ -436,7 +427,7 @@ impl KafkaClient {
     /// Retrieves an iterator over the partitions of the given topic
     /// or an error if the requested topic is unknown (yet.)
     #[inline]
-    pub fn iter_topic_partitions(&self, topic: &str) -> Result<Partitions> {
+    pub fn topic_partitions(&self, topic: &str) -> Result<Partitions> {
         match self.state.topic_partitions.get(topic) {
             None => Err(Error::UnknownTopicOrPartition),
             Some(tp) => Ok(Partitions {
@@ -451,14 +442,14 @@ impl KafkaClient {
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// for topic in client.iter_topics() {
+    /// for topic in client.topics() {
     ///   for partition in topic.partitions() {
     ///     println!("{}:{} => {}", topic.name(), partition.id(), partition.leader());
     ///   }
     /// }
     /// ```
     #[inline]
-    pub fn iter_topics(&self) -> Topics {
+    pub fn topics(&self) -> Topics {
         Topics { iter: self.state.topic_partitions.iter() }
     }
 
@@ -470,7 +461,7 @@ impl KafkaClient {
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// for topic in client.iter_topics().names() {
+    /// for topic in client.topics().names() {
     ///   println!("topic: {}", topic);
     /// }
     /// ```
@@ -566,7 +557,7 @@ impl KafkaClient {
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// let topics: Vec<String> = client.iter_topics().names().map(ToOwned::to_owned).collect();
+    /// let topics: Vec<String> = client.topics().names().map(ToOwned::to_owned).collect();
     /// let offsets = client.fetch_offsets(&topics, kafka::client::FetchOffset::Latest).unwrap();
     /// ```
     /// Returns a hashmap of (topic, PartitionOffset data).

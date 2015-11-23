@@ -12,7 +12,7 @@ fn main() {
         return;
     }
 
-    for topic in client.iter_topics() {
+    for topic in client.topics() {
         for partition in topic.partitions() {
             println!("{}:{} {}", topic.name(), partition.id(), partition.leader());
         }

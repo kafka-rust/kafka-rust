@@ -64,7 +64,7 @@ impl ConsumerState {
         if self.partitions.is_empty() {
             // ~ fails if the underlygin topic is unkonwn to the given
             // client; this actually is what we want
-            self.partitions = try!(client.iter_topic_partitions(&self.topic))
+            self.partitions = try!(client.topic_partitions(&self.topic))
                 .map(|p| p.id())
                 .collect();
         }
