@@ -5,7 +5,7 @@ use compression::snappy::SnappyReader;
 use compression::{Compression, gzip};
 use error::{Error, Result};
 use num::traits::FromPrimitive;
-use utils::TopicMessage;
+use utils::{TopicMessage, OffsetMessage};
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_FETCH, API_VERSION};
@@ -171,7 +171,8 @@ impl PartitionFetchResponse {
             .map(|om| TopicMessage {
                 topic: topic.clone(),
                 partition: partition,
-                message: Ok(om.message)})
+                message: Ok(om)
+            })
             .collect()
     }
 }
@@ -235,12 +236,6 @@ pub struct Message {
     pub value: Vec<u8>
 }
 
-#[derive(Debug)]
-pub struct OffsetMessage {
-    pub offset: i64,
-    pub message: Vec<u8>
-}
-
 impl MessageSet {
     fn into_messages(self) -> Vec<OffsetMessage> {
         self.message
@@ -259,7 +254,10 @@ impl MessageSetInner {
 impl Message {
     fn into_messages(self, offset: i64) -> Vec<OffsetMessage> {
         match self.attributes & 3 {
-            codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{offset:offset, message: self.value}),
+            codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{
+                offset:offset,
+                value: self.value
+            }),
             codec if codec == Compression::GZIP as i8 => message_decode_gzip(self.value),
             codec if codec == Compression::SNAPPY as i8 => message_decode_snappy(self.value),
             _ => vec!()
@@ -379,7 +377,7 @@ mod tests {
         let original: Vec<_> = msg_per_line.lines().collect();
         assert_eq!(original.len(), msgs.len());
         for (msg, orig) in msgs.into_iter().zip(original.iter()) {
-            assert_eq!(str::from_utf8(&msg.message.unwrap()).unwrap(), *orig);
+            assert_eq!(str::from_utf8(&msg.message.unwrap().value).unwrap(), *orig);
         }
     }
 

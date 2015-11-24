@@ -3,10 +3,16 @@
 use error::{Result,Error};
 
 #[derive(Clone, Debug)]
+pub struct OffsetMessage {
+    pub offset: i64,
+    pub value: Vec<u8>,
+}
+
+#[derive(Clone, Debug)]
 pub struct TopicMessage {
     pub topic: String,
     pub partition: i32,
-    pub message: Result<Vec<u8>>,
+    pub message: Result<OffsetMessage>,
 }
 
 #[derive(Debug)]
