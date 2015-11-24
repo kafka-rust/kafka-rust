@@ -1,4 +1,5 @@
 extern crate kafka;
+
 use kafka::client::KafkaClient;
 
 /// This program demonstrates the low level api for fetching messages.
@@ -26,10 +27,15 @@ fn main() {
         return;
     }
 
-    let msgs = client.fetch_messages(topic.to_owned(), partition, offset);
-
-    for msg in msgs {
-        println!("{:?}", msg);
+    match client.fetch_messages(topic.to_owned(), partition, offset) {
+        Err(e) => {
+            println!("Failed to fetch messages: {}", e);
+        }
+        Ok(msgs) => {
+            for msg in msgs {
+                println!("{:?}", msg);
+            }
+            println!("No more messages.");
+        }
     }
-    println!("No more messages.")
 }
