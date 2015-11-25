@@ -15,7 +15,7 @@ pub use compression::Compression;
 
 use codecs::{ToByte, FromByte};
 use connection::KafkaConnection;
-use error::{Result, Error};
+use error::{Result, Error, KafkaCode};
 use protocol;
 use utils;
 
@@ -429,7 +429,7 @@ impl KafkaClient {
     #[inline]
     pub fn topic_partitions(&self, topic: &str) -> Result<Partitions> {
         match self.state.topic_partitions.get(topic) {
-            None => Err(Error::UnknownTopicOrPartition),
+            None => Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
             Some(tp) => Ok(Partitions {
                 iter: tp.partitions.iter(),
             }),
@@ -618,7 +618,7 @@ impl KafkaClient {
         let mut m = try!(self.fetch_offsets(&[topic], offset));
         let offs = m.remove(topic).unwrap_or(vec!());
         if offs.is_empty() {
-            Err(Error::UnknownTopicOrPartition)
+            Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition))
         } else {
             Ok(offs)
         }
@@ -876,7 +876,7 @@ impl KafkaClient {
                                -> Result<Vec<utils::TopicPartitionOffsetError>> {
         let tps: Vec<_> =
             match self.state.topic_partitions.get(topic) {
-                None => return Err(Error::UnknownTopicOrPartition),
+                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
                 Some(tp) => tp.partitions
                     .iter()
                     .map(|p| utils::TopicPartition{ topic: topic, partition: p.partition_id })
