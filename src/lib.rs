@@ -1,15 +1,18 @@
+#![cfg_attr(feature = "nightly", feature(test))]
+
 extern crate num;
 extern crate byteorder;
 extern crate flate2;
+extern crate crc;
+
+#[cfg(all(test, feature = "nightly"))]
+extern crate test;
 
 pub mod error;
 pub mod utils;
-mod crc32;
+pub mod client;
+pub mod consumer;
 mod codecs;
 mod connection;
 mod protocol;
-pub mod client;
-pub mod consumer;
 mod compression;
-mod gzip;
-mod snappy;

@@ -1,4 +1,5 @@
-use std::io::prelude::*;
+use std::io::{Read, Write};
+
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;

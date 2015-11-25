@@ -1,4 +1,3 @@
-
 use std::io::{Read, Write};
 use std::default::Default;
 
@@ -11,21 +10,12 @@ use error::{Result, Error};
 
 pub trait ToByte {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()>;
-    fn encode_nolen<T: Write>(&self, buffer: &mut T)  -> Result<()> {
-        self.encode(buffer)
-    }
 }
 
-pub trait FromByte {
-    type R: Default + FromByte;
 
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()>;
-    fn decode_new<T: Read>(buffer: &mut T) -> Result<Self::R> {
-        let mut temp: Self::R = Default::default();
-        match temp.decode(buffer) {
-            Ok(_) => Ok(temp),
-            Err(e) => Err(e)
-        }
+impl<'a, T: ToByte + 'a + ?Sized> ToByte for &'a T {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        (*self).encode(buffer)
     }
 }
 
@@ -40,47 +30,31 @@ impl ToByte for i16 {
         buffer.write_i16::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
+
 impl ToByte for i32 {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_i32::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
+
 impl ToByte for i64 {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_i64::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
 
-impl ToByte for String {
-    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        let s: &str = self;
-        s.encode(buffer)
-    }
-}
-
 impl ToByte for str {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try!(self.len()
-                        .to_i16()
-                        .ok_or(Error::CodecError));
+        let l = try!(self.len().to_i16().ok_or(Error::CodecError));
         try!(buffer.write_i16::<BigEndian>(l));
-        buffer.write_all(self.as_bytes())
-                             .or_else(|e| Err(From::from(e)))
+        buffer.write_all(self.as_bytes()).or_else(|e| Err(From::from(e)))
     }
 }
 
-impl <V: ToByte> ToByte for Vec<V> {
+impl <V: ToByte> ToByte for [V] {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try!(self.len()
-                        .to_i32()
-                        .ok_or(Error::CodecError));
+        let l = try!(self.len().to_i32().ok_or(Error::CodecError));
         try!(buffer.write_i32::<BigEndian>(l));
-        for e in self {
-            try!(e.encode(buffer));
-        }
-        Ok(())
-    }
-    fn encode_nolen<T:Write>(&self, buffer: &mut T) -> Result<()> {
         for e in self {
             try!(e.encode(buffer));
         }
@@ -88,18 +62,45 @@ impl <V: ToByte> ToByte for Vec<V> {
     }
 }
 
-impl ToByte for Vec<u8> {
+impl ToByte for [u8] {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try!(self.len()
-                        .to_i32()
-                        .ok_or(Error::CodecError));
+        let l = try!(self.len().to_i32().ok_or(Error::CodecError));
         try!(buffer.write_i32::<BigEndian>(l));
         buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
-    fn encode_nolen<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        buffer.write_all(self).or_else(|e| Err(From::from(e)))
+}
+
+// ~ this allows to render a slice of various types (typically &str
+// and String) as strings
+pub struct AsStrings<'a, T: 'a>(pub &'a [T]);
+
+impl<'a, T: AsRef<str> + 'a> ToByte for AsStrings<'a, T> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        let &AsStrings(xs) = self;
+        let l = try!(xs.len().to_i32().ok_or(Error::CodecError));
+        try!(buffer.write_i32::<BigEndian>(l));
+        for x in xs {
+            try!(x.as_ref().encode(buffer));
+        }
+        Ok(())
     }
 }
+
+// --------------------------------------------------------------------
+
+pub trait FromByte {
+    type R: Default + FromByte;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()>;
+    fn decode_new<T: Read>(buffer: &mut T) -> Result<Self::R> {
+        let mut temp: Self::R = Default::default();
+        match temp.decode(buffer) {
+            Ok(_) => Ok(temp),
+            Err(e) => Err(e)
+        }
+    }
+}
+
 
 macro_rules! dec_helper {
     ($val: expr, $dest:expr) => ({
@@ -138,6 +139,7 @@ impl FromByte for i16 {
         decode!(buffer, read_i16, self)
     }
 }
+
 impl FromByte for i32 {
     type R = i32;
 
@@ -145,12 +147,14 @@ impl FromByte for i32 {
         decode!(buffer, read_i32, self)
     }
 }
+
 impl FromByte for i64 {
     type R = i64;
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         decode!(buffer, read_i64, self)
     }
 }
+
 impl FromByte for String {
     type R = String;
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
@@ -223,11 +227,11 @@ fn codec_i8() {
 
     // Read from buffer into existing variable
     let mut dec1: i8 = 0;
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = i8::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = i8::decode_new(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -243,11 +247,11 @@ fn codec_i16() {
 
     // Read from buffer into existing variable
     let mut dec1: i16 = 0;
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = i16::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = i16::decode_new(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -263,11 +267,11 @@ fn codec_32() {
 
     // Read from buffer into existing variable
     let mut dec1: i32 = 0;
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = i32::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = i32::decode_new(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -283,11 +287,11 @@ fn codec_i64() {
 
     // Read from buffer into existing variable
     let mut dec1: i64 = 0;
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = i64::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = i64::decode_new(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -303,11 +307,11 @@ fn codec_string() {
 
     // Read from buffer into existing variable
     let mut dec1 = String::new();
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = String::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = String::decode_new(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec2, orig);
 }
 
@@ -323,10 +327,57 @@ fn codec_vec_u8() {
 
     // Read from buffer into existing variable
     let mut dec1: Vec<u8> = vec!();
-    dec1.decode(&mut Cursor::new(buf.clone())).unwrap();
+    dec1.decode(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec1, orig);
 
     // Read from buffer into new variable
-    let dec2 = Vec::<u8>::decode_new(&mut Cursor::new(buf.clone())).unwrap();
+    let dec2 = Vec::<u8>::decode_new(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec2, orig);
+}
+
+#[test]
+fn codec_as_strings() {
+
+    macro_rules! enc_dec_cmp {
+        ($orig:expr) => {{
+            use std::io::Cursor;
+
+            let orig = $orig;
+
+            // Encode into buffer
+            let mut buf = Vec::new();
+            AsStrings(&orig).encode(&mut buf).unwrap();
+            assert_eq!(buf, [0, 0, 0, 2,
+                             0, 3, b'a', b'b', b'c',
+                             0, 4, b'd', b'e', b'f', b'g']);
+
+            // Decode from buffer into existing value
+            {
+                let mut dec: Vec<String> = Vec::new();
+                dec.decode(&mut Cursor::new(&buf[..])).unwrap();
+                assert_eq!(dec, orig);
+            }
+
+            // Read from buffer into new variable
+            {
+                let dec = Vec::<String>::decode_new(&mut Cursor::new(&buf[..])).unwrap();
+                assert_eq!(dec, orig);
+            }
+        }}
+    }
+
+    { // slice of &str
+        let orig: &[&str] = &["abc", "defg"];
+        enc_dec_cmp!(orig);
+    }
+
+    { // vec of &str
+        let orig: Vec<&str> = vec!["abc", "defg"];
+        enc_dec_cmp!(orig);
+    }
+
+    { // vec of String
+        let orig: Vec<String> = vec!["abc".to_owned(), "defg".to_owned()];
+        enc_dec_cmp!(orig);
+    }
 }

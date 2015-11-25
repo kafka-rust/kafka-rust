@@ -1,25 +1,29 @@
 [package]
 name = "kafka"
 version = "0.2.0"
-authors = ["Yousuf Fauzan https://github.com/spicavigo"]
+authors = ["Yousuf Fauzan"]
 description = "Rust client for Apache Kafka"
 homepage = "https://github.com/spicavigo/kafka-rust"
 repository = "https://github.com/spicavigo/kafka-rust"
 documentation = "https://spicavigo.github.io/kafka-rust/kafka/index.html"
 readme = "README.md"
-keywords = ["kafka", "apache"]
+keywords = ["kafka", "queue"]
 license = "MIT"
 build = "build.rs"
 
 
 [dependencies]
 num = "0.1"
-byteorder = "0.3"
-libc = "0.1"
+byteorder = "0.4"
+libc = "0.2"
 flate2 = "0.2"
+crc = "1.2"
 
 [build-dependencies]
 pkg-config = "0.3"
 
 [dev-dependencies]
 getopts = "0.2"
+
+[features]
+nightly = []
