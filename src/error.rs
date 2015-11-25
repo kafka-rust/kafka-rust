@@ -30,6 +30,8 @@ pub enum Error {
     UnexpectedEOF,
     /// Failure to decode or encode a response or request respectively
     CodecError,
+    /// Failure to decode a string into a valid utf8 byte sequence
+    StringDecodeError,
     /// Unable to reach any host
     NoHostReachable,
 }
@@ -142,6 +144,7 @@ pub enum KafkaCode {
     ClusterAuthorizationFailedCode,
 }
 
+// XXX is it really necessary we do implement `FromPrimitive`?
 impl FromPrimitive for Error {
     fn from_i16(n: i16) -> Option<Error> {
         match n {
@@ -188,8 +191,6 @@ impl FromPrimitive for Error {
 }
 
 
-
-
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Error { Error::Io(err) }
 }
@@ -217,11 +218,12 @@ impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::Io(ref err) => error::Error::description(err),
-            Error::InvalidInputSnappy => "Snappy decode error. Invalid Input",
+            Error::Kafka(_) => "Kafka Error",
+            Error::InvalidInputSnappy => "Snappy decode error",
             Error::UnexpectedEOF => "Unexpected EOF",
-            Error::NoHostReachable => "No Host Reachable",
-            Error::CodecError => "Encoding Decoding Error",
-            _ => "Kafka Error" // TODO Add others
+            Error::CodecError => "Encoding/Decoding error",
+            Error::StringDecodeError => "String decoding error",
+            Error::NoHostReachable => "No host reachable",
         }
     }
 
@@ -240,8 +242,10 @@ impl fmt::Display for Error {
             Error::Kafka(ref c) => write!(f, "Kafka Error ({:?})", c),
             Error::InvalidInputSnappy => write!(f, "{}", "Snappy decoding error"),
             Error::UnexpectedEOF => write!(f, "Unexpected EOF"),
+            Error::CodecError => write!(f, "Encoding/Decoding Error"),
+            // XXX might want to provide some context about parsed string and the error position with in
+            Error::StringDecodeError => write!(f, "String decoding error"),
             Error::NoHostReachable => write!(f, "No Host Reachable"),
-            Error::CodecError => write!(f, "Encoding Decoding Error"),
         }
     }
 }
