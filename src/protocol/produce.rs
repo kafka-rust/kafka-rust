@@ -3,7 +3,6 @@ use std::io::{Read, Write};
 use codecs::{ToByte, FromByte};
 use compression::{Compression, gzip, snappy};
 use error::{Error, Result};
-use num::traits::FromPrimitive;
 use utils::TopicPartitionOffsetError;
 
 use super::{HeaderRequest, HeaderResponse};
@@ -261,7 +260,7 @@ impl PartitionProduceResponse {
             topic: topic,
             partition: self.partition,
             offset:self.offset,
-            error: Error::from_i16(self.error)
+            error: Error::from_protocol_error(self.error)
         }
     }
 }

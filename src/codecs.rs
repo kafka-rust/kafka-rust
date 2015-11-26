@@ -1,12 +1,26 @@
 use std::io::{Read, Write};
 use std::default::Default;
 
-use num::traits::ToPrimitive;
 use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt};
-
-
 use error::{Result, Error};
 
+// Helper macro to safely convert an usize expression into a signed
+// integer.  If the conversion is not possible the macro issues a
+// `return Err(Error::CodecError)`, otherwise returns the expression
+// in the requested target type.
+macro_rules! try_usize_to_int {
+    // ~ $ttype should actually be a 'ty' ... but rust complains for
+    // some reason :/
+    ($value:expr, $ttype:ident) => {{
+        let maxv = $ttype::max_value();
+        let x: usize = $value;
+        if (x as u64) <= (maxv as u64) {
+            x as $ttype
+        } else {
+            return Err(Error::CodecError)
+        }
+    }}
+}
 
 pub trait ToByte {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()>;
@@ -45,15 +59,26 @@ impl ToByte for i64 {
 
 impl ToByte for str {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try!(self.len().to_i16().ok_or(Error::CodecError));
+        let l = try_usize_to_int!(self.len(), i16);
         try!(buffer.write_i16::<BigEndian>(l));
         buffer.write_all(self.as_bytes()).or_else(|e| Err(From::from(e)))
     }
 }
 
+#[test]
+fn test_string_too_long() {
+    use std::str;
+
+    let s = vec![b'a'; i16::max_value() as usize + 1];
+    let s = unsafe { str::from_utf8_unchecked(&s) };
+    let mut buf = Vec::new();
+    assert!(s.encode(&mut buf).is_err());
+    assert!(buf.is_empty());
+}
+
 impl <V: ToByte> ToByte for [V] {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try!(self.len().to_i32().ok_or(Error::CodecError));
+        let l = try_usize_to_int!(self.len(), i32);
         try!(buffer.write_i32::<BigEndian>(l));
         for e in self {
             try!(e.encode(buffer));
@@ -64,7 +89,7 @@ impl <V: ToByte> ToByte for [V] {
 
 impl ToByte for [u8] {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try!(self.len().to_i32().ok_or(Error::CodecError));
+        let l = try_usize_to_int!(self.len(), i32);
         try!(buffer.write_i32::<BigEndian>(l));
         buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
@@ -77,7 +102,7 @@ pub struct AsStrings<'a, T: 'a>(pub &'a [T]);
 impl<'a, T: AsRef<str> + 'a> ToByte for AsStrings<'a, T> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         let &AsStrings(xs) = self;
-        let l = try!(xs.len().to_i32().ok_or(Error::CodecError));
+        let l = try_usize_to_int!(xs.len(), i32);
         try!(buffer.write_i32::<BigEndian>(l));
         for x in xs {
             try!(x.as_ref().encode(buffer));

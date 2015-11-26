@@ -4,7 +4,6 @@ use codecs::{ToByte, FromByte};
 use compression::snappy::SnappyReader;
 use compression::{Compression, gzip};
 use error::{Error, Result};
-use num::traits::FromPrimitive;
 use utils::{TopicMessage, OffsetMessage};
 
 use super::{HeaderRequest, HeaderResponse};
@@ -157,7 +156,7 @@ impl TopicPartitionFetchResponse {
 
 impl PartitionFetchResponse {
     pub fn into_messages(self, topic: String) -> Vec<TopicMessage> {
-        if let Some(e) = Error::from_i16(self.error) {
+        if let Some(e) = Error::from_protocol_error(self.error) {
             return vec!(TopicMessage {
                 topic: topic,
                 partition: self.partition,

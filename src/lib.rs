@@ -1,6 +1,5 @@
 #![cfg_attr(feature = "nightly", feature(test))]
 
-extern crate num;
 extern crate byteorder;
 extern crate flate2;
 extern crate crc;

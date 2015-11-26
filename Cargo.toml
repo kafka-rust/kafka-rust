@@ -13,7 +13,6 @@ build = "build.rs"
 
 
 [dependencies]
-num = "0.1"
 byteorder = "0.4"
 libc = "0.2"
 flate2 = "0.2"
