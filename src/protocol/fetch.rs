@@ -401,7 +401,7 @@ mod tests {
         use test::Bencher;
 
         use codecs::FromByte;
-        use protocol::fetch::FetchResponse;
+        use super::super::FetchResponse;
 
         fn bench_decode_new_fetch_response(b: &mut Bencher, data: &[u8]) {
             b.bytes = data.len() as u64;
