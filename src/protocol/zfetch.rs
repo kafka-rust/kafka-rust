@@ -2,8 +2,10 @@
 
 use std::borrow::Cow;
 use std::slice::Iter;
+use std::mem;
 
 use error::{Error, Result};
+use compression::{gzip, Compression};
 
 use super::zreader::ZReader;
 
@@ -162,6 +164,21 @@ impl<'a> PartitionFetchResponse<'a> {
 }
 
 impl<'a> MessageSet<'a> {
+    fn from_vec(data: Vec<u8>) -> Result<MessageSet<'a>> {
+        // since we're going to keep the original
+        // uncompressed vector around without
+        // further modifying it and providing
+        // publicly no mutability possibilities
+        // this is safe
+        let ms = try!(MessageSet::from_slice(unsafe {
+            mem::transmute(&data[..])
+        }));
+        return Ok(MessageSet {
+            raw_data: Cow::Owned(data),
+            messages: ms.messages,
+        });
+    }
+
     fn from_slice<'b>(raw_data: &'b [u8]) -> Result<MessageSet<'b>> {
         let mut r = ZReader::new(raw_data);
         let mut msgs = Vec::new();
@@ -171,10 +188,21 @@ impl<'a> MessageSet<'a> {
             if msg_data.is_empty() {
                 continue;
             }
+            // XXX handle multiple compressed messages in future (see
+            // KAFKA-1718)
             match ProtocolMessage::from_slice(msg_data) {
                 Ok(p) => {
-                    // XXX handle compression
-                    msgs.push(Message { offset: offset, key: p.key, value: p.val });
+                    // handle compression (denoted by the last 2 bits
+                    // of the attr field)
+                    match p.attr & 0x03 {
+                        c if c == Compression::NONE as i8 => {
+                            msgs.push(Message { offset: offset, key: p.key, value: p.value });
+                        }
+                        c if c == Compression::GZIP as i8 => {
+                            return Ok(try!(MessageSet::from_vec(try!(gzip::uncompress(p.value)))));
+                        }
+                        _ => panic!("Unknown compression type!"),
+                    }
                 }
                 // this is the last messages which might be
                 // incomplete; a valid case to be handled by
@@ -201,7 +229,7 @@ struct ProtocolMessage<'a> {
     magic: i8,
     attr: i8,
     key: &'a [u8],
-    val: &'a [u8],
+    value: &'a [u8],
 }
 
 impl<'a> ProtocolMessage<'a> {
@@ -225,7 +253,7 @@ impl<'a> ProtocolMessage<'a> {
             magic: msg_magic,
             attr: msg_attr,
             key: msg_key,
-            val: msg_val,
+            value: msg_val,
         })
     }
 }
@@ -242,6 +270,8 @@ mod tests {
         include_str!("../../test-data/fetch1.txt");
     static FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.nocompression.kafka.0821");
+    static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
     fn into_messages<'a: 'b, 'b>(data: &'a FetchResponse<'b>) -> Vec<&'a Message<'b>> {
         let mut all_msgs = Vec::new();
@@ -289,6 +319,11 @@ mod tests {
         test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821);
     }
 
+    #[test]
+    fn test_decode_new_fetch_response_gzip_k0821() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821);
+    }
+
     #[cfg(feature = "nightly")]
     mod benches {
         use test::{black_box, Bencher};
@@ -308,6 +343,11 @@ mod tests {
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821)
         }
     }
 }
