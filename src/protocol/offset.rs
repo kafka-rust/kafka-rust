@@ -1,7 +1,5 @@
 use std::io::{Read, Write};
 
-use num::traits::FromPrimitive;
-
 use codecs::{ToByte, FromByte};
 use error::{Error, Result};
 use utils::PartitionOffset;
@@ -129,7 +127,7 @@ impl PartitionOffsetResponse {
     pub fn into_offset(self) -> PartitionOffset {
         PartitionOffset {
             partition: self.partition,
-            offset: match Error::from_i16(self.error) {
+            offset: match Error::from_protocol_error(self.error) {
                 None => Ok(match self.offset.first() {
                     Some(offs) => *offs,
                     None => -1,

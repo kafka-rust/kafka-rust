@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use codecs::{ToByte, FromByte};
 use crc::crc32;
-use error::Result;
+use error::{Error, KafkaCode, Result};
 
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {
@@ -18,6 +18,9 @@ mod offset;
 mod metadata;
 mod fetch;
 mod consumer;
+
+mod zreader;
+pub mod zfetch;
 
 // ~ re-exports for request/response types defined in submodules
 pub use self::produce::{ProduceRequest, ProduceResponse};
@@ -41,6 +44,56 @@ const API_KEY_OFFSET_FETCH: i16  = 9;
 
 // the version of Kafka API we are requesting
 const API_VERSION: i16 = 0;
+
+// --------------------------------------------------------------------
+
+/// Provides a way to parse the full raw response data into a
+/// particular response structure.
+pub trait FromResponse : Sized {
+    fn from_response(response: Vec<u8>) -> Result<Self>;
+}
+
+// --------------------------------------------------------------------
+
+// a (sub-) module private method for error
+impl Error {
+    fn from_protocol_error(n: i16) -> Option<Error> {
+        match n {
+            1 => Some(Error::Kafka(KafkaCode::OffsetOutOfRange)),
+            2 => Some(Error::Kafka(KafkaCode::InvalidMessage)),
+            3 => Some(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+            4 => Some(Error::Kafka(KafkaCode::InvalidMessageSize)),
+            5 => Some(Error::Kafka(KafkaCode::LeaderNotAvailable)),
+            6 => Some(Error::Kafka(KafkaCode::NotLeaderForPartition)),
+            7 => Some(Error::Kafka(KafkaCode::RequestTimedOut)),
+            8 => Some(Error::Kafka(KafkaCode::BrokerNotAvailable)),
+            9 => Some(Error::Kafka(KafkaCode::ReplicaNotAvailable)),
+            10 => Some(Error::Kafka(KafkaCode::MessageSizeTooLarge)),
+            11 => Some(Error::Kafka(KafkaCode::StaleControllerEpochCode)),
+            12 => Some(Error::Kafka(KafkaCode::OffsetMetadataTooLargeCode)),
+            14 => Some(Error::Kafka(KafkaCode::OffsetsLoadInProgressCode)),
+            15 => Some(Error::Kafka(KafkaCode::ConsumerCoordinatorNotAvailableCode)),
+            16 => Some(Error::Kafka(KafkaCode::NotCoordinatorForConsumerCode)),
+            17 => Some(Error::Kafka(KafkaCode::InvalidTopicCode)),
+            18 => Some(Error::Kafka(KafkaCode::RecordListTooLargeCode)),
+            19 => Some(Error::Kafka(KafkaCode::NotEnoughReplicasCode)),
+            20 => Some(Error::Kafka(KafkaCode::NotEnoughReplicasAfterAppendCode)),
+            21 => Some(Error::Kafka(KafkaCode::InvalidRequiredAcksCode)),
+            22 => Some(Error::Kafka(KafkaCode::IllegalGenerationCode)),
+            23 => Some(Error::Kafka(KafkaCode::InconsistentGroupProtocolCode)),
+            24 => Some(Error::Kafka(KafkaCode::InvalidGroupIdCode)),
+            25 => Some(Error::Kafka(KafkaCode::UnknownMemberIdCode)),
+            26 => Some(Error::Kafka(KafkaCode::InvalidSessionTimeoutCode)),
+            27 => Some(Error::Kafka(KafkaCode::RebalanceInProgressCode)),
+            28 => Some(Error::Kafka(KafkaCode::InvalidCommitOffsetSizeCode)),
+            29 => Some(Error::Kafka(KafkaCode::TopicAuthorizationFailedCode)),
+            30 => Some(Error::Kafka(KafkaCode::GroupAuthorizationFailedCode)),
+            31 => Some(Error::Kafka(KafkaCode::ClusterAuthorizationFailedCode)),
+            -1 => Some(Error::Kafka(KafkaCode::Unknown)),
+            _ => None
+        }
+    }
+}
 
 // --------------------------------------------------------------------
 

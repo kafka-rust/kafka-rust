@@ -23,7 +23,7 @@
 //! Consumer implements Iterator.
 
 use std::collections::HashMap;
-use error::{Error, Result};
+use error::{Error, Result, KafkaCode};
 use utils::{TopicMessage, TopicPartitionOffset, TopicPartitionOffsetError, PartitionOffset};
 use client::{KafkaClient, FetchOffset};
 
@@ -116,7 +116,7 @@ impl ConsumerState {
                 }
             } else {
                 // XXX might want to produce some log message and return a dedicated error code
-                return Err(Error::Unknown);
+                return Err(Error::Kafka(KafkaCode::Unknown));
             }
         }
         Ok(())

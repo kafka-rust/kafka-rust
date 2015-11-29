@@ -1,7 +1,5 @@
 use std::io::{Read, Write};
 
-use num::traits::FromPrimitive;
-
 use codecs::{ToByte, FromByte};
 use error::{Error, Result};
 use utils::TopicPartitionOffsetError;
@@ -9,6 +7,9 @@ use utils::TopicPartitionOffsetError;
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET_FETCH, API_KEY_OFFSET_COMMIT, API_VERSION};
 
+//
+// XXX Seems like this got replaced: See https://cwiki.apache.org/confluence/pages/diffpages.action?originalId=61329518&pageId=61330213
+//
 // #[derive(Debug)]
 // pub struct ConsumerMetadataRequest<'a> {
 //     pub header: HeaderRequest<'a>,
@@ -180,7 +181,7 @@ impl PartitionOffsetFetchResponse {
             topic: topic,
             partition: self.partition,
             offset: self.offset,
-            error: Error::from_i16(self.error)
+            error: Error::from_protocol_error(self.error)
         }
     }
 }

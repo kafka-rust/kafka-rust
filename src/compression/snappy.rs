@@ -25,7 +25,7 @@ extern {
 }
 
 // ~ Uncompresse 'src' into 'dst'.
-// ~ 'dst' will first be cleared and then populated with the uncompressed data.
+// ~ 'dst' will receive the newly uncompressed data appended.
 // ~ No guarantees are provided about the contents of 'dst' if this function
 // results in an error.
 fn uncompress_into(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
@@ -33,17 +33,15 @@ fn uncompress_into(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
         let src_len = src.len() as size_t;
         let src_ptr = src.as_ptr();
 
-        let mut dst_len: size_t = 0;
-        snappy_uncompressed_length(src_ptr, src_len, &mut dst_len);
+        let dst_cur_len = dst.len();
+        let mut dst_add_len: size_t = 0;
+        snappy_uncompressed_length(src_ptr, src_len, &mut dst_add_len);
 
-        // this is actually safe: we're merely clearing the vector
-        // without the Drop implementation for the u8's executed
-        dst.set_len(0);
         // now make sure the vector is large enough
-        dst.reserve(dst_len as usize);
-        let dst_ptr = dst.as_mut_ptr();
-        if snappy_uncompress(src_ptr, src_len, dst_ptr, &mut dst_len) == 0 {
-            dst.set_len(dst_len as usize);
+        dst.reserve(dst_add_len as usize);
+        let dst_ptr = dst[dst_cur_len..].as_mut_ptr();
+        if snappy_uncompress(src_ptr, src_len, dst_ptr, &mut dst_add_len) == 0 {
+            dst.set_len(dst_cur_len + dst_add_len as usize);
             Ok(())
         } else {
             Err(Error::InvalidInputSnappy) // SNAPPY_INVALID_INPUT
@@ -164,21 +162,53 @@ impl<'a> SnappyReader<'a> {
             return Err(Error::InvalidInputSnappy);
         }
         let chunk_size = chunk_size as usize;
+        self.uncompressed_chunk.clear();
         try!(uncompress_into(&self.compressed_data[..chunk_size], &mut self.uncompressed_chunk));
         self.compressed_data = &self.compressed_data[chunk_size..];
         Ok(true)
     }
+
+    fn _read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+        let init_len = buf.len();
+        // ~ first consume already uncompressed and unconsumed data - if any
+        if self.uncompressed_pos < self.uncompressed_chunk.len() {
+            let rest = &self.uncompressed_chunk[self.uncompressed_pos..];
+            buf.extend(rest);
+            self.uncompressed_pos += rest.len();
+        }
+        // ~ now decompress data directly to the output target
+        while !self.compressed_data.is_empty() {
+            let chunk_size = next_i32!(self.compressed_data);
+            if chunk_size <= 0 {
+                return Err(Error::InvalidInputSnappy);
+            }
+            let (c1, c2) = self.compressed_data.split_at(chunk_size as usize);
+            try!(uncompress_into(c1, buf));
+            self.compressed_data = c2;
+        }
+        Ok(buf.len() - init_len)
+    }
 }
 
-impl<'a> Read for SnappyReader<'a> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match self._read(buf) {
+macro_rules! to_io_error {
+    ($expr:expr) => {
+        match $expr {
             Ok(n) => Ok(n),
             // ~ pass io errors through directly
             Err(Error::Io(io_error)) => Err(io_error),
             // ~ wrapp our other errors
             Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
         }
+    }
+}
+
+impl<'a> Read for SnappyReader<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        to_io_error!(self._read(buf))
+    }
+
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+        to_io_error!(self._read_to_end(buf))
     }
 }
 
@@ -224,13 +254,28 @@ mod tests {
         assert!(if let Some(Error::InvalidInputSnappy) = uncompressed.err() { true } else { false });
     }
 
-    #[test]
-    fn test_snappy_reader() {
-        static ORIGINAL: &'static str =
-            include_str!("../../test-data/fetch1.txt");
-        static COMPRESSED: &'static [u8] =
-            include_bytes!("../../test-data/fetch1.snappy.chunked.4k");
+    static ORIGINAL: &'static str =
+        include_str!("../../test-data/fetch1.txt");
+    static COMPRESSED: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.snappy.chunked.4k");
 
+    #[test]
+    fn test_snappy_reader_read() {
+        let mut buf = Vec::new();
+        let mut r = SnappyReader::new(COMPRESSED).unwrap();
+
+        let mut tmp_buf = [0u8; 1024];
+        loop {
+            match r.read(&mut tmp_buf).unwrap() {
+                0 => break,
+                n => buf.extend(&tmp_buf[..n]),
+            }
+        }
+        assert_eq!(ORIGINAL.as_bytes(), &buf[..]);
+    }
+
+    #[test]
+    fn test_snappy_reader_read_to_end() {
         let mut buf = Vec::new();
         let mut r = SnappyReader::new(COMPRESSED).unwrap();
         r.read_to_end(&mut buf).unwrap();

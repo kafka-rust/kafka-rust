@@ -4,7 +4,6 @@ use codecs::{ToByte, FromByte};
 use compression::snappy::SnappyReader;
 use compression::{Compression, gzip};
 use error::{Error, Result};
-use num::traits::FromPrimitive;
 use utils::{TopicMessage, OffsetMessage};
 
 use super::{HeaderRequest, HeaderResponse};
@@ -157,7 +156,7 @@ impl TopicPartitionFetchResponse {
 
 impl PartitionFetchResponse {
     pub fn into_messages(self, topic: String) -> Vec<TopicMessage> {
-        if let Some(e) = Error::from_i16(self.error) {
+        if let Some(e) = Error::from_protocol_error(self.error) {
             return vec!(TopicMessage {
                 topic: topic,
                 partition: self.partition,
@@ -365,6 +364,8 @@ mod tests {
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0821");
     static FETCH1_FETCH_RESPONSE_SNAPPY_K0822: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
+    static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
     fn test_decode_new_fetch_response(msg_per_line: &str, mut fetch_response_bytes: &[u8]) {
         let resp = FetchResponse::decode_new(&mut fetch_response_bytes);
@@ -396,19 +397,26 @@ mod tests {
         test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822);
     }
 
+    #[test]
+    fn test_decode_new_fetch_response_gzip_k0821() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821);
+    }
+
     #[cfg(feature = "nightly")]
     mod benches {
         use std::io::Cursor;
-        use test::Bencher;
+        use test::{black_box, Bencher};
 
         use codecs::FromByte;
-        use protocol::fetch::FetchResponse;
+        use super::super::FetchResponse;
 
         fn bench_decode_new_fetch_response(b: &mut Bencher, data: &[u8]) {
             b.bytes = data.len() as u64;
-            b.iter(|| FetchResponse::decode_new(&mut Cursor::new(data))
-                   .unwrap()
-                   .into_messages());
+            b.iter(|| {
+                let r = black_box(FetchResponse::decode_new(&mut Cursor::new(data)).unwrap());
+                let v = black_box(r.into_messages());
+                v.len()
+            });
         }
 
         #[bench]
@@ -424,6 +432,11 @@ mod tests {
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821)
         }
     }
 }

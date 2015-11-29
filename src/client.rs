@@ -15,8 +15,10 @@ pub use compression::Compression;
 
 use codecs::{ToByte, FromByte};
 use connection::KafkaConnection;
-use error::{Result, Error};
-use protocol;
+use error::{Result, Error, KafkaCode};
+use protocol::{self, FromResponse};
+// pub re-export
+pub use protocol::zfetch;
 use utils;
 
 
@@ -429,7 +431,7 @@ impl KafkaClient {
     #[inline]
     pub fn topic_partitions(&self, topic: &str) -> Result<Partitions> {
         match self.state.topic_partitions.get(topic) {
-            None => Err(Error::UnknownTopicOrPartition),
+            None => Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
             Some(tp) => Ok(Partitions {
                 iter: tp.partitions.iter(),
             }),
@@ -618,13 +620,13 @@ impl KafkaClient {
         let mut m = try!(self.fetch_offsets(&[topic], offset));
         let offs = m.remove(topic).unwrap_or(vec!());
         if offs.is_empty() {
-            Err(Error::UnknownTopicOrPartition)
+            Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition))
         } else {
             Ok(offs)
         }
     }
 
-    /// Fetch messages from Kafka (Multiple topic, partition, offset)
+    /// Fetch messages from Kafka (multiple topic, partition, offset)
     ///
     /// It takes a vector of `utils:TopicPartitionOffset` and returns a vector of `utils::TopicMessage`
     /// or error::Error
@@ -632,44 +634,23 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// use kafka::utils;
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let msgs = client.fetch_messages_multi(&[utils::TopicPartitionOffset{
-    ///                                                 topic: "my-topic",
-    ///                                                 partition: 0,
-    ///                                                 offset: 0
-    ///                                                 },
-    ///                                             utils::TopicPartitionOffset{
-    ///                                                 topic: "my-topic-2",
-    ///                                                 partition: 0,
-    ///                                                 offset: 0
-    ///                                             }]);
+    /// use kafka::client::KafkaClient;
+    /// use kafka::utils::TopicPartitionOffset;
+    ///
+    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// client.load_metadata_all().unwrap();
+    /// let reqs = &[TopicPartitionOffset{ topic: "my-topic", partition: 0, offset: 0 },
+    ///              TopicPartitionOffset{ topic: "my-topic-2", partition: 0, offset: 0 }];
+    /// let msgs = client.fetch_messages_multi(reqs).unwrap();
     /// ```
     pub fn fetch_messages_multi<'a, I, J>(&mut self, input: I) -> Result<Vec<utils::TopicMessage>>
         where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J>
     {
-        let state = &mut self.state;
-        let correlation = state.next_correlation_id();
-
-        // Map topic and partition to the corresponding broker
-        let config = &self.config;
-        let mut reqs: HashMap<Rc<String>, protocol::FetchRequest> = HashMap::new();
-        for tpo in input {
-            let tpo = tpo.as_ref();
-            if let Some(broker) = state.find_broker(tpo.topic, tpo.partition) {
-                reqs.entry(broker.clone())
-                    .or_insert_with(|| {
-                        protocol::FetchRequest::new(correlation, &config.client_id,
-                                                    config.fetch_max_wait_time, config.fetch_min_bytes)
-                    })
-                    .add(tpo.topic, tpo.partition, tpo.offset, config.fetch_max_bytes_per_partition);
-            }
-        }
+        let reqs = __prepare_fetch_messages_requests(&mut self.state, &self.config, input);
         __fetch_messages_multi(&mut self.conn_pool, reqs)
     }
 
-    /// Fetch messages from Kafka (Single topic, partition, offset)
+    /// Fetch messages from Kafka (single topic, partition, offset)
     ///
     /// It takes a single topic, parition and offset and return a vector of messages (`utils::TopicMessage`)
     /// or error::Error
@@ -677,14 +658,73 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
+    /// use kafka::client::KafkaClient;
+    ///
+    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// client.load_metadata_all().unwrap();
     /// let msgs = client.fetch_messages("my-topic", 0, 0);
     /// ```
     pub fn fetch_messages<T: AsRef<str>>(&mut self, topic: T, partition: i32, offset: i64)
                                          -> Result<Vec<utils::TopicMessage>>
     {
         self.fetch_messages_multi(&[utils::TopicPartitionOffset::new(topic.as_ref(), partition, offset)])
+    }
+
+    /// Fetch messages from Kafka (multiple topic, partition, offset)
+    /// exposing low level details.
+    ///
+    /// Just as `fetch_messages_multi` it takes a vector specifying
+    /// the partitions and their offsets as of which to fetch
+    /// messages.  However, unlike `fetch_messages_multi` this method
+    /// exposes the result in a raw, more complicated manner but
+    /// allows for more efficient consumption possibilities. In
+    /// particular, each of the returned fetch responses directly
+    /// corresponds to a fetch request to the corresponding,
+    /// underlying kafka broker.  Except of transparently
+    /// uncompressing compressed messages, the result is not otherwise
+    /// prepared.
+    ///
+    /// All of the data available through the returned fetch responses
+    /// is bound to their lifetime as that data is merely a "view"
+    /// into parts of the response structs.  If you need to keep
+    /// individual messages for a longer time then the fetch whole
+    /// responses, you'll need to make a copy of the messages.
+    ///
+    /// # Example
+    ///
+    /// This example demonstrates iterating all fetched messages from
+    /// two topic partitions.
+    ///
+    /// ```no_run
+    /// use kafka::client::KafkaClient;
+    /// use kafka::utils::TopicPartitionOffset;
+    ///
+    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// client.load_metadata_all().unwrap();
+    /// let reqs = &[TopicPartitionOffset{ topic: "my-topic", partition: 0, offset: 0 },
+    ///              TopicPartitionOffset{ topic: "my-topic-2", partition: 0, offset: 0 }];
+    /// let resps = client.zfetch_messages_multi(reqs).unwrap();
+    /// for resp in resps {
+    ///   for t in resp.topics() {
+    ///     for p in t.partitions() {
+    ///       match p.messages() {
+    ///         Err(e) => println!("partition error: {}:{}: {}", t.topic, p.partition, e),
+    ///         Ok(messages) => {
+    ///           for msg in messages {
+    ///             println!("topic: {} / partition: {} / messages.len: {}",
+    ///                      t.topic, p.partition, msg.value.len());
+    ///           }
+    ///         }
+    ///       }
+    ///     }
+    ///   }
+    /// }
+    pub fn zfetch_messages_multi<'a, 'b, I, J>(&mut self, input: I)
+                                               -> Result<Vec<zfetch::FetchResponse<'b>>>
+        where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J> {
+
+        let reqs = __prepare_fetch_messages_requests(&mut self.state, &self.config, input);
+        __zfetch_messages_multi(&mut self.conn_pool, reqs)
     }
 
     /// Send a message to Kafka
@@ -876,7 +916,7 @@ impl KafkaClient {
                                -> Result<Vec<utils::TopicPartitionOffsetError>> {
         let tps: Vec<_> =
             match self.state.topic_partitions.get(topic) {
-                None => return Err(Error::UnknownTopicOrPartition),
+                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
                 Some(tp) => tp.partitions
                     .iter()
                     .map(|p| utils::TopicPartition{ topic: topic, partition: p.partition_id })
@@ -911,6 +951,29 @@ fn __fetch_group_offsets_multi(conn_pool: &mut ConnectionPool,
     Ok(res)
 }
 
+fn __prepare_fetch_messages_requests<'a, 'b, I, J>(
+    state: &mut ClientState, config: &'b ClientConfig, input: I)
+    -> HashMap<Rc<String>, protocol::FetchRequest<'b, 'a>>
+    where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J> {
+
+        let correlation = state.next_correlation_id();
+
+        // Map topic and partition to the corresponding broker
+        let mut reqs: HashMap<Rc<String>, protocol::FetchRequest> = HashMap::new();
+        for tpo in input {
+            let tpo = tpo.as_ref();
+            if let Some(broker) = state.find_broker(tpo.topic, tpo.partition) {
+                reqs.entry(broker.clone())
+                    .or_insert_with(|| {
+                        protocol::FetchRequest::new(correlation, &config.client_id,
+                                                    config.fetch_max_wait_time, config.fetch_min_bytes)
+                    })
+                    .add(tpo.topic, tpo.partition, tpo.offset, config.fetch_max_bytes_per_partition);
+            }
+        }
+        reqs
+}
+
 /// ~ carries out the given fetch requests and returns the response
 fn __fetch_messages_multi(conn_pool: &mut ConnectionPool,
                           reqs: HashMap<Rc<String>, protocol::FetchRequest>)
@@ -921,6 +984,20 @@ fn __fetch_messages_multi(conn_pool: &mut ConnectionPool,
     for (host, req) in reqs {
         let resp = try!(__send_receive::<protocol::FetchRequest, protocol::FetchResponse>(conn_pool, &host, req));
         res.extend(resp.into_messages());
+    }
+    Ok(res)
+}
+
+/// ~ carries out the given fetch requests and returns the response
+fn __zfetch_messages_multi<'a>(conn_pool: &mut ConnectionPool,
+                               reqs: HashMap<Rc<String>, protocol::FetchRequest>)
+                               -> Result<Vec<zfetch::FetchResponse<'a>>>
+{
+    // Call each broker with the request formed earlier
+    let mut res = Vec::with_capacity(reqs.len());
+    for (host, req) in reqs {
+        let resp = try!(__z_send_receive::<protocol::FetchRequest, zfetch::FetchResponse>(conn_pool, &host, req));
+        res.push(resp);
     }
     Ok(res)
 }
@@ -999,4 +1076,19 @@ fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
     // }
 
     T::decode_new(&mut Cursor::new(resp))
+}
+
+fn __z_send_receive<T: ToByte, V: FromResponse>(conn_pool: &mut ConnectionPool, host: &str, req: T)
+                                                -> Result<V> {
+    let mut conn = try!(conn_pool.get_conn(host));
+    try!(__send_request(&mut conn, req));
+    __z_get_response::<V>(&mut conn)
+}
+
+fn __z_get_response<T: FromResponse>(conn: &mut KafkaConnection) -> Result<T> {
+    let v = try!(conn.read_exact(4));
+    let size = try!(i32::decode_new(&mut Cursor::new(v)));
+
+    let resp = try!(conn.read_exact(size as u64));
+    T::from_response(resp)
 }
