@@ -1,11 +1,13 @@
 //! An efficient response parser for the fetch_messages use-case.
 
 use std::borrow::Cow;
-use std::slice::Iter;
+use std::io::Read;
 use std::mem;
+use std::slice::Iter;
 
 use error::{Error, Result};
 use compression::{gzip, Compression};
+use compression::snappy::SnappyReader;
 
 use super::zreader::ZReader;
 
@@ -199,7 +201,13 @@ impl<'a> MessageSet<'a> {
                             msgs.push(Message { offset: offset, key: p.key, value: p.value });
                         }
                         c if c == Compression::GZIP as i8 => {
-                            return Ok(try!(MessageSet::from_vec(try!(gzip::uncompress(p.value)))));
+                            let v = try!(gzip::uncompress(p.value));
+                            return Ok(try!(MessageSet::from_vec(v)));
+                        }
+                        c if c == Compression::SNAPPY as i8 => {
+                            let mut v = Vec::new();
+                            try!(try!(SnappyReader::new(p.value)).read_to_end(&mut v));
+                            return Ok(try!(MessageSet::from_vec(v)));
                         }
                         _ => panic!("Unknown compression type!"),
                     }
@@ -270,6 +278,10 @@ mod tests {
         include_str!("../../test-data/fetch1.txt");
     static FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.nocompression.kafka.0821");
+    static FETCH1_FETCH_RESPONSE_SNAPPY_K0821: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0821");
+    static FETCH1_FETCH_RESPONSE_SNAPPY_K0822: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
@@ -320,6 +332,16 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_new_fetch_response_snappy_k0821() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821);
+    }
+
+    #[test]
+    fn test_decode_new_fetch_response_snappy_k0822() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822);
+    }
+
+    #[test]
     fn test_decode_new_fetch_response_gzip_k0821() {
         test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821);
     }
@@ -343,6 +365,16 @@ mod tests {
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_snappy_k0821(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822)
         }
 
         #[bench]

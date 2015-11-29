@@ -405,16 +405,18 @@ mod tests {
     #[cfg(feature = "nightly")]
     mod benches {
         use std::io::Cursor;
-        use test::Bencher;
+        use test::{black_box, Bencher};
 
         use codecs::FromByte;
         use super::super::FetchResponse;
 
         fn bench_decode_new_fetch_response(b: &mut Bencher, data: &[u8]) {
             b.bytes = data.len() as u64;
-            b.iter(|| FetchResponse::decode_new(&mut Cursor::new(data))
-                   .unwrap()
-                   .into_messages());
+            b.iter(|| {
+                let r = black_box(FetchResponse::decode_new(&mut Cursor::new(data)).unwrap());
+                let v = black_box(r.into_messages());
+                v.len()
+            });
         }
 
         #[bench]
