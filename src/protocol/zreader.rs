@@ -33,12 +33,6 @@ impl<'a> ZReader<'a> {
         }
     }
 
-    /// ~ Consumes the rest of the available data returning a slice to
-    /// it.
-    pub fn read_all(&self) -> &'a [u8] {
-        &self.data[..]
-    }
-
     /// ~ Determines whether there are still some bytes available for
     /// consumption.
     pub fn is_empty(&self) -> bool {

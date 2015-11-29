@@ -19,6 +19,9 @@ mod metadata;
 mod fetch;
 mod consumer;
 
+mod zreader;
+pub mod zfetch;
+
 // ~ re-exports for request/response types defined in submodules
 pub use self::produce::{ProduceRequest, ProduceResponse};
 pub use self::offset::{OffsetRequest, OffsetResponse};
@@ -41,6 +44,14 @@ const API_KEY_OFFSET_FETCH: i16  = 9;
 
 // the version of Kafka API we are requesting
 const API_VERSION: i16 = 0;
+
+// --------------------------------------------------------------------
+
+/// Provides a way to parse the full raw response data into a
+/// particular response structure.
+pub trait FromResponse : Sized {
+    fn from_response(response: Vec<u8>) -> Result<Self>;
+}
 
 // --------------------------------------------------------------------
 
