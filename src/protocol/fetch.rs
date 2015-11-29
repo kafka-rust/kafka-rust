@@ -364,6 +364,8 @@ mod tests {
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0821");
     static FETCH1_FETCH_RESPONSE_SNAPPY_K0822: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
+    static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
+        include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
     fn test_decode_new_fetch_response(msg_per_line: &str, mut fetch_response_bytes: &[u8]) {
         let resp = FetchResponse::decode_new(&mut fetch_response_bytes);
@@ -395,6 +397,11 @@ mod tests {
         test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822);
     }
 
+    #[test]
+    fn test_decode_new_fetch_response_gzip_k0821() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821);
+    }
+
     #[cfg(feature = "nightly")]
     mod benches {
         use std::io::Cursor;
@@ -423,6 +430,11 @@ mod tests {
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821)
         }
     }
 }
