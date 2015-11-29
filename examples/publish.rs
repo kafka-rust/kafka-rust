@@ -19,12 +19,12 @@ fn main() {
     }
     // ~ make sure to print out a warning message when the target
     // topic does not yet exist
-    if !client.topic_partitions.contains_key(topic) {
+    if !client.contains_topic(topic) {
         println!("No such topic at {}: {}", broker, topic);
         return;
     }
     // ~ now send a small message (if the specified topic would have
     // not been existent) the client would drop the message.
-    let r = client.send_message(1, 100, topic.to_owned(), data.as_bytes().to_owned());
+    let r = client.send_message(1, 100, topic, data.as_bytes());
     println!("message sent: {:?}", r);
 }

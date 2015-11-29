@@ -1,5 +1,6 @@
 extern crate kafka;
-use kafka::client::KafkaClient;
+
+use kafka::client::{KafkaClient, FetchOffset};
 
 /// This program demonstrates consuming messages through `KafkaClient`. This is the top level
 /// client that will fit most use cases. Note that consumed messages are tracked by Kafka so you
@@ -20,13 +21,13 @@ fn main() {
 
     // ~ make sure to print out a warning message when the target
     // topic does not yet exist
-    if !client.topic_partitions.contains_key(topic) {
+    if !client.contains_topic(topic) {
         println!("No such topic at {}: {}", broker, topic);
         return;
     }
 
     let con = kafka::consumer::Consumer::new(client, "test-group".to_owned(), topic.to_owned())
-        .fallback_offset(-2);
+        .fallback_offset(FetchOffset::Earliest);
 
     for msg in con {
         println!("{:?}", msg);
