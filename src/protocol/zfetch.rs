@@ -138,7 +138,11 @@ pub struct PartitionFetchResponse<'a> {
     /// The identifier of the represented partition.
     pub partition: i32,
 
-    error: Option<Error>,
+    /// Either an error or the partition data.
+    data: Result<PartitionData<'a>>,
+}
+
+struct PartitionData<'a> {
     highwatermark_offset: i64,
     message_set: MessageSet<'a>,
 }
@@ -147,43 +151,51 @@ impl<'a> PartitionFetchResponse<'a> {
     fn read(r: &mut ZReader<'a>) -> Result<PartitionFetchResponse<'a>> {
         let partition = try!(r.read_i32());
         let error = Error::from_protocol_error(try!(r.read_i16()));
+        // we need to parse the rest even if there was an error to
+        // consume the input stream (zreader)
         let highwatermark = try!(r.read_i64());
         let msgset = try!(MessageSet::from_slice(try!(r.read_bytes())));
         Ok(PartitionFetchResponse {
             partition: partition,
-            error: error,
-            highwatermark_offset: highwatermark,
-            message_set: msgset,
+            data: match error {
+                Some(error) => Err(error),
+                None => Ok(PartitionData {
+                    highwatermark_offset: highwatermark,
+                    message_set: msgset,
+                }),
+            },
         })
     }
 
-    /// Retrieves the so-called "high water mark offset" indicating
-    /// the "latest" offset for this partition at the remote broker.
-    /// This can be used by clients to find out how much behind the
-    /// latest message available in this particular partition they are
-    /// behind.
-    #[inline]
-    pub fn highwatermark_offset(&self) -> Result<i64> {
-        match self.error {
-            None => Ok(self.highwatermark_offset),
-            Some(ref e) => Err(e.clone()),
-        }
-    }
-
-    /// Retrieves an iterator over the messages fetched for this
-    /// particular topic partition.
+    /// Retrieves the data payload for this partition.
     #[inline]
     pub fn messages<'b>(&'b self) -> Result<Messages<'b, 'a>> {
-        match self.error {
-            None => Ok(Messages { iter: self.message_set.messages.iter() }),
-            Some(ref e) => Err(e.clone()),
+        match self.data {
+            Ok(ref data) => Ok(Messages {
+                highwatermark_offset: data.highwatermark_offset,
+                iter: data.message_set.messages.iter()
+            }),
+            Err(ref e) => Err(e.clone()),
         }
     }
 }
 
 /// An iterator over the messages of a `PartitionFetchResponse`.
 pub struct Messages<'a, 'b: 'a> {
+    highwatermark_offset: i64,
     iter: Iter<'a, Message<'b>>,
+}
+
+impl<'a, 'b: 'a> Messages<'a, 'b> {
+    /// Retrieves the so-called "high water mark offset" indicating
+    /// the "latest" offset for the partition of this message set at
+    /// the remote broker.  This can be used by clients to find out
+    /// how much behind the latest message available in the particular
+    /// partition they are.
+    #[inline]
+    pub fn highwatermark_offset(&self) -> i64 {
+        self.highwatermark_offset
+    }
 }
 
 impl<'a, 'b> Iterator for Messages<'a, 'b> {
@@ -372,7 +384,7 @@ mod tests {
         // ~ the first partition
         assert_eq!(0, resp.topics[0].partitions[0].partition);
         // ~ no error
-        assert!(resp.topics[0].partitions[0].error.is_none());
+        assert!(resp.topics[0].partitions[0].data.is_ok());
 
         let msgs = into_messages(&resp);
         assert_eq!(original.len(), msgs.len());
