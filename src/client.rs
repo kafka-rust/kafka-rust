@@ -679,16 +679,15 @@ impl KafkaClient {
     /// exposes the result in a raw, more complicated manner but
     /// allows for more efficient consumption possibilities. In
     /// particular, each of the returned fetch responses directly
-    /// corresponds to a fetch request to the corresponding,
-    /// underlying kafka broker.  Except of transparently
-    /// uncompressing compressed messages, the result is not otherwise
-    /// prepared.
+    /// corresponds to fetch requests to the underlying kafka brokers.
+    /// Except of transparently uncompressing compressed messages, the
+    /// result is not otherwise prepared.
     ///
     /// All of the data available through the returned fetch responses
     /// is bound to their lifetime as that data is merely a "view"
     /// into parts of the response structs.  If you need to keep
-    /// individual messages for a longer time then the fetch whole
-    /// responses, you'll need to make a copy of the messages.
+    /// individual messages for a longer time then the whole fetch
+    /// responses, you'll need to make a copy of the message data.
     ///
     /// # Example
     ///
@@ -708,11 +707,13 @@ impl KafkaClient {
     ///   for t in resp.topics() {
     ///     for p in t.partitions() {
     ///       match p.messages() {
-    ///         Err(e) => println!("partition error: {}:{}: {}", t.topic, p.partition, e),
+    ///         Err(e) => println!("partition error: {}:{}: {}", t.topic(), p.partition(), e),
     ///         Ok(messages) => {
+    ///           println!("topic: {} / partition: {} / latest available message offset: {}",
+    ///                    t.topic(), p.partition(), messages.highwatermark_offset());
     ///           for msg in messages {
-    ///             println!("topic: {} / partition: {} / messages.len: {}",
-    ///                      t.topic, p.partition, msg.value.len());
+    ///             println!("topic: {} / partition: {} / message.offset: {} / message.len: {}",
+    ///                      t.topic(), p.partition(), msg.offset, msg.value.len());
     ///           }
     ///         }
     ///       }
