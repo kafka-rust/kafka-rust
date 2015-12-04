@@ -32,9 +32,7 @@ macro_rules! array_of {
 pub struct FetchResponse<'a> {
     #[allow(dead_code)]
     raw_data: Cow<'a, [u8]>, // ~ this field is used to potentially "own" the underlying vector
-    /// The id corresponding to the fetch messages request (provided
-    /// for debugging purposes only)
-    pub correlation_id: i32,
+    correlation_id: i32,
     topics: Vec<TopicFetchResponse<'a>>,
 }
 
@@ -57,6 +55,13 @@ impl<'a> FetchResponse<'a> {
             correlation_id: correlation_id,
             topics: topics
         })
+    }
+
+    /// Retrieves the id corresponding to the fetch messages request
+    /// (provided for debugging purposes only).
+    #[inline]
+    pub fn correlation_id(&self) -> i32 {
+        self.correlation_id
     }
 
     /// Provides an iterator over all the topics and the fetched data
@@ -87,9 +92,7 @@ impl<'a, 'b> Iterator for Topics<'a, 'b> {
 /// this structure provides an iterator over the topic partitions from
 /// which messages were requested.
 pub struct TopicFetchResponse<'a> {
-    /// The identifier/name of the represented topic.
-    pub topic: &'a str,
-
+    topic: &'a str,
     partitions: Vec<PartitionFetchResponse<'a>>,
 }
 
@@ -101,6 +104,12 @@ impl<'a> TopicFetchResponse<'a> {
             topic: name,
             partitions: partitions,
         })
+    }
+
+    /// Retrieves the identifier/name of the represented topic.
+    #[inline]
+    pub fn topic(&self) -> &'a str {
+        self.topic
     }
 
     /// Provides an iterator over all the partitions of this topic for
@@ -136,7 +145,7 @@ impl<'a, 'b> Iterator for Partitions<'a, 'b> {
 /// structure will result in that error.
 pub struct PartitionFetchResponse<'a> {
     /// The identifier of the represented partition.
-    pub partition: i32,
+    partition: i32,
 
     /// Either an error or the partition data.
     data: Result<PartitionData<'a>>,
@@ -165,6 +174,12 @@ impl<'a> PartitionFetchResponse<'a> {
                 }),
             },
         })
+    }
+
+    /// Retrieves the identifier of the represented partition.
+    #[inline]
+    pub fn partition(&self) -> i32 {
+        self.partition
     }
 
     /// Retrieves the data payload for this partition.

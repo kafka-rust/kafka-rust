@@ -707,13 +707,13 @@ impl KafkaClient {
     ///   for t in resp.topics() {
     ///     for p in t.partitions() {
     ///       match p.messages() {
-    ///         Err(e) => println!("partition error: {}:{}: {}", t.topic, p.partition, e),
+    ///         Err(e) => println!("partition error: {}:{}: {}", t.topic(), p.partition(), e),
     ///         Ok(messages) => {
     ///           println!("topic: {} / partition: {} / latest available message offset: {}",
-    ///                    t.topic, p.partition, messages.highwatermark_offset());
+    ///                    t.topic(), p.partition(), messages.highwatermark_offset());
     ///           for msg in messages {
     ///             println!("topic: {} / partition: {} / message.offset: {} / message.len: {}",
-    ///                      t.topic, p.partition, msg.offset, msg.value.len());
+    ///                      t.topic(), p.partition(), msg.offset, msg.value.len());
     ///           }
     ///         }
     ///       }
