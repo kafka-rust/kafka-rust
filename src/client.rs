@@ -713,7 +713,7 @@ impl KafkaClient {
     ///                    t.topic(), p.partition(), messages.highwatermark_offset());
     ///           for msg in messages {
     ///             println!("topic: {} / partition: {} / message.offset: {} / message.len: {}",
-    ///                      t.topic(), p.partition(), msg.offset, msg.value.len());
+    ///                      t.topic(), p.partition(), msg.offset(), msg.value().len());
     ///           }
     ///         }
     ///       }

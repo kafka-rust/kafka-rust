@@ -232,15 +232,32 @@ struct MessageSet<'a> {
 /// A fetched messages from a remote Kafka broker for a particular
 /// topic partition.
 pub struct Message<'a> {
-    /// The offset at which this message resides in the remote kafka
-    /// broker topic partition.
-    pub offset: i64,
-    /// The key data of this message.  Empty if there is no such data
-    /// for this message.
-    pub key: &'a [u8],
-    /// The value data of this message.  Empty if there is no such
-    /// data for this message.
-    pub value: &'a [u8],
+    offset: i64,
+    key: &'a [u8],
+    value: &'a [u8],
+}
+
+impl<'a> Message<'a> {
+    /// Retrieves the offset at which this message resides in the
+    /// remote kafka broker topic partition.
+    #[inline]
+    pub fn offset(&self) -> i64 {
+        self.offset
+    }
+
+    /// Retrieves the "key" data of this message.  Empty if there is
+    /// no such data for this message.
+    #[inline]
+    pub fn key(&self) -> &'a [u8] {
+        self.key
+    }
+
+    /// Retrieves the value data of this message.  Empty if there is
+    /// no such data for this message.
+    #[inline]
+    pub fn value(&self) -> &'a [u8] {
+        self.value
+    }
 }
 
 impl<'a> MessageSet<'a> {
