@@ -78,7 +78,7 @@ pub struct Topics<'a, 'b: 'a> {
 }
 
 impl<'a, 'b> Iterator for Topics<'a, 'b> {
-    type Item = &'a TopicFetchResponse<'a>;
+    type Item = &'a TopicFetchResponse<'b>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
