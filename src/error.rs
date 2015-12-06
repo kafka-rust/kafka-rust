@@ -37,7 +37,7 @@ pub enum Error {
 
 /// Various errors reported by a remote Kafka server.
 /// See also [Kafka Errors](https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol#AGuideToTheKafkaProtocol-ErrorCodes)
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum KafkaCode {
     /// An unexpected server error
     Unknown,
@@ -158,9 +158,14 @@ impl From<byteorder::Error> for Error {
 
 impl Clone for Error {
     fn clone(&self) -> Error {
-        match *self {
-            Error::Io(ref err) => Error::Io(io::Error::new(err.kind(), "Io Error")),
-            ref x => x.clone()
+        match self {
+            &Error::Io(ref err) => Error::Io(io::Error::new(err.kind(), "Io Error")),
+            &Error::Kafka(x) => Error::Kafka(x),
+            &Error::InvalidInputSnappy => Error::InvalidInputSnappy,
+            &Error::UnexpectedEOF => Error::UnexpectedEOF,
+            &Error::CodecError => Error::CodecError,
+            &Error::StringDecodeError => Error::StringDecodeError,
+            &Error::NoHostReachable => Error::NoHostReachable,
         }
     }
 }
