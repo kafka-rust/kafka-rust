@@ -720,8 +720,7 @@ impl KafkaClient {
     ///     }
     ///   }
     /// }
-    pub fn zfetch_messages_multi<'a, 'b, I, J>(&mut self, input: I)
-                                               -> Result<Vec<zfetch::FetchResponse<'b>>>
+    pub fn zfetch_messages_multi<'a, I, J>(&mut self, input: I) -> Result<Vec<zfetch::FetchResponse>>
         where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J> {
 
         let reqs = __prepare_fetch_messages_requests(&mut self.state, &self.config, input);
@@ -990,9 +989,9 @@ fn __fetch_messages_multi(conn_pool: &mut ConnectionPool,
 }
 
 /// ~ carries out the given fetch requests and returns the response
-fn __zfetch_messages_multi<'a>(conn_pool: &mut ConnectionPool,
-                               reqs: HashMap<Rc<String>, protocol::FetchRequest>)
-                               -> Result<Vec<zfetch::FetchResponse<'a>>>
+fn __zfetch_messages_multi(conn_pool: &mut ConnectionPool,
+                           reqs: HashMap<Rc<String>, protocol::FetchRequest>)
+                           -> Result<Vec<zfetch::FetchResponse>>
 {
     // Call each broker with the request formed earlier
     let mut res = Vec::with_capacity(reqs.len());

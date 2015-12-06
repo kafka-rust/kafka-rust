@@ -25,27 +25,34 @@ macro_rules! array_of {
     }}
 }
 
-
 /// The result of a "fetch messages" request from a particular Kafka
 /// broker. Such a response can contain messages for multiple topic
 /// partitions.
-pub struct FetchResponse<'a> {
+pub struct FetchResponse {
+    // used to "own" the data all other references of this struct
+    // point to.
     #[allow(dead_code)]
-    raw_data: Cow<'a, [u8]>, // ~ this field is used to potentially "own" the underlying vector
+    raw_data: Vec<u8>,
+
     correlation_id: i32,
-    topics: Vec<TopicFetchResponse<'a>>,
+
+    // ~ static is used here to get around the fact that we don't want
+    // FetchResponse have a lifetime parameter as well. the field is
+    // exposed only through an accessor which binds the exposed
+    // lifetime to the lifetime of the FetchResponse instance
+    topics: Vec<TopicFetchResponse<'static>>,
 }
 
-impl<'a> FromResponse for FetchResponse<'a> {
+impl FromResponse for FetchResponse {
     fn from_response(response: Vec<u8>) -> Result<Self> {
-        FetchResponse::from_slice(Cow::Owned(response))
+        FetchResponse::from_vec(response)
     }
 }
 
-impl<'a> FetchResponse<'a> {
+impl FetchResponse {
     /// Parses a FetchResponse from binary data as defined by the
     /// Kafka Protocol.
-    fn from_slice(response: Cow<'a, [u8]>) -> Result<FetchResponse<'a>> {
+    fn from_vec(response: Vec<u8>) -> Result<FetchResponse> {
         let slice = unsafe { mem::transmute(&response[..]) };
         let mut r = ZReader::new(slice);
         let correlation_id = try!(r.read_i32());
@@ -67,25 +74,24 @@ impl<'a> FetchResponse<'a> {
     /// Provides an iterator over all the topics and the fetched data
     /// relative to these topics.
     #[inline]
-    pub fn topics<'b>(&'b self) -> Topics<'b, 'a> {
+    pub fn topics<'a>(&'a self) -> Topics<'a> {
         Topics { iter: self.topics.iter() }
     }
 }
 
 /// An iterator over the topics of a `FetchResponse`.
-pub struct Topics<'a, 'b: 'a> {
-    iter: Iter<'a, TopicFetchResponse<'b>>,
+pub struct Topics<'a> {
+    iter: Iter<'a, TopicFetchResponse<'a>>,
 }
 
-impl<'a, 'b> Iterator for Topics<'a, 'b> {
-    type Item = &'a TopicFetchResponse<'b>;
+impl<'a> Iterator for Topics<'a> {
+    type Item = &'a TopicFetchResponse<'a>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next()
     }
 }
-
 
 /// The result of a "fetch messages" request from a particular Kafka
 /// broker for a single topic only.  Beside the name of the topic,
@@ -184,7 +190,7 @@ impl<'a> PartitionFetchResponse<'a> {
 
     /// Retrieves the data payload for this partition.
     #[inline]
-    pub fn messages<'b>(&'b self) -> Result<Messages<'b, 'a>> {
+    pub fn messages<'s>(&'s self) -> Result<Messages<'s, 'a>> {
         match self.data {
             Ok(ref data) => Ok(Messages {
                 highwatermark_offset: data.highwatermark_offset,
@@ -369,7 +375,6 @@ impl<'a> ProtocolMessage<'a> {
 #[cfg(test)]
 mod tests {
     use std::str;
-    use std::borrow::Cow;
 
     use super::{FetchResponse, Message};
 
@@ -384,7 +389,7 @@ mod tests {
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
-    fn into_messages<'a: 'b, 'b>(data: &'a FetchResponse<'b>) -> Vec<&'a Message<'b>> {
+    fn into_messages<'a>(data: &'a FetchResponse) -> Vec<&'a Message<'a>> {
         let mut all_msgs = Vec::new();
         for t in data.topics() {
             for p in t.partitions() {
@@ -401,8 +406,8 @@ mod tests {
         all_msgs
     }
 
-    fn test_decode_new_fetch_response(msg_per_line: &str, fetch_response_bytes: &[u8]) {
-        let resp = FetchResponse::from_slice(Cow::Borrowed(fetch_response_bytes));
+    fn test_decode_new_fetch_response(msg_per_line: &str, response: Vec<u8>) {
+        let resp = FetchResponse::from_vec(response);
         let resp = resp.unwrap();
 
         let original: Vec<_> = msg_per_line.lines().collect();
@@ -427,36 +432,36 @@ mod tests {
 
     #[test]
     fn test_from_slice_nocompression_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821);
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned());
     }
 
     #[test]
     fn test_from_slice_snappy_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821);
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned());
     }
 
     #[test]
     fn test_from_slice_snappy_k0822() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822);
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned());
     }
 
     #[test]
     fn test_from_slice_gzip_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821);
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned());
     }
 
     #[cfg(feature = "nightly")]
     mod benches {
-        use std::borrow::Cow;
         use test::{black_box, Bencher};
 
         use super::super::FetchResponse;
         use super::into_messages;
 
-        fn bench_decode_new_fetch_response(b: &mut Bencher, data: &[u8]) {
+        fn bench_decode_new_fetch_response(b: &mut Bencher, data: Vec<u8>) {
             b.bytes = data.len() as u64;
             b.iter(|| {
-                let r = black_box(FetchResponse::from_slice(Cow::Borrowed(data)).unwrap());
+                let data = data.clone();
+                let r = black_box(FetchResponse::from_vec(data).unwrap());
                 let v = black_box(into_messages(&r));
                 v.len()
             });
@@ -464,22 +469,22 @@ mod tests {
 
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821)
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned())
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821)
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned())
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822)
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned())
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821)
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned())
         }
     }
 }
