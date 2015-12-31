@@ -514,18 +514,18 @@ impl KafkaClient {
             brokers.insert(broker.nodeid, Rc::new(format!("{}:{}", broker.host, broker.port)));
         }
         for topic in md.topics {
-            let mut known_partitions_internal = Vec::with_capacity(topic.partitions.len());
+            let mut known_partitions = Vec::with_capacity(topic.partitions.len());
             for partition in topic.partitions {
                 match brokers.get(&partition.leader) {
                     Some(broker) => {
-                        known_partitions_internal.push(TopicPartition::new(partition.id, broker.clone()));
+                        known_partitions.push(TopicPartition::new(partition.id, broker.clone()));
                     },
                     None => {}
                 }
             }
-            known_partitions_internal.sort_by(|a, b| a.partition_id.cmp(&b.partition_id));
+            known_partitions.sort_by(|a, b| a.partition_id.cmp(&b.partition_id));
             self.state.topic_partitions.insert(
-                topic.topic.clone(), TopicPartitions::new(known_partitions_internal));
+                topic.topic, TopicPartitions::new(known_partitions));
         }
         Ok(())
     }
