@@ -316,7 +316,7 @@ impl KafkaClient {
 
     /// Fetch messages from Kafka (Multiple topic, partition, offset)
     ///
-    /// It takes a vector of `utils:TopicPartitionOffset` and returns a vector of `utils::TopicMessage`
+    /// It takes a vector of `utils::TopicPartitionOffset` and returns a vector of `utils::TopicMessage`
     /// or error::Error
     ///
     /// You can figure out the appropriate partition and offset using client's
@@ -332,7 +332,7 @@ impl KafkaClient {
     ///                                                 topic: "my-topic".to_owned(),
     ///                                                 partition: 0,
     ///                                                 offset: 0
-    ///                                                 },
+    ///                                             },
     ///                                             utils::TopicPartitionOffset{
     ///                                                 topic: "my-topic-2".to_owned(),
     ///                                                 partition: 0,
