@@ -1,21 +1,32 @@
 extern crate kafka;
 
+use std::env;
 use kafka::client::KafkaClient;
 
 /// Demonstrates accessing metadata using KafkaClient.
 fn main() {
-    let broker = "localhost:9092";
+    let brokers = {
+        let mut xs = env::args().skip(1).collect::<Vec<_>>();
+        if xs.is_empty() {
+            xs.push("localhost:9092".to_owned());
+        }
+        xs
+    };
 
-    let mut client = KafkaClient::new(vec!(broker.to_owned()));
+    let mut client = KafkaClient::new(brokers);
     if let Err(e) = client.load_metadata_all() {
-        println!("Failed to load metadata from {}: {}", broker, e);
+        println!("Failed to load metadata from {:?}: {}", client.hosts(), e);
         return;
     }
 
+    let mut has_partitions = false;
     for topic in client.topics() {
         for partition in topic.partitions() {
+            has_partitions = true;
             println!("{}:{} {}", topic.name(), partition.id(), partition.leader());
         }
     }
-    println!("No more topics");
+    if !has_partitions {
+        println!("No topic partitions found!");
+    }
 }
