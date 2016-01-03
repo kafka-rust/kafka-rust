@@ -9,6 +9,7 @@ use std::iter::Iterator;
 use std::mem;
 use std::rc::Rc;
 use std::slice;
+use std::cell::Cell;
 
 // pub re-export
 pub use compression::Compression;
@@ -85,9 +86,7 @@ impl ClientState {
         self.correlation
     }
 
-    /// Find the leader of the specified partition; the returned
-    /// string is the hostname:port of the leader - if any.
-    fn find_broker(&self, topic: &str, partition: i32) -> Option<Rc<String>> {
+    fn find_broker<'a>(&'a self, topic: &str, partition: i32) -> Option<&'a str> {
         self.topic_partitions.get(topic)
             .and_then(|tp| {
                 // ~ XXX might also just normally iterate and try to
@@ -96,23 +95,38 @@ impl ClientState {
                 tp.partitions.binary_search_by(|e| {
                     e.partition_id.cmp(&partition)
                 }).ok().and_then(|i| {
-                    Some(tp.partitions[i].broker_host.clone())
+                    let s: &str = &tp.partitions[i].broker_host;
+                    Some(s)
                 })
             })
     }
 
     /// Chooses for the given topic a partition to write the next message to.
     /// Returns the partition_id and the corresponding broker host.
-    fn choose_partition(&mut self, topic: &str) -> Option<(i32, Rc<String>)> {
-        match self.topic_partitions.get_mut(topic) {
+    fn choose_partition<'a, 'b>(&'a self, topic: &'b str) -> Option<(i32, &'a str)> {
+        match self.topic_partitions.get(topic) {
             None => None,
             Some(ref topic) if topic.partitions.is_empty() => None,
-            Some(ref mut topic) => {
-                topic.curr_partition_idx = (topic.curr_partition_idx + 1) % topic.partitions.len() as i32;
-                let p = &topic.partitions[topic.curr_partition_idx as usize];
-                Some((p.partition_id, p.broker_host.clone()))
+            Some(ref topic) => {
+                let p_idx = (topic.curr_partition_idx.get() + 1) % topic.partitions.len();
+                topic.curr_partition_idx.set(p_idx);
+                let p = &topic.partitions[p_idx];
+                let broker: &str = &p.broker_host;
+                Some((p.partition_id, broker))
             }
         }
+    }
+}
+
+#[derive(Debug)]
+struct TopicPartitions {
+    curr_partition_idx: Cell<usize>,
+    partitions: Vec<TopicPartition>,
+}
+
+impl TopicPartitions {
+    fn new(partitions: Vec<TopicPartition>) -> TopicPartitions {
+        TopicPartitions { curr_partition_idx: Cell::new(0), partitions: partitions }
     }
 }
 
@@ -125,18 +139,6 @@ struct TopicPartition {
 impl TopicPartition {
     fn new(partition_id: i32, broker_host: Rc<String>) -> TopicPartition {
         TopicPartition { partition_id: partition_id, broker_host: broker_host }
-    }
-}
-
-#[derive(Debug)]
-struct TopicPartitions {
-    curr_partition_idx: i32,
-    partitions: Vec<TopicPartition>,
-}
-
-impl TopicPartitions {
-    fn new(partitions: Vec<TopicPartition>) -> TopicPartitions {
-        TopicPartitions { curr_partition_idx: 0, partitions: partitions }
     }
 }
 
@@ -764,7 +766,7 @@ impl KafkaClient {
 
         // ~ map topic and partition to the corresponding brokers
         let config = &self.config;
-        let mut reqs: HashMap<Rc<String>, protocol::ProduceRequest> = HashMap::new();
+        let mut reqs: HashMap<&str, protocol::ProduceRequest> = HashMap::new();
         for msg in messages {
             let msg = msg.as_ref();
             if let Some((partition, broker)) = state.choose_partition(msg.topic) {
@@ -832,12 +834,12 @@ impl KafkaClient {
 
         // Map topic and partition to the corresponding broker
         let config = &self.config;
-        let mut reqs: HashMap<Rc<String>, protocol::OffsetCommitRequest> = HashMap:: new();
+        let mut reqs: HashMap<&str, protocol::OffsetCommitRequest> = HashMap:: new();
         for tp in offsets {
             let tp = tp.as_ref();
             if let Some(broker) = state.find_broker(&tp.topic, tp.partition) {
-                reqs.entry(broker.clone()).or_insert(
-                            protocol::OffsetCommitRequest::new(group, correlation, &config.client_id))
+                reqs.entry(broker)
+                    .or_insert(protocol::OffsetCommitRequest::new(group, correlation, &config.client_id))
                     .add(tp.topic, tp.partition, tp.offset, "");
             }
         }
@@ -887,13 +889,13 @@ impl KafkaClient {
         let correlation = self.state.next_correlation_id();
 
         // Map topic and partition to the corresponding broker
-        let mut reqs: HashMap<Rc<String>, protocol::OffsetFetchRequest> = HashMap:: new();
+        let mut reqs: HashMap<&str, protocol::OffsetFetchRequest> = HashMap:: new();
         for tp in partitions {
             let tp = tp.as_ref();
             if let Some(broker) = self.state.find_broker(tp.topic, tp.partition) {
-                let entry = reqs.entry(broker.clone()).or_insert(
-                    protocol::OffsetFetchRequest::new(group, correlation, &self.config.client_id));
-                entry.add(tp.topic, tp.partition);
+                reqs.entry(broker)
+                    .or_insert(protocol::OffsetFetchRequest::new(group, correlation, &self.config.client_id))
+                    .add(tp.topic, tp.partition);
             }
         }
         __fetch_group_offsets_multi(&mut self.conn_pool, reqs)
@@ -927,22 +929,22 @@ impl KafkaClient {
 }
 
 fn __commit_offsets(conn_pool: &mut ConnectionPool,
-                    reqs: HashMap<Rc<String>, protocol::OffsetCommitRequest>)
+                    reqs: HashMap<&str, protocol::OffsetCommitRequest>)
                     -> Result<()> {
     // Call each broker with the request formed earlier
     for (host, req) in reqs {
-        try!(__send_receive::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(conn_pool, &host, req));
+        try!(__send_receive::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(conn_pool, host, req));
     }
     Ok(())
 }
 
 fn __fetch_group_offsets_multi(conn_pool: &mut ConnectionPool,
-                               reqs: HashMap<Rc<String>, protocol::OffsetFetchRequest>)
+                               reqs: HashMap<&str, protocol::OffsetFetchRequest>)
                                -> Result<Vec<utils::TopicPartitionOffsetError>> {
     // Call each broker with the request formed earlier
     let mut res = vec!();
     for (host, req) in reqs {
-        let resp = try!(__send_receive::<protocol::OffsetFetchRequest, protocol::OffsetFetchResponse>(conn_pool, &host, req));
+        let resp = try!(__send_receive::<protocol::OffsetFetchRequest, protocol::OffsetFetchResponse>(conn_pool, host, req));
         let o = resp.get_offsets();
         for tpo in o {
             res.push(tpo);
@@ -951,19 +953,19 @@ fn __fetch_group_offsets_multi(conn_pool: &mut ConnectionPool,
     Ok(res)
 }
 
-fn __prepare_fetch_messages_requests<'a, 'b, I, J>(
-    state: &mut ClientState, config: &'b ClientConfig, input: I)
-    -> HashMap<Rc<String>, protocol::FetchRequest<'b, 'a>>
+fn __prepare_fetch_messages_requests<'a, 'b, 'c, I, J>(
+    state: &'c mut ClientState, config: &'b ClientConfig, input: I)
+    -> HashMap<&'c str, protocol::FetchRequest<'b, 'a>>
     where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J> {
 
         let correlation = state.next_correlation_id();
 
         // Map topic and partition to the corresponding broker
-        let mut reqs: HashMap<Rc<String>, protocol::FetchRequest> = HashMap::new();
+        let mut reqs: HashMap<&str, protocol::FetchRequest> = HashMap::new();
         for tpo in input {
             let tpo = tpo.as_ref();
             if let Some(broker) = state.find_broker(tpo.topic, tpo.partition) {
-                reqs.entry(broker.clone())
+                reqs.entry(broker)
                     .or_insert_with(|| {
                         protocol::FetchRequest::new(correlation, &config.client_id,
                                                     config.fetch_max_wait_time, config.fetch_min_bytes)
@@ -976,13 +978,13 @@ fn __prepare_fetch_messages_requests<'a, 'b, I, J>(
 
 /// ~ carries out the given fetch requests and returns the response
 fn __fetch_messages_multi(conn_pool: &mut ConnectionPool,
-                          reqs: HashMap<Rc<String>, protocol::FetchRequest>)
+                          reqs: HashMap<&str, protocol::FetchRequest>)
                           -> Result<Vec<utils::TopicMessage>>
 {
     // Call each broker with the request formed earlier
     let mut res: Vec<utils::TopicMessage> = vec!();
     for (host, req) in reqs {
-        let resp = try!(__send_receive::<protocol::FetchRequest, protocol::FetchResponse>(conn_pool, &host, req));
+        let resp = try!(__send_receive::<protocol::FetchRequest, protocol::FetchResponse>(conn_pool, host, req));
         res.extend(resp.into_messages());
     }
     Ok(res)
@@ -990,13 +992,13 @@ fn __fetch_messages_multi(conn_pool: &mut ConnectionPool,
 
 /// ~ carries out the given fetch requests and returns the response
 fn __zfetch_messages_multi(conn_pool: &mut ConnectionPool,
-                           reqs: HashMap<Rc<String>, protocol::FetchRequest>)
+                           reqs: HashMap<&str, protocol::FetchRequest>)
                            -> Result<Vec<zfetch::FetchResponse>>
 {
     // Call each broker with the request formed earlier
     let mut res = Vec::with_capacity(reqs.len());
     for (host, req) in reqs {
-        let resp = try!(__z_send_receive::<protocol::FetchRequest, zfetch::FetchResponse>(conn_pool, &host, req));
+        let resp = try!(__z_send_receive::<protocol::FetchRequest, zfetch::FetchResponse>(conn_pool, host, req));
         res.push(resp);
     }
     Ok(res)
@@ -1004,14 +1006,14 @@ fn __zfetch_messages_multi(conn_pool: &mut ConnectionPool,
 
 /// ~ carries out the given produce requests and returns the reponse
 fn __send_messages(conn_pool: &mut ConnectionPool,
-                   reqs: HashMap<Rc<String>, protocol::ProduceRequest>,
+                   reqs: HashMap<&str, protocol::ProduceRequest>,
                    no_acks: bool)
                    -> Result<Vec<utils::TopicPartitionOffsetError>>
 {
     // Call each broker with the request formed earlier
     if no_acks {
         for (host, req) in reqs {
-            try!(__send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(conn_pool, &host, req));
+            try!(__send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(conn_pool, host, req));
         }
         Ok(vec!())
     } else {
