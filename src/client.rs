@@ -80,6 +80,18 @@ struct ClientState {
     topic_partitions: HashMap<String, TopicPartitions>,
 }
 
+#[derive(Debug)]
+struct TopicPartitions {
+    curr_partition_idx: Cell<usize>,
+    partitions: Vec<TopicPartition>,
+}
+
+#[derive(Debug)]
+struct TopicPartition {
+    partition_id: i32,
+    broker_host: Rc<String>,
+}
+
 impl ClientState {
     fn next_correlation_id(&mut self) -> i32 {
         self.correlation = (self.correlation + 1) % (1i32 << 30);
@@ -118,22 +130,10 @@ impl ClientState {
     }
 }
 
-#[derive(Debug)]
-struct TopicPartitions {
-    curr_partition_idx: Cell<usize>,
-    partitions: Vec<TopicPartition>,
-}
-
 impl TopicPartitions {
     fn new(partitions: Vec<TopicPartition>) -> TopicPartitions {
         TopicPartitions { curr_partition_idx: Cell::new(0), partitions: partitions }
     }
-}
-
-#[derive(Debug)]
-struct TopicPartition {
-    partition_id: i32,
-    broker_host: Rc<String>,
 }
 
 impl TopicPartition {
@@ -347,6 +347,13 @@ impl KafkaClient {
                 topic_partitions: HashMap::with_capacity(n_hosts),
             },
         }
+    }
+
+    /// Expose the hosts used for discovery of the target kafka
+    /// cluster.  This set of hosts corresponds to the values supplied
+    /// to `KafkaClient::new`.
+    pub fn hosts(&self) -> &[String] {
+        &self.config.hosts
     }
 
     /// Set the compression algorithm to use when sending out messages.
