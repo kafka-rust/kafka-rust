@@ -38,7 +38,7 @@ fn produce(cfg: &Config) -> Result<(), Error> {
     try!(client.load_metadata_all());
 
     // ~ verify that the remote brokers do know about the target topic
-    if !client.contains_topic(&cfg.topic) {
+    if !client.topics().contains(&cfg.topic) {
         return Err(Error::Literal(format!("No such topic at {:?}: {}", cfg.brokers, cfg.topic)));
     }
     match cfg.input_file {
