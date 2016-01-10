@@ -62,11 +62,12 @@ impl ConsumerState {
 
     fn fetch_offsets(&mut self, client: &mut KafkaClient) -> Result<()> {
         if self.partitions.is_empty() {
-            // ~ fails if the underlygin topic is unkonwn to the given
+            // ~ fails if the underlying topic is unkonwn to the given
             // client; this actually is what we want
-            self.partitions = try!(client.topic_partitions(&self.topic))
-                .map(|p| p.id())
-                .collect();
+            self.partitions = match client.topics().partitions(&self.topic) {
+                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+                Some(tp) => tp.as_slice().iter().map(|p| p.id()).collect(),
+            };
         }
 
         // ~ fetch the so far commited group offsets

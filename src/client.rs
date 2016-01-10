@@ -80,16 +80,68 @@ struct ClientState {
     topic_partitions: HashMap<String, TopicPartitions>,
 }
 
+/// A representation of partitions for a single topic.
 #[derive(Debug)]
-struct TopicPartitions {
+pub struct TopicPartitions {
     curr_partition_idx: Cell<usize>,
     partitions: Vec<TopicPartition>,
 }
 
+impl TopicPartitions {
+    fn new(partitions: Vec<TopicPartition>) -> TopicPartitions {
+        TopicPartitions { curr_partition_idx: Cell::new(0), partitions: partitions }
+    }
+
+    /// Retrieves an iterator of the partitions for the underlying topic.
+    #[inline]
+    pub fn iter(&self) -> slice::Iter<TopicPartition> {
+        self.partitions.iter()
+    }
+
+    /// Retrieves the list of known partitions for the underlying topic.
+    #[inline]
+    pub fn as_slice(&self) -> &[TopicPartition] {
+        &self.partitions
+    }
+
+    /// Finds a specified partition identified by its id.
+    pub fn partition(&self, partition_id: i32) -> Option<&TopicPartition> {
+        // ~ XXX might also just normally iterate and try to
+        // find the element.  the number of partitions is
+        // typically very constrainted.
+        self.partitions.binary_search_by(|e| {
+            e.partition_id.cmp(&partition_id)
+        }).ok().and_then(|i| {
+            // `get_unchecked` is safe here due to the preceeding binary_search
+            unsafe { Some(self.partitions.get_unchecked(i)) }
+        })
+    }
+}
+
+/// Metadata for a single topic partition.
 #[derive(Debug)]
-struct TopicPartition {
+pub struct TopicPartition {
     partition_id: i32,
     broker_host: Rc<String>,
+}
+
+impl TopicPartition {
+    fn new(partition_id: i32, broker_host: Rc<String>) -> TopicPartition {
+        TopicPartition { partition_id: partition_id, broker_host: broker_host }
+    }
+
+    /// Retrieves the identifier of this topic partition.
+    #[inline]
+    pub fn id(&self) -> i32 {
+        self.partition_id
+    }
+
+    /// Retrieves the leader broker this partitions is currently
+    /// served by.
+    #[inline]
+    pub fn leader(&self) -> &str {
+        &self.broker_host
+    }
 }
 
 impl ClientState {
@@ -100,17 +152,7 @@ impl ClientState {
 
     fn find_broker<'a>(&'a self, topic: &str, partition: i32) -> Option<&'a str> {
         self.topic_partitions.get(topic)
-            .and_then(|tp| {
-                // ~ XXX might also just normally iterate and try to
-                // find the element.  the number of partitions is
-                // typically very constrainted.
-                tp.partitions.binary_search_by(|e| {
-                    e.partition_id.cmp(&partition)
-                }).ok().and_then(|i| {
-                    let s: &str = &tp.partitions[i].broker_host;
-                    Some(s)
-                })
-            })
+            .and_then(|tp| tp.partition(partition).map(|p| &p.broker_host[..]))
     }
 
     /// Chooses for the given topic a partition to write the next message to.
@@ -127,18 +169,6 @@ impl ClientState {
                 Some((p.partition_id, broker))
             }
         }
-    }
-}
-
-impl TopicPartitions {
-    fn new(partitions: Vec<TopicPartition>) -> TopicPartitions {
-        TopicPartitions { curr_partition_idx: Cell::new(0), partitions: partitions }
-    }
-}
-
-impl TopicPartition {
-    fn new(partition_id: i32, broker_host: Rc<String>) -> TopicPartition {
-        TopicPartition { partition_id: partition_id, broker_host: broker_host }
     }
 }
 
@@ -200,36 +230,54 @@ impl FetchOffset {
 
 /// An immutable iterator over a kafka client's known topics.
 pub struct Topics<'a> {
+    topic_partitions: &'a HashMap<String, TopicPartitions>,
+}
+
+impl<'a> Topics<'a> {
+    /// Provides an iterator over the known topics.
+    #[inline]
+    pub fn iter(&'a self) -> TopicIter<'a> {
+        TopicIter { iter: self.topic_partitions.iter() }
+    }
+
+    /// A conveniece method to return an iterator the topics' names.
+    #[inline]
+    pub fn names(&'a self) -> TopicNames<'a> {
+        TopicNames { iter: self.topic_partitions.keys() }
+    }
+
+    /// A convenience method to determine whether the specified topic
+    /// is known.
+    pub fn contains(&'a self, topic: &str) -> bool {
+        self.topic_partitions.contains_key(topic)
+    }
+
+    /// Retrieves the partitions of a known topic.
+    pub fn partitions(&'a self, topic: &str) -> Option<&'a TopicPartitions> {
+        self.topic_partitions.get(topic)
+    }
+}
+
+pub struct TopicIter<'a> {
     iter: hash_map::Iter<'a, String, TopicPartitions>,
 }
 
-impl<'a> Iterator for Topics<'a> {
+impl<'a> Iterator for TopicIter<'a> {
     type Item=Topic<'a>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(name, tps) | Topic {
             name: &name[..],
-            partitions: &tps.partitions,
+            partitions: &tps,
         })
-    }
-}
-
-impl<'a> Topics<'a> {
-
-    /// A conveniece method to turn this topics iterator into an
-    /// iterator over the topics' names.
-    #[allow(dead_code)]
-    #[inline]
-    pub fn names(self) -> TopicNames<'a> {
-        TopicNames { iter: self.iter }
     }
 }
 
 /// An iterator over the names of topics known to the originating
 /// kafka client.
 pub struct TopicNames<'a> {
-    iter: hash_map::Iter<'a, String, TopicPartitions>,
+    iter: hash_map::Keys<'a, String, TopicPartitions>,
 }
 
 impl<'a> Iterator for TopicNames<'a> {
@@ -237,7 +285,7 @@ impl<'a> Iterator for TopicNames<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(name, _)| &name[..])
+        self.iter.next().map(|s| &s[..])
     }
 }
 
@@ -247,17 +295,16 @@ fn test_topics_names_iter() {
     m.insert("foo".to_owned(), TopicPartitions::new(vec![]));
     m.insert("bar".to_owned(), TopicPartitions::new(vec![]));
 
-    let topics = Topics { iter: m.iter() };
+    let topics = Topics { topic_partitions: &m };
     let mut names: Vec<String> = topics.names().map(ToOwned::to_owned).collect();
     names.sort();
     assert_eq!(vec!["bar".to_owned(), "foo".to_owned()], names);
 }
 
-/// An immutable view on a topic as known to the originating kafka
-/// client.
+/// An immutable view on a topic.
 pub struct Topic<'a> {
     name: &'a str,
-    partitions: &'a [TopicPartition],
+    partitions: &'a TopicPartitions,
 }
 
 impl<'a> Topic<'a> {
@@ -268,58 +315,18 @@ impl<'a> Topic<'a> {
         self.name
     }
 
-    /// Retrieves an iterator over the known partitions of this topic.
+    /// Retrieves the list of known partitions for this topic.
     #[inline]
-    pub fn partitions(&self) -> Partitions<'a> {
-        Partitions {
-            iter: self.partitions.iter(),
-        }
-    }
-}
-
-/// An immutable iterator over the kafka client's known partitions for
-/// a particular topic.
-pub struct Partitions<'a> {
-    iter: slice::Iter<'a, TopicPartition>,
-}
-
-/// An immutable view on a topic partitions as known to the
-/// originating kafka client.
-pub struct Partition<'a> {
-    partition: &'a TopicPartition,
-}
-
-impl<'a> Partition<'a> {
-
-    /// Retrieves the identifier of this topic partition.
-    #[inline]
-    pub fn id(&self) -> i32 {
-        self.partition.partition_id
-    }
-
-    /// Retrieves the leader broker this partitions is currently
-    /// served by.
-    #[inline]
-    pub fn leader(&self) -> &str {
-        &self.partition.broker_host
-    }
-}
-
-impl<'a> Iterator for Partitions<'a> {
-    type Item=Partition<'a>;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|p| Partition {
-            partition: p,
-        })
+    pub fn partitions(&self) -> &'a TopicPartitions {
+        self.partitions
     }
 }
 
 // --------------------------------------------------------------------
 
 impl KafkaClient {
-    /// Create a new instance of KafkaClient. Before being able to
+
+    /// Creates a new instance of KafkaClient. Before being able to
     /// successfully use the new client, you'll have to load metadata.
     ///
     /// # Examples
@@ -349,14 +356,14 @@ impl KafkaClient {
         }
     }
 
-    /// Expose the hosts used for discovery of the target kafka
+    /// Exposes the hosts used for discovery of the target kafka
     /// cluster.  This set of hosts corresponds to the values supplied
     /// to `KafkaClient::new`.
     pub fn hosts(&self) -> &[String] {
         &self.config.hosts
     }
 
-    /// Set the compression algorithm to use when sending out messages.
+    /// Sets the compression algorithm to use when sending out messages.
     ///
     /// # Example
     ///
@@ -370,7 +377,7 @@ impl KafkaClient {
         self.config.compression = compression;
     }
 
-    /// Set the maximum time in milliseconds to wait for insufficient
+    /// Sets the maximum time in milliseconds to wait for insufficient
     /// data to become available when fetching messages.
     ///
     /// See also `KafkaClient::set_fetch_min_bytes(..)` and
@@ -380,7 +387,7 @@ impl KafkaClient {
         self.config.fetch_max_wait_time = max_wait_time;
     }
 
-    /// Set the minimum number of bytes of available data to wait for
+    /// Sets the minimum number of bytes of available data to wait for
     /// as long as specified by `KafkaClient::set_fetch_max_wait_time`
     /// when fetching messages.
     ///
@@ -408,7 +415,7 @@ impl KafkaClient {
         self.config.fetch_min_bytes = min_bytes;
     }
 
-    /// Set the maximum number of bytes to fetch from _a single kafka
+    /// Sets the maximum number of bytes to fetch from _a single kafka
     /// partition_ when fetching messages.
     ///
     /// This basically determines the maximum message size this client
@@ -428,40 +435,21 @@ impl KafkaClient {
         self.config.fetch_max_bytes_per_partition = max_bytes;
     }
 
-    /// Determines whether this client current knows about the
-    /// specified topic.
-    #[inline]
-    pub fn contains_topic(&self, topic: &str) -> bool {
-        self.state.topic_partitions.contains_key(topic)
-    }
-
-    /// Retrieves an iterator over the partitions of the given topic
-    /// or an error if the requested topic is unknown (yet.)
-    #[inline]
-    pub fn topic_partitions(&self, topic: &str) -> Result<Partitions> {
-        match self.state.topic_partitions.get(topic) {
-            None => Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
-            Some(tp) => Ok(Partitions {
-                iter: tp.partitions.iter(),
-            }),
-        }
-    }
-
-    /// Iterates the currently known topics.
+    /// Provides a view onto the currently loaded metadata of known topics.
     ///
     /// # Examples
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// for topic in client.topics() {
-    ///   for partition in topic.partitions() {
+    /// for topic in client.topics().iter() {
+    ///   for partition in topic.partitions().iter() {
     ///     println!("{}:{} => {}", topic.name(), partition.id(), partition.leader());
     ///   }
     /// }
     /// ```
     #[inline]
     pub fn topics(&self) -> Topics {
-        Topics { iter: self.state.topic_partitions.iter() }
+        Topics { topic_partitions: &self.state.topic_partitions }
     }
 
     /// Resets and loads metadata for all topics from the underlying

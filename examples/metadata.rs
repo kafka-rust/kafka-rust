@@ -20,10 +20,13 @@ fn main() {
     }
 
     let mut has_partitions = false;
-    for topic in client.topics() {
-        for partition in topic.partitions() {
+    for topic in client.topics().iter() {
+        let partitions = topic.partitions().as_slice();
+        if !partitions.is_empty() {
             has_partitions = true;
-            println!("{}:{} {}", topic.name(), partition.id(), partition.leader());
+            for partition in partitions {
+                println!("{}:{} {}", topic.name(), partition.id(), partition.leader());
+            }
         }
     }
     if !has_partitions {

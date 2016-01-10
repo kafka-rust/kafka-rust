@@ -19,7 +19,7 @@ fn main() {
     }
     // ~ make sure to print out a warning message when the target
     // topic does not yet exist
-    if !client.contains_topic(topic) {
+    if !client.topics().contains(topic) {
         println!("No such topic at {}: {}", broker, topic);
         return;
     }
