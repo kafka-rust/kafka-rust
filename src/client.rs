@@ -703,20 +703,24 @@ impl KafkaClient {
     /// for resp in resps {
     ///   for t in resp.topics() {
     ///     for p in t.partitions() {
-    ///       match p.messages() {
-    ///         Err(e) => println!("partition error: {}:{}: {}", t.topic(), p.partition(), e),
-    ///         Ok(messages) => {
+    ///       match p.data() {
+    ///         &Err(ref e) => {
+    ///           println!("partition error: {}:{}: {}", t.topic(), p.partition(), e)
+    ///         }
+    ///         &Ok(ref data) => {
     ///           println!("topic: {} / partition: {} / latest available message offset: {}",
-    ///                    t.topic(), p.partition(), messages.highwatermark_offset());
-    ///           for msg in messages {
+    ///                    t.topic(), p.partition(), data.highwatermark_offset());
+    ///           for msg in data.messages() {
     ///             println!("topic: {} / partition: {} / message.offset: {} / message.len: {}",
-    ///                      t.topic(), p.partition(), msg.offset(), msg.value().len());
+    ///                      t.topic(), p.partition(), msg.offset, msg.value.len());
     ///           }
     ///         }
     ///       }
     ///     }
     ///   }
     /// }
+    /// ```
+    /// See also `kafka::client::zfetch::iter_responses`.
     pub fn zfetch_messages_multi<'a, I, J>(&mut self, input: I) -> Result<Vec<zfetch::FetchResponse>>
         where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J> {
 
@@ -902,6 +906,7 @@ impl KafkaClient {
     /// or `error::Error`
     ///
     /// # Examples
+
     ///
     /// ```no_run
     /// use kafka::utils;
@@ -910,7 +915,8 @@ impl KafkaClient {
     /// let resp = client.fetch_group_offsets("my-group", "my-topic");
     /// ```
     pub fn fetch_group_offsets(&mut self, group: &str, topic: &str)
-                               -> Result<Vec<utils::TopicPartitionOffsetError>> {
+                               -> Result<Vec<utils::TopicPartitionOffsetError>>
+    {
         let tps: Vec<_> =
             match self.state.topic_partitions.get(topic) {
                 None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),

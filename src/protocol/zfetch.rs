@@ -74,22 +74,8 @@ impl FetchResponse {
     /// Provides an iterator over all the topics and the fetched data
     /// relative to these topics.
     #[inline]
-    pub fn topics<'a>(&'a self) -> Topics<'a> {
-        Topics { iter: self.topics.iter() }
-    }
-}
-
-/// An iterator over the topics of a `FetchResponse`.
-pub struct Topics<'a> {
-    iter: Iter<'a, TopicFetchResponse<'a>>,
-}
-
-impl<'a> Iterator for Topics<'a> {
-    type Item = &'a TopicFetchResponse<'a>;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
+    pub fn topics<'a>(&'a self) -> &[TopicFetchResponse<'a>] {
+        &self.topics
     }
 }
 
@@ -121,45 +107,24 @@ impl<'a> TopicFetchResponse<'a> {
     /// Provides an iterator over all the partitions of this topic for
     /// which messages were requested.
     #[inline]
-    pub fn partitions<'b>(&'b self) -> Partitions<'b, 'a> {
-        Partitions { iter: self.partitions.iter() }
+    pub fn partitions(&self) -> &[PartitionFetchResponse<'a>] {
+        &self.partitions
     }
 }
-
-/// An iterator over the partitions of a `TopicFetchResponse`.
-pub struct Partitions<'a, 'b: 'a> {
-    iter: Iter<'a, PartitionFetchResponse<'b>>,
-}
-
-impl<'a, 'b> Iterator for Partitions<'a, 'b> {
-    type Item = &'a PartitionFetchResponse<'b>;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
-    }
-}
-
 
 /// The result of a "fetch messages" request from a particular Kafka
 /// broker for a single topic partition only.  Beside the partition
 /// identifier, this structure provides an iterator over the actually
 /// requested message data.
 ///
-/// Note: There might have been an error for a particular partition
-/// (but not for another), in which case data accessors of this
-/// structure will result in that error.
+/// Note: There might have been a (recoverable) error for a particular
+/// partition (but not for another).
 pub struct PartitionFetchResponse<'a> {
     /// The identifier of the represented partition.
     partition: i32,
 
     /// Either an error or the partition data.
     data: Result<PartitionData<'a>>,
-}
-
-struct PartitionData<'a> {
-    highwatermark_offset: i64,
-    message_set: MessageSet<'a>,
 }
 
 impl<'a> PartitionFetchResponse<'a> {
@@ -189,45 +154,33 @@ impl<'a> PartitionFetchResponse<'a> {
     }
 
     /// Retrieves the data payload for this partition.
-    #[inline]
-    pub fn messages<'s>(&'s self) -> Result<Messages<'s, 'a>> {
-        match self.data {
-            Ok(ref data) => Ok(Messages {
-                highwatermark_offset: data.highwatermark_offset,
-                iter: data.message_set.messages.iter()
-            }),
-            Err(ref e) => Err(e.clone()),
-        }
+    pub fn data(&'a self) -> &'a Result<PartitionData<'a>> {
+        &self.data
     }
 }
 
-/// An iterator over the messages of a `PartitionFetchResponse`.
-pub struct Messages<'a, 'b: 'a> {
+/// The successfully fetched data payload for a particular partition.
+pub struct PartitionData<'a> {
     highwatermark_offset: i64,
-    iter: Iter<'a, Message<'b>>,
+    message_set: MessageSet<'a>,
 }
 
-impl<'a, 'b: 'a> Messages<'a, 'b> {
+impl<'a> PartitionData<'a> {
     /// Retrieves the so-called "high water mark offset" indicating
-    /// the "latest" offset for the partition of this message set at
-    /// the remote broker.  This can be used by clients to find out
-    /// how much behind the latest message available in the particular
-    /// partition they are.
+    /// the "latest" offset for this partition at the remote broker.
+    /// This can be used by clients to find out how much behind the
+    /// latest available message they are.
     #[inline]
     pub fn highwatermark_offset(&self) -> i64 {
         self.highwatermark_offset
     }
-}
 
-impl<'a, 'b> Iterator for Messages<'a, 'b> {
-    type Item = &'a Message<'b>;
-
+    /// Retrieves the fetched message data for this partition.
     #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
+    pub fn messages(&self) -> &[Message<'a>] {
+        return &self.message_set.messages
     }
 }
-
 
 struct MessageSet<'a> {
     #[allow(dead_code)]
@@ -238,32 +191,17 @@ struct MessageSet<'a> {
 /// A fetched messages from a remote Kafka broker for a particular
 /// topic partition.
 pub struct Message<'a> {
-    offset: i64,
-    key: &'a [u8],
-    value: &'a [u8],
-}
+    /// The offset at which this message resides in the remote kafka
+    /// broker topic partition.
+    pub offset: i64,
 
-impl<'a> Message<'a> {
-    /// Retrieves the offset at which this message resides in the
-    /// remote kafka broker topic partition.
-    #[inline]
-    pub fn offset(&self) -> i64 {
-        self.offset
-    }
+    /// The "key" data of this message.  Empty if there is no such
+    /// data for this message.
+    pub key: &'a [u8],
 
-    /// Retrieves the "key" data of this message.  Empty if there is
-    /// no such data for this message.
-    #[inline]
-    pub fn key(&self) -> &'a [u8] {
-        self.key
-    }
-
-    /// Retrieves the value data of this message.  Empty if there is
-    /// no such data for this message.
-    #[inline]
-    pub fn value(&self) -> &'a [u8] {
-        self.value
-    }
+    /// The value data of this message.  Empty if there is no such
+    /// data for this message.
+    pub value: &'a [u8],
 }
 
 impl<'a> MessageSet<'a> {
@@ -375,9 +313,9 @@ impl<'a> ProtocolMessage<'a> {
 /// A convenience helper for iterating "fetch messages" responses.
 pub struct ResponseIter<'a> {
     responses: Iter<'a, FetchResponse>,
-    topics: Option<Topics<'a>>,
+    topics: Option<Iter<'a, TopicFetchResponse<'a>>>,
     curr_topic: &'a str,
-    partitions: Option<Partitions<'a, 'a>>,
+    partitions: Option<Iter<'a, PartitionFetchResponse<'a>>>,
 }
 
 /// A responce for a set of messages from a single topic partition.
@@ -388,7 +326,7 @@ pub struct Response<'a> {
     pub partition: i32,
     /// Either an error or the set of messages retrieved for the
     /// underlying topic partition.
-    pub messages: Result<Messages<'a, 'a>>,
+    pub data: &'a Result<PartitionData<'a>>,
 }
 
 /// Provide a partition level iterator over all specified fetch
@@ -413,11 +351,11 @@ pub struct Response<'a> {
 ///
 /// // Iterate all the responses for all the partitions specified to be fetched data from
 /// for r in iter_responses(&resps) {
-///   match r.messages {
-///     Err(e) => println!("error for {}:{}: {}", r.topic, r.partition, e),
-///     Ok(msgs) => {
-///       for msg in msgs {
-///         println!("{}:{}: {:?}", r.topic, r.partition, msg.value());
+///   match r.data {
+///     &Err(ref e) => println!("error for {}:{}: {}", r.topic, r.partition, e),
+///     &Ok(ref data) => {
+///       for msg in data.messages() {
+///         println!("{}:{}: {:?}", r.topic, r.partition, msg.value);
 ///       }
 ///     }
 ///   }
@@ -425,11 +363,11 @@ pub struct Response<'a> {
 /// ```
 pub fn iter_responses<'a>(responses: &'a [FetchResponse]) -> ResponseIter<'a> {
     let mut responses = responses.iter();
-    let mut topics = responses.next().map(|r| r.topics());
+    let mut topics = responses.next().map(|r| r.topics().iter());
     let (curr_topic, partitions) =
         topics.as_mut()
         .and_then(|t| t.next())
-        .map_or((None, None), |t| (Some(t.topic()), Some(t.partitions())));
+        .map_or((None, None), |t| (Some(t.topic()), Some(t.partitions().iter())));
     ResponseIter {
         responses: responses,
         topics: topics,
@@ -447,19 +385,19 @@ impl<'a> Iterator for ResponseIter<'a> {
             return Some(Response {
                 topic: self.curr_topic,
                 partition: p.partition(),
-                messages: p.messages(),
+                data: p.data(),
             });
         }
         // ~ then the next available topic
         if let Some(t) = self.topics.as_mut().and_then(|t| t.next()) {
             self.curr_topic = t.topic();
-            self.partitions = Some(t.partitions());
+            self.partitions = Some(t.partitions().iter());
             return self.next();
         }
         // ~ then the next available response
         if let Some(r) = self.responses.next() {
             self.curr_topic = "";
-            self.topics = Some(r.topics());
+            self.topics = Some(r.topics().iter());
             return self.next();
         }
         // ~ finally we know there's nothing available anymore
@@ -486,16 +424,16 @@ mod tests {
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
-    fn into_messages<'a>(data: &'a FetchResponse) -> Vec<&'a Message<'a>> {
+    fn into_messages<'a>(r: &'a FetchResponse) -> Vec<&'a Message<'a>> {
         let mut all_msgs = Vec::new();
-        for t in data.topics() {
+        for t in r.topics() {
             for p in t.partitions() {
-                match p.messages() {
-                    Err(_) => {
+                match p.data() {
+                    &Err(_) => {
                         println!("Skipping error partition: {}:{}", t.topic, p.partition);
                     }
-                    Ok(msgs) => {
-                        all_msgs.extend(msgs);
+                    &Ok(ref data) => {
+                        all_msgs.extend(data.messages());
                     }
                 }
             }
