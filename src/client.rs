@@ -228,7 +228,8 @@ impl FetchOffset {
 
 // view objects on the currently loaded topics metadata ---------------
 
-/// An immutable iterator over a kafka client's known topics.
+/// An immutable view on the load metadata about topics and their partitions.
+#[derive(Debug)]
 pub struct Topics<'a> {
     topic_partitions: &'a HashMap<String, TopicPartitions>,
 }
