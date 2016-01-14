@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::io::Read;
 use std::mem;
-use std::slice::Iter;
 
 use error::{Error, Result};
 use compression::{gzip, Compression};
@@ -188,7 +187,7 @@ struct MessageSet<'a> {
     messages: Vec<Message<'a>>,
 }
 
-/// A fetched messages from a remote Kafka broker for a particular
+/// A fetched message from a remote Kafka broker for a particular
 /// topic partition.
 pub struct Message<'a> {
     /// The offset at which this message resides in the remote kafka
@@ -305,103 +304,6 @@ impl<'a> ProtocolMessage<'a> {
             key: msg_key,
             value: msg_val,
         })
-    }
-}
-
-// --------------------------------------------------------------------
-
-/// A convenience helper for iterating "fetch messages" responses.
-pub struct ResponseIter<'a> {
-    responses: Iter<'a, FetchResponse>,
-    topics: Option<Iter<'a, TopicFetchResponse<'a>>>,
-    curr_topic: &'a str,
-    partitions: Option<Iter<'a, PartitionFetchResponse<'a>>>,
-}
-
-/// A responce for a set of messages from a single topic partition.
-pub struct Response<'a> {
-    /// The name of the topic this response corresponds to.
-    pub topic: &'a str,
-    /// The partition this response correponds to.
-    pub partition: i32,
-    /// Either an error or the set of messages retrieved for the
-    /// underlying topic partition.
-    pub data: &'a Result<PartitionData<'a>>,
-}
-
-/// Provide a partition level iterator over all specified fetch
-/// responses. Since there might be failures on the level of
-/// partitions, it is the lowest unit at which a response can be
-/// processed. The returned iterator will iterate all partitions in
-/// the given responses in their specified order.
-///
-/// # Examples
-///
-/// ```no_run
-/// use kafka::client::KafkaClient;
-/// use kafka::utils::TopicPartitionOffset;
-/// use kafka::client::zfetch::iter_responses;
-///
-/// // Fetch some data for two topic partitions
-/// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-/// client.load_metadata_all().unwrap();
-/// let reqs = &[TopicPartitionOffset{ topic: "my-topic", partition: 0, offset: 0 },
-///              TopicPartitionOffset{ topic: "my-topic-2", partition: 0, offset: 0 }];
-/// let resps = client.zfetch_messages_multi(reqs).unwrap();
-///
-/// // Iterate all the responses for all the partitions specified to be fetched data from
-/// for r in iter_responses(&resps) {
-///   match r.data {
-///     &Err(ref e) => println!("error for {}:{}: {}", r.topic, r.partition, e),
-///     &Ok(ref data) => {
-///       for msg in data.messages() {
-///         println!("{}:{}: {:?}", r.topic, r.partition, msg.value);
-///       }
-///     }
-///   }
-/// }
-/// ```
-pub fn iter_responses<'a>(responses: &'a [FetchResponse]) -> ResponseIter<'a> {
-    let mut responses = responses.iter();
-    let mut topics = responses.next().map(|r| r.topics().iter());
-    let (curr_topic, partitions) =
-        topics.as_mut()
-        .and_then(|t| t.next())
-        .map_or((None, None), |t| (Some(t.topic()), Some(t.partitions().iter())));
-    ResponseIter {
-        responses: responses,
-        topics: topics,
-        curr_topic: curr_topic.unwrap_or(""),
-        partitions: partitions,
-    }
-}
-
-impl<'a> Iterator for ResponseIter<'a> {
-    type Item = Response<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // ~ then the next available partition
-        if let Some(p) = self.partitions.as_mut().and_then(|p| p.next()) {
-            return Some(Response {
-                topic: self.curr_topic,
-                partition: p.partition(),
-                data: p.data(),
-            });
-        }
-        // ~ then the next available topic
-        if let Some(t) = self.topics.as_mut().and_then(|t| t.next()) {
-            self.curr_topic = t.topic();
-            self.partitions = Some(t.partitions().iter());
-            return self.next();
-        }
-        // ~ then the next available response
-        if let Some(r) = self.responses.next() {
-            self.curr_topic = "";
-            self.topics = Some(r.topics().iter());
-            return self.next();
-        }
-        // ~ finally we know there's nothing available anymore
-        None
     }
 }
 

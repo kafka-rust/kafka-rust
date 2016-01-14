@@ -721,7 +721,6 @@ impl KafkaClient {
     ///   }
     /// }
     /// ```
-    /// See also `kafka::client::zfetch::iter_responses`.
     pub fn zfetch_messages_multi<'a, I, J>(&mut self, input: I) -> Result<Vec<zfetch::FetchResponse>>
         where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J> {
 
