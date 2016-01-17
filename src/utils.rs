@@ -76,6 +76,13 @@ pub struct TopicPartition<'a> {
     pub partition: i32
 }
 
+impl<'a> TopicPartition<'a> {
+    #[inline]
+    pub fn new(topic: &str, partition: i32) -> TopicPartition {
+        TopicPartition { topic: topic, partition: partition }
+    }
+}
+
 impl<'a> AsRef<TopicPartition<'a>> for TopicPartition<'a> {
     fn as_ref(&self) -> &Self {
         &self

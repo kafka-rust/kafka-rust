@@ -610,8 +610,9 @@ impl KafkaClient {
     /// ```
     /// Returns a vector of offset data for each available partition.
     /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
+    // XXX rename to fetch_topic_offsets (plural)
     pub fn fetch_topic_offset<T: AsRef<str>>(&mut self, topic: T, offset: FetchOffset)
-                                             -> Result<Vec<utils::PartitionOffset>>
+                                              -> Result<Vec<utils::PartitionOffset>>
     {
         let topic = topic.as_ref();
 

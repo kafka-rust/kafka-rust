@@ -33,16 +33,15 @@ fn process(cfg: &Config) -> Result<(), Error> {
     let mut c = Consumer::new(client, cfg.group.clone(), cfg.topic.clone())
         .fallback_offset(FetchOffset::Earliest);
 
-    // XXX it seems when we choose fetch_max_bytes... small enough we are skipping some messages something ... observed especially on a multi partition topic
-
     loop {
         for ms in try!(c.poll()).iter() {
-            for m in ms.messages {
-                // XXX there's no way to break out of here (e.g. with an error)
+            for m in ms.messages() {
                 let s = String::from_utf8_lossy(m.value);
-                println!("{}:{}: {}\n", ms.topic, ms.partition, s.trim());
+                println!("{}:{}@{}: {}", ms.topic(), ms.partition(), m.offset, s.trim());
             }
+            c.consume_messageset(ms);
         }
+        try!(c.commit_consumed());
     }
 }
 

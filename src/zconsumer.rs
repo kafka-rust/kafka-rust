@@ -1,16 +1,14 @@
 // XXX module documentation
 
-use std::collections::HashMap;
+use std::collections::hash_map::{HashMap,Entry};
 use std::slice;
 
-use client::{zfetch, KafkaClient, FetchOffset};
+use client::{zfetch, KafkaClient, FetchOffset, Topics};
 use error::{Error, KafkaCode, Result};
-use utils::{PartitionOffset, TopicPartitionOffset, TopicPartitionOffsetError};
+use utils::{TopicPartition, TopicPartitionOffset};
 
 // public re-exports
 pub use client::zfetch::Message;
-
-// XXX verify that the last committed messages is not consumed again upon another run of the client program
 
 // XXX documentation
 pub struct Consumer {
@@ -19,9 +17,17 @@ pub struct Consumer {
     config: Config,
 }
 
+#[derive(Debug)]
 struct State {
-    /// Contains the offset which to fetch next for each partition
+    /// Contains the offsets which to fetch next for each partition
     fetch_offsets: HashMap<i32, i64>, // XXX might want to change into a Vec<i64> where index denotes the partition_id
+
+    /// Contains the offsets of messages marked as "consumed" (to be
+    /// committed)
+    consumed_offsets: HashMap<i32, i64>, // XXX might want to change into a Vec<i64> where index denotes the partition_id
+    /// `true` iff the consumed_offsets contain data which needs to be
+    /// committed. Set to `false` after commit.
+    consumed_offsets_dirty: bool,
 }
 
 struct Config {
@@ -35,13 +41,10 @@ impl Consumer {
 
     /// Create a new consumer over the specified managing offsets on
     /// behalf of the specified group.
-    // XXX make this accept brokers just like KafkaClient and avoid the client having to specify it; allocate one yourself
     pub fn new(client: KafkaClient, group: String, topic: String) -> Consumer {
         Consumer {
             client: client,
-            state: State {
-                fetch_offsets: HashMap::new(),
-            },
+            state: State::new(),
             config: Config {
                 group: group,
                 topic: topic,
@@ -50,10 +53,6 @@ impl Consumer {
             },
         }
     }
-
-    // XXX allow clients to obtain loaded metadata
-
-    // XXX allow specifying fetch related settings (see KafkaClient)
 
     /// Specify the offset to use when none was committed for the
     /// underlying group yet.
@@ -76,28 +75,31 @@ impl Consumer {
         self
     }
 
-    /// Explicitely specify which partitions to consume.
+    /// Explicitely specifies the partitions to consume. This will
+    /// override any previous assignments.
     ///
-    /// If this function is never called, all partitions are assumed.
-    /// This function call be called multiple times to add more than 1
-    /// partitions.
-    // XXX rename to assign_partitions(mut self, &[i32])
-    pub fn partition(mut self, partition: i32) -> Consumer {
-        self.config.partitions.push(partition);
+    /// If this function is never called, all available partitions of
+    /// the underlying topic will be consumed assumed.
+    pub fn assign_partitions(mut self, partition: &[i32]) -> Consumer {
+        self.config.partitions.extend(partition);
+        // XXX might need to reinitialize offsets and potentially pre-fetched data
         self
     }
 
     /// Poll for the next available message data.
     pub fn poll(&mut self) -> Result<MessageSets> {
-        if self.state.fetch_offsets.is_empty() {
-            self.state.fetch_offsets = try!(fetch_group_offsets(&self.config, &mut self.client));
-            debug!("fetched group offsets: (topic: {} / group: {} / fetch-offset: {:?})",
-                   self.config.topic, self.config.group, self.state.fetch_offsets);
+        if !self.state.initialized() {
+            try!(self.state.initialize(&self.config, &mut self.client));
+            debug!("initialized: (topic: {} / group: {} / state: {:?})",
+                   self.config.topic, self.config.group, self.state);
         }
 
         let resps = try!(self.fetch_messages());
 
-        // XXX in future, issue the next fetch_messages in the background
+        // XXX in future, immediately issue one more fetch_messages in
+        // the background such that the next time the client polls
+        // that request's response will likely be ready for
+        // consumption
 
         let mut empty = true;
         for resp in &resps {
@@ -124,9 +126,77 @@ impl Consumer {
         Ok(MessageSets{ responses: resps, empty: empty })
     }
 
-    // XXX provide a way for clients to mark messages as "consumed"
+    /// Retrieves the offset of the last "consumed" message in the
+    /// specified partition. Results in `None` if there is no such
+    /// "consumed" message for this consumer's group in the underlying
+    /// topic.
+    pub fn last_consumed_message(&self, partition: i32) -> Option<i64> {
+        self.state.consumed_offsets.get(&partition).cloned()
+    }
 
-    // XXX provide a way for clients to commit "consumed" offsets
+    /// Marks the message at the specified offset in the specified
+    /// partition as consumed by the caller.
+    ///
+    /// Note: a message with a "later/higher" offset automatically
+    /// marks all preceeding messages as "consumed", this is messages
+    /// with "earlier/lower" offsets in the same partition.
+    /// Therefore, it is not neccessary to invoke this method for
+    /// every consumed message.
+    pub fn consume_message(&mut self, partition: i32, offset: i64) {
+        match self.state.consumed_offsets.entry(partition) {
+            Entry::Vacant(v) => {
+                v.insert(offset);
+                self.state.consumed_offsets_dirty = true;
+            }
+            Entry::Occupied(mut v) => {
+                let o = v.get_mut();
+                if offset > *o {
+                     *o = offset;
+                    self.state.consumed_offsets_dirty = true;
+                }
+            }
+        }
+    }
+
+    /// A convience method to mark the given message set consumed as a
+    /// whole by the caller.  This is equivalent to marking the last
+    /// message of the given set as consumed.
+    pub fn consume_messageset<'a>(&mut self, msgs: MessageSet<'a>) {
+        debug_assert_eq!(msgs.topic, self.config.topic);
+
+        if !msgs.messages.is_empty() {
+            self.consume_message(
+                msgs.partition, msgs.messages.last().unwrap().offset);
+        }
+    }
+
+    /// Persists the so-far "marked as consumed" messages (on behalf
+    /// of this consumer's group for the underlying topic.)
+    ///
+    /// See also `Consumer::consume_message` and `Consumer::consume_messetset`.
+    // XXX offer an async version as well
+    pub fn commit_consumed(&mut self) -> Result<()> {
+        if !self.state.consumed_offsets_dirty {
+            debug!("no new consumed offsets to commit.");
+            return Ok(());
+        }
+
+        let client = &mut self.client;
+        let (group, topic) = (&self.config.group, &self.config.topic);
+        let offsets = &self.state.consumed_offsets;
+        debug!("commiting consumed offsets (topic: {} / group: {} / offsets: {:?}",
+               topic, group, offsets);
+        try!(client.commit_offsets(
+            group,
+            offsets.iter()
+                .map(|(&p, &o)| TopicPartitionOffset {
+                    topic: topic,
+                    partition: p,
+                    offset: o,
+                })));
+        self.state.consumed_offsets_dirty = false;
+        Ok(())
+    }
 
     fn fetch_messages(&mut self) -> Result<Vec<zfetch::FetchResponse>> {
         let topic = &self.config.topic;
@@ -137,162 +207,138 @@ impl Consumer {
     }
 }
 
-fn fetch_group_offsets(config: &Config, client: &mut KafkaClient) -> Result<HashMap<i32, i64>> {
-    let partitions = {
-        let metadata = client.topics();
-        let avail_partitions = match metadata.partitions(&config.topic) {
-            // ~ fail if the underlying topic is unkonwn to the given client
-            None => {
-                debug!("no such topic: {} (all metadata: {:?})", config.topic, metadata);
-                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
-            }
-            Some(tp) => tp,
-        };
-        if config.partitions.is_empty() {
-            avail_partitions.iter().map(|p| p.id()).collect()
-        } else {
-            // ~ validate that all partitions we're going to consume are
-            // available
-            let mut ps: Vec<i32> = Vec::with_capacity(config.partitions.len());
-            for &p in config.partitions.iter() {
-                match avail_partitions.partition(p) {
-                    None => {
-                        debug!("no such partition: {} (all metadata for {}: {:?})",
-                               p, config.topic, avail_partitions.as_slice());
-                        return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
-                    }
-                    Some(_) => ps.push(p),
-                };
-            }
-            ps
-        }
-    };
+// --------------------------------------------------------------------
 
-    // ~ fetch the so far commited group offsets
-    let mut tpos = try!(client.fetch_group_offsets(&config.group, &config.topic));
-
-    // ~ it might well that there were no group offsets committed
-    // yet ... fallback to default offsets.
-    try!(set_fallback_offsets(config, client, &mut tpos));
-
-    // ~ now initialize the offset table from the fetched offsets
-    let mut offsets = HashMap::new();
-    for tpo in &tpos {
-        if partitions.contains(&tpo.partition) {
-            offsets.insert(tpo.partition, tpo.offset);
+impl State {
+    fn new() -> State {
+        State {
+            fetch_offsets: HashMap::new(),
+            consumed_offsets: HashMap::new(),
+            consumed_offsets_dirty: false,
         }
     }
 
-    Ok(offsets)
+    fn initialized(&self) -> bool {
+        !self.fetch_offsets.is_empty()
+    }
+
+    fn initialize(&mut self, config: &Config, client: &mut KafkaClient) -> Result<()> {
+        let partitions = try!(determine_partitions(config, client.topics()));
+        let consumed_offsets = try!(load_consumed_offsets(config, client, &partitions));
+        let fetch_offsets = try!(load_fetch_offsets(config, client, &partitions, &consumed_offsets));
+
+        self.fetch_offsets = fetch_offsets;
+        self.consumed_offsets = consumed_offsets;
+        self.consumed_offsets_dirty = false;
+        Ok(())
+    }
 }
 
-/// Try setting the "fallback offsets" for all of `tpos` where
-/// `offset == -1`. Fails if retrieving the fallback offset is not
-/// possible for some reason for the affected elements from
-/// `tpos`.
-fn set_fallback_offsets(config: &Config, client: &mut KafkaClient,
-                        tpos: &mut [TopicPartitionOffsetError])
-                        -> Result<()>
+/// Determines the partitions to be consumed according to the
+/// specified configuration. Returns a ordered list of the determined
+/// partition ids.
+fn determine_partitions(config: &Config, metadata: Topics) -> Result<Vec<i32>> {
+    let avail_partitions = match metadata.partitions(&config.topic) {
+        // ~ fail if the underlying topic is unkonwn to the given client
+        None => {
+            debug!("no such topic: {} (all metadata: {:?})", config.topic, metadata);
+            return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+        }
+        Some(tp) => tp,
+    };
+
+    let ps = if config.partitions.is_empty() {
+        // ~ no partitions configured ... use all available
+        avail_partitions.iter().map(|p| p.id()).collect()
+    } else {
+        // ~ validate that all partitions we're going to consume are
+        // available
+        let mut ps: Vec<i32> = Vec::with_capacity(config.partitions.len());
+        for &p in config.partitions.iter() {
+            match avail_partitions.partition(p) {
+                None => {
+                    debug!("no such partition: {} (all metadata for {}: {:?})",
+                           p, config.topic, avail_partitions.as_slice());
+                    return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+                }
+                Some(_) => ps.push(p),
+            };
+        }
+        ps.sort();
+        ps.dedup();
+        ps
+    };
+
+    Ok(ps)
+}
+
+// Fetches the so-far commited/consumed offsets for the configured
+// group/topic/partitions.
+fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: &[i32])
+                         -> Result<HashMap<i32, i64>>
 {
-    // ~ it looks like kafka (0.8.2.1) is sending an error code
-    // (even though it documents it won't:
-    // https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol#AGuideToTheKafkaProtocol-OffsetFetchResponse)
-    // so let's check only for `offset == -1` (and don't verify `error == None`)
-    let has_missing_offs = tpos.iter().filter(|tpo| tpo.offset == -1).next().is_some();
-    if has_missing_offs {
-        // ~ if the user specified a "fallback offset" strategy
-        // will try to fetch the current offset for that strategy
-        // and start consuming starting at those
-        if let Some(fallback_offset) = config.fallback_offset {
-            // ~ now fetch the offset according to the specified strategy
-            let new_offs = try!(client.fetch_topic_offset(&config.topic, fallback_offset));
-            // ehm ... not really fast (O(n^2))
-            for tpo in tpos.iter_mut() {
-                if tpo.offset == -1 {
-                    if let Some(&PartitionOffset {offset: Ok(offset), ..})
-                        = new_offs.iter().find(|pt| pt.partition == tpo.partition)
-                    {
-                        tpo.offset = offset;
-                        tpo.error = None;
+    assert!(!partitions.is_empty());
+
+    let topic = &config.topic;
+    let tpos = try!(client.fetch_group_offsets_multi(
+        &config.group,
+        partitions.iter().map(|&p_id | TopicPartition::new(topic, p_id))));
+
+    let mut offs = HashMap::with_capacity(partitions.len());
+    for tpo in tpos {
+        if tpo.error.is_none() && tpo.offset != -1 {
+            offs.insert(tpo.partition, tpo.offset);
+        }
+    }
+    Ok(offs)
+}
+
+/// Fetches the "next fetch" offsets based on the specified
+/// configuration and the given consumed offsets.
+fn load_fetch_offsets(config: &Config,
+                      client: &mut KafkaClient,
+                      partitions: &[i32],
+                      consumed_offsets: &HashMap<i32, i64>)
+                      -> Result<HashMap<i32, i64>>
+{
+    fn load_partition_offsets(client: &mut KafkaClient, topic: &str, offset: FetchOffset)
+                              -> Result<HashMap<i32, i64>> {
+        let offs = try!(client.fetch_topic_offset(topic, offset));
+        let mut m = HashMap::with_capacity(offs.len());
+        for off in offs {
+            m.insert(off.partition, off.offset.unwrap_or(-1));
+        }
+        Ok(m)
+    }
+
+    // fetch the earliest and latest available offsets
+    let latest = try!(load_partition_offsets(client, &config.topic, FetchOffset::Latest));
+    let earliest = try!(load_partition_offsets(client, &config.topic, FetchOffset::Earliest));
+
+    // ~ for each partition if we have a consumed_offset verify it is
+    // in the earliest/latest range and use that consumed_offset+1 as
+    // the fetch_message.
+    let mut fetch_offsets = HashMap::new();
+    for p in partitions {
+        let (&l_off, &e_off) = (latest.get(p).unwrap_or(&-1), earliest.get(p).unwrap_or(&-1));
+        fetch_offsets.insert(
+            *p, match consumed_offsets.get(p) {
+                Some(&co) if co >= e_off && co < l_off => co + 1,
+                _ => {
+                    match config.fallback_offset {
+                        Some(FetchOffset::Latest) => l_off,
+                        Some(FetchOffset::Earliest) => e_off,
+                        _ => {
+                            debug!("cannot determine fetch offset (group: {} / topic: {} / partition: {})",
+                                   &config.group, &config.topic, p);
+                            return Err(Error::Kafka(KafkaCode::Unknown));
+                        }
                     }
                 }
             }
-        } else {
-            // XXX might want to produce some log message and return a dedicated error code
-            return Err(Error::Kafka(KafkaCode::Unknown));
-        }
+            );
     }
-    Ok(())
-}
-
-// --------------------------------------------------------------------
-
-/// A convenience helper for iterating "fetch messages" responses.
-pub struct ResponseIter<'a> {
-    responses: slice::Iter<'a, zfetch::FetchResponse>,
-    topics: Option<slice::Iter<'a, zfetch::TopicFetchResponse<'a>>>,
-    curr_topic: &'a str,
-    partitions: Option<slice::Iter<'a, zfetch::PartitionFetchResponse<'a>>>,
-}
-
-/// A responce for a set of messages from a single topic partition.
-pub struct Response<'a> {
-    /// The name of the topic this response corresponds to.
-    pub topic: &'a str,
-    /// The partition this response correponds to.
-    pub partition: i32,
-    /// Either an error or the set of messages retrieved for the
-    /// underlying topic partition.
-    pub data: &'a Result<zfetch::PartitionData<'a>>,
-}
-
-/// Provide a partition level iterator over all specified fetch
-/// responses. Since there might be failures on the level of
-/// partitions, it is the lowest unit at which a response can be
-/// processed. The returned iterator will iterate all partitions in
-/// the given responses in their specified order.
-pub fn iter_responses<'a>(responses: &'a [zfetch::FetchResponse]) -> ResponseIter<'a> {
-    let mut responses = responses.iter();
-    let mut topics = responses.next().map(|r| r.topics().iter());
-    let (curr_topic, partitions) =
-        topics.as_mut()
-        .and_then(|t| t.next())
-        .map_or((None, None), |t| (Some(t.topic()), Some(t.partitions().iter())));
-    ResponseIter {
-        responses: responses,
-        topics: topics,
-        curr_topic: curr_topic.unwrap_or(""),
-        partitions: partitions,
-    }
-}
-
-impl<'a> Iterator for ResponseIter<'a> {
-    type Item = Response<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // ~ then the next available partition
-        if let Some(p) = self.partitions.as_mut().and_then(|p| p.next()) {
-            return Some(Response {
-                topic: self.curr_topic,
-                partition: p.partition(),
-                data: p.data(),
-            });
-        }
-        // ~ then the next available topic
-        if let Some(t) = self.topics.as_mut().and_then(|t| t.next()) {
-            self.curr_topic = t.topic();
-            self.partitions = Some(t.partitions().iter());
-            return self.next();
-        }
-        // ~ then the next available response
-        if let Some(r) = self.responses.next() {
-            self.curr_topic = "";
-            self.topics = Some(r.topics().iter());
-            return self.next();
-        }
-        // ~ finally we know there's nothing available anymore
-        None
-    }
+    Ok(fetch_offsets)
 }
 
 // --------------------------------------------------------------------
@@ -334,20 +380,37 @@ impl MessageSets {
     }
 }
 
+/// A set of messages succesfully retrieved from a specific topic
+/// partition.
+pub struct MessageSet<'a> {
+    topic: &'a str,
+    partition: i32,
+    messages: &'a [Message<'a>],
+}
+
+impl<'a> MessageSet<'a> {
+    #[inline]
+    pub fn topic(&self) -> &'a str {
+        self.topic
+    }
+
+    #[inline]
+    pub fn partition(&self) -> i32 {
+        self.partition
+    }
+
+    #[inline]
+    pub fn messages(&self) -> &'a [Message<'a>] {
+        self.messages
+    }
+}
+
 /// An iterator over the consumed topic partition message sets.
 pub struct MessageSetsIter<'a> {
     responses: slice::Iter<'a, zfetch::FetchResponse>,
     topics: Option<slice::Iter<'a, zfetch::TopicFetchResponse<'a>>>,
     curr_topic: &'a str,
     partitions: Option<slice::Iter<'a, zfetch::PartitionFetchResponse<'a>>>,
-}
-
-/// A set of messages succesfully retrieved from a specific topic
-/// partition.
-pub struct MessageSet<'a> {
-    pub topic: &'a str,
-    pub partition: i32,
-    pub messages: &'a [Message<'a>],
 }
 
 impl<'a> Iterator for MessageSetsIter<'a> {
