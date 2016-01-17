@@ -189,6 +189,7 @@ struct MessageSet<'a> {
 
 /// A fetched message from a remote Kafka broker for a particular
 /// topic partition.
+#[derive(Debug)]
 pub struct Message<'a> {
     /// The offset at which this message resides in the remote kafka
     /// broker topic partition.

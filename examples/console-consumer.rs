@@ -31,7 +31,7 @@ fn process(cfg: &Config) -> Result<(), Error> {
     try!(client.load_metadata_all());
 
     let mut c = Consumer::new(client, cfg.group.clone(), cfg.topic.clone())
-        .fallback_offset(FetchOffset::Earliest);
+        .with_fallback_offset(FetchOffset::Earliest);
 
     loop {
         for ms in try!(c.poll()).iter() {

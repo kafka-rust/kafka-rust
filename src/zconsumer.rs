@@ -1,4 +1,44 @@
-// XXX module documentation
+//! Kafka Consumer
+//!
+//! A consumer for a single Kafka topic on behalf of a specified group
+//! providing help in offset management.  The consumer can be
+//! optionally advised to consume only particular partitions of the
+//! underlying topic.
+//!
+//! # Example
+//! ```no_run
+//! use kafka::client::{KafkaClient, FetchOffset};
+//! use kafka::zconsumer::Consumer;
+//!
+//! let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
+//! client.load_metadata_all().unwrap();
+//! let mut consumer = Consumer::new(client, "my-group".to_owned(), "my-topic".to_owned())
+//!                     .with_partitions(&[0, 1])
+//!                     .with_fallback_offset(FetchOffset::Earliest);
+//! loop {
+//!   for ms in consumer.poll().unwrap().iter() {
+//!     for m in ms.messages() {
+//!       println!("{:?}", m);
+//!     }
+//!     consumer.consume_messageset(ms);
+//!   }
+//!   consumer.commit_consumed();
+//! }
+//! ```
+//!
+//! A `.poll()` will ask for the next available "chunk of data" for
+//! client code to process.  The returned data are `MessageSet`s - at
+//! most one for each partition of the consumed topic.
+//!
+//! The consumer helps in keeping track of already consumed messages
+//! by maintaining a map of the consumed offsets.  Messages can be
+//! told "consumed" either through `consume_message` or
+//! `consume_messages` methods.  Once these consumed messages are
+//! committed to Kafka using `commit_consumed`, the consumer will
+//! start fetching messages from here after restart. Since committing
+//! is a certain overhead, it is up to the client to decide the
+//! frequency of the commits.  The consumer will *not* commit any
+//! messages to Kafka automatically.
 
 use std::collections::hash_map::{HashMap,Entry};
 use std::slice;
@@ -10,7 +50,9 @@ use utils::{TopicPartition, TopicPartitionOffset};
 // public re-exports
 pub use client::zfetch::Message;
 
-// XXX documentation
+/// The Kafka Consumer
+///
+/// See module level documentation.
 pub struct Consumer {
     client: KafkaClient,
     state: State,
@@ -70,8 +112,9 @@ impl Consumer {
     /// for the underlying group yet, this consumer will _not_ retrieve
     /// any messages from the underlying topic.
     // XXX rename to set_fallback_offset
-    pub fn fallback_offset(mut self, fallback_offset_time: FetchOffset) -> Consumer {
+    pub fn with_fallback_offset(mut self, fallback_offset_time: FetchOffset) -> Consumer {
         self.config.fallback_offset = Some(fallback_offset_time);
+        // XXX potentially reinitialize offsets and pre-fetched data
         self
     }
 
@@ -80,10 +123,15 @@ impl Consumer {
     ///
     /// If this function is never called, all available partitions of
     /// the underlying topic will be consumed assumed.
-    pub fn assign_partitions(mut self, partition: &[i32]) -> Consumer {
+    pub fn with_partitions(mut self, partition: &[i32]) -> Consumer {
         self.config.partitions.extend(partition);
         // XXX might need to reinitialize offsets and potentially pre-fetched data
         self
+    }
+
+    /// Destroys this consumer returning back the underlying kafka client.
+    pub fn client(self) -> KafkaClient {
+        self.client
     }
 
     /// Poll for the next available message data.

@@ -672,20 +672,19 @@ impl KafkaClient {
     /// Fetch messages from Kafka (multiple topic, partition, offset)
     /// exposing low level details.
     ///
-    /// Just as `fetch_messages_multi` it takes a vector specifying
-    /// the partitions and their offsets as of which to fetch
-    /// messages.  However, unlike `fetch_messages_multi` this method
-    /// exposes the result in a raw, more complicated manner but
-    /// allows for more efficient consumption possibilities. In
-    /// particular, each of the returned fetch responses directly
-    /// corresponds to fetch requests to the underlying kafka brokers.
-    /// Except of transparently uncompressing compressed messages, the
-    /// result is not otherwise prepared.
+    /// It takes a vector specifying the partitions and their offsets
+    /// as of which to fetch messages.  The result is exposed in a
+    /// raw, complicated manner but allows for very efficient
+    /// consumption possibilities.  In particular, each of the
+    /// returned fetch responses directly corresponds to fetch
+    /// requests to the underlying kafka brokers.  Except of
+    /// transparently uncompressing compressed messages, the result is
+    /// not otherwise prepared.
     ///
     /// All of the data available through the returned fetch responses
     /// is bound to their lifetime as that data is merely a "view"
     /// into parts of the response structs.  If you need to keep
-    /// individual messages for a longer time then the whole fetch
+    /// individual messages for a longer time than the whole fetch
     /// responses, you'll need to make a copy of the message data.
     ///
     /// # Example
