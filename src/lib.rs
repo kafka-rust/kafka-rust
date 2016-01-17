@@ -14,7 +14,6 @@ pub mod error;
 pub mod utils;
 pub mod client;
 pub mod consumer;
-pub mod zconsumer;
 mod codecs;
 mod connection;
 mod protocol;

@@ -1,11 +1,13 @@
 extern crate kafka;
 
 use kafka::client::{KafkaClient, FetchOffset};
+use kafka::consumer::Consumer;
 
-/// This program demonstrates consuming messages through `KafkaClient`. This is the top level
-/// client that will fit most use cases. Note that consumed messages are tracked by Kafka so you
-/// can only consume them once. This is what you want for most use cases, you can look at
-/// examples/fetch.rs for a lower level API.
+/// This program demonstrates consuming messages through a `Consumer`.
+/// This is a convenient client that will fit most use cases.  Note
+/// that consumed messages are tracked by Kafka so you can only
+/// consume them once.  This is what you want for most use cases, you
+/// can look at `examples/fetch.rs` for a lower level API.
 fn main() {
     let broker = "localhost:9092";
     let topic = "my-topic";
@@ -26,11 +28,25 @@ fn main() {
         return;
     }
 
-    let con = kafka::consumer::Consumer::new(client, "test-group".to_owned(), topic.to_owned())
-        .fallback_offset(FetchOffset::Earliest);
-
-    for msg in con {
-        println!("{:?}", msg);
+    let mut con = Consumer::new(client, "test-group".to_owned(), topic.to_owned())
+        .with_fallback_offset(FetchOffset::Earliest);
+    loop {
+        match con.poll() {
+            Err(e) => {
+                println!("Error consuming messages: {}", e);
+                break;
+            }
+            Ok(mss) => {
+                if mss.is_empty() {
+                    println!("No more messages.");
+                    break;
+                }
+                for ms in mss.iter() {
+                    for m in ms.messages() {
+                        println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
+                    }
+                }
+            }
+        }
     }
-    println!("No more messages.")
 }

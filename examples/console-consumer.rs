@@ -5,8 +5,10 @@ extern crate env_logger;
 use std::{env, io, fmt, process};
 
 use kafka::client::{KafkaClient, FetchOffset};
-use kafka::zconsumer::Consumer;
+use kafka::consumer::Consumer;
 
+/// This is a very simple command line application reading from a
+/// specific kafka topic and dumping the messages to standard output.
 fn main() {
     env_logger::init().unwrap();
 
