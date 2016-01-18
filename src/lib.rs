@@ -4,6 +4,9 @@ extern crate byteorder;
 extern crate flate2;
 extern crate crc;
 
+#[macro_use]
+extern crate log;
+
 #[cfg(all(test, feature = "nightly"))]
 extern crate test;
 

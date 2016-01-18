@@ -1,360 +1,322 @@
-use std::io::{Cursor, Read, Write};
+//! A representation of fetched messages from Kafka.
 
-use codecs::{ToByte, FromByte};
-use compression::snappy::SnappyReader;
-use compression::{Compression, gzip};
+// Note: you'll find the request related code in `fetch_req.rs`.
+
+use std::borrow::Cow;
+use std::io::Read;
+use std::mem;
+
 use error::{Error, Result};
-use utils::{TopicMessage, OffsetMessage};
+use compression::{gzip, Compression};
+use compression::snappy::SnappyReader;
 
-use super::{HeaderRequest, HeaderResponse};
-use super::{API_KEY_FETCH, API_VERSION};
+use super::FromResponse;
+use super::zreader::ZReader;
 
-#[derive(Debug)]
-pub struct FetchRequest<'a, 'b> {
-    pub header: HeaderRequest<'a>,
-    pub replica: i32,
-    pub max_wait_time: i32,
-    pub min_bytes: i32,
-    pub topic_partitions: Vec<TopicPartitionFetchRequest<'b>>
-}
-
-#[derive(Debug)]
-pub struct TopicPartitionFetchRequest<'a> {
-    pub topic: &'a str,
-    pub partitions: Vec<PartitionFetchRequest>
-}
-
-#[derive(Debug)]
-pub struct PartitionFetchRequest {
-    pub partition: i32,
-    pub offset: i64,
-    pub max_bytes: i32
-}
-
-impl<'a, 'b> FetchRequest<'a, 'b> {
-
-    pub fn new(correlation_id: i32, client_id: &'a str, max_wait_time: i32, min_bytes: i32)
-               -> FetchRequest<'a, 'b> {
-        FetchRequest {
-            header: HeaderRequest::new(
-                API_KEY_FETCH, API_VERSION, correlation_id, client_id),
-            replica: -1,
-            max_wait_time: max_wait_time,
-            min_bytes: min_bytes,
-            topic_partitions: vec!()
+// ~ helper macro to aid parsing arrays of values (as defined by the
+// Kafka protocol.)
+macro_rules! array_of {
+    ($zreader:ident, $parse_elem:expr) => {{
+        let n_elems = try!($zreader.read_array_len());
+        let mut array = Vec::with_capacity(n_elems);
+        for _ in 0..n_elems {
+            array.push(try!($parse_elem));
         }
-    }
-
-    pub fn add(&mut self, topic: &'b str, partition: i32, offset: i64, max_bytes: i32) {
-        for tp in &mut self.topic_partitions {
-            if tp.topic == topic {
-                tp.add(partition, offset, max_bytes);
-                return;
-            }
-        }
-        let mut tp = TopicPartitionFetchRequest::new(topic);
-        tp.add(partition, offset, max_bytes);
-        self.topic_partitions.push(tp);
-    }
+        array
+    }}
 }
 
-impl<'a> TopicPartitionFetchRequest<'a> {
-    pub fn new(topic: &'a str) -> TopicPartitionFetchRequest<'a> {
-        TopicPartitionFetchRequest {
-            topic: topic,
-            partitions: vec!()
-        }
-    }
-
-    pub fn add(&mut self, partition: i32, offset: i64, max_bytes: i32) {
-        self.partitions.push(PartitionFetchRequest:: new(partition, offset, max_bytes))
-    }
-}
-
-impl PartitionFetchRequest {
-    pub fn new(partition: i32, offset: i64, max_bytes: i32) -> PartitionFetchRequest {
-        PartitionFetchRequest {
-            partition: partition,
-            offset: offset,
-            max_bytes: max_bytes,
-        }
-    }
-}
-
-impl<'a, 'b> ToByte for FetchRequest<'a, 'b> {
-    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.replica.encode(buffer),
-            self.max_wait_time.encode(buffer),
-            self.min_bytes.encode(buffer),
-            self.topic_partitions.encode(buffer)
-        )
-    }
-}
-
-impl<'a> ToByte for TopicPartitionFetchRequest<'a> {
-    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.topic.encode(buffer),
-            self.partitions.encode(buffer)
-        )
-    }
-}
-
-impl ToByte for PartitionFetchRequest {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.encode(buffer),
-            self.offset.encode(buffer),
-            self.max_bytes.encode(buffer)
-        )
-    }
-}
-
-// --------------------------------------------------------------------
-
-#[derive(Default, Debug)]
+/// The result of a "fetch messages" request from a particular Kafka
+/// broker. Such a response can contain messages for multiple topic
+/// partitions.
 pub struct FetchResponse {
-    pub header: HeaderResponse,
-    pub topic_partitions: Vec<TopicPartitionFetchResponse>,
+    // used to "own" the data all other references of this struct
+    // point to.
+    #[allow(dead_code)]
+    raw_data: Vec<u8>,
+
+    correlation_id: i32,
+
+    // ~ static is used here to get around the fact that we don't want
+    // FetchResponse have a lifetime parameter as well. the field is
+    // exposed only through an accessor which binds the exposed
+    // lifetime to the lifetime of the FetchResponse instance
+    topics: Vec<TopicFetchResponse<'static>>,
 }
 
-#[derive(Default, Debug)]
-pub struct TopicPartitionFetchResponse {
-    pub topic: String,
-    pub partitions: Vec<PartitionFetchResponse>,
+impl FromResponse for FetchResponse {
+    fn from_response(response: Vec<u8>) -> Result<Self> {
+        FetchResponse::from_vec(response)
+    }
 }
-
-#[derive(Default, Debug)]
-pub struct PartitionFetchResponse {
-    pub partition: i32,
-    pub error: i16,
-    pub highwatermark_offset: i64,
-    pub message_set: MessageSet
-}
-
 
 impl FetchResponse {
-    pub fn into_messages(self) -> Vec<TopicMessage> {
-        self.topic_partitions
-            .into_iter()
-            .flat_map(|tp| tp.into_messages())
-            .collect()
+    /// Parses a FetchResponse from binary data as defined by the
+    /// Kafka Protocol.
+    fn from_vec(response: Vec<u8>) -> Result<FetchResponse> {
+        let slice = unsafe { mem::transmute(&response[..]) };
+        let mut r = ZReader::new(slice);
+        let correlation_id = try!(r.read_i32());
+        let topics = array_of!(r, TopicFetchResponse::read(&mut r));
+        Ok(FetchResponse {
+            raw_data: response,
+            correlation_id: correlation_id,
+            topics: topics
+        })
+    }
+
+    /// Retrieves the id corresponding to the fetch messages request
+    /// (provided for debugging purposes only).
+    #[inline]
+    pub fn correlation_id(&self) -> i32 {
+        self.correlation_id
+    }
+
+    /// Provides an iterator over all the topics and the fetched data
+    /// relative to these topics.
+    #[inline]
+    pub fn topics<'a>(&'a self) -> &[TopicFetchResponse<'a>] {
+        &self.topics
     }
 }
 
-impl TopicPartitionFetchResponse {
-    pub fn into_messages(self) -> Vec<TopicMessage> {
-        let topic = self.topic;
-        self.partitions
-            .into_iter()
-            .flat_map(|p| p.into_messages(topic.clone()))
-            .collect()
+/// The result of a "fetch messages" request from a particular Kafka
+/// broker for a single topic only.  Beside the name of the topic,
+/// this structure provides an iterator over the topic partitions from
+/// which messages were requested.
+pub struct TopicFetchResponse<'a> {
+    topic: &'a str,
+    partitions: Vec<PartitionFetchResponse<'a>>,
+}
+
+impl<'a> TopicFetchResponse<'a> {
+    fn read(r: &mut ZReader<'a>) -> Result<TopicFetchResponse<'a>> {
+        let name = try!(r.read_str());
+        let partitions = array_of!(r, PartitionFetchResponse::read(r));
+        Ok(TopicFetchResponse {
+            topic: name,
+            partitions: partitions,
+        })
+    }
+
+    /// Retrieves the identifier/name of the represented topic.
+    #[inline]
+    pub fn topic(&self) -> &'a str {
+        self.topic
+    }
+
+    /// Provides an iterator over all the partitions of this topic for
+    /// which messages were requested.
+    #[inline]
+    pub fn partitions(&self) -> &[PartitionFetchResponse<'a>] {
+        &self.partitions
     }
 }
 
-impl PartitionFetchResponse {
-    pub fn into_messages(self, topic: String) -> Vec<TopicMessage> {
-        if let Some(e) = Error::from_protocol_error(self.error) {
-            return vec!(TopicMessage {
-                topic: topic,
-                partition: self.partition,
-                message: Err(e),
-            });
-        }
-        let partition = self.partition;
-        self.message_set
-            .into_messages()
-            .into_iter()
-            .map(|om| TopicMessage {
-                topic: topic.clone(),
-                partition: partition,
-                message: Ok(om)
-            })
-            .collect()
+/// The result of a "fetch messages" request from a particular Kafka
+/// broker for a single topic partition only.  Beside the partition
+/// identifier, this structure provides an iterator over the actually
+/// requested message data.
+///
+/// Note: There might have been a (recoverable) error for a particular
+/// partition (but not for another).
+pub struct PartitionFetchResponse<'a> {
+    /// The identifier of the represented partition.
+    partition: i32,
+
+    /// Either an error or the partition data.
+    data: Result<PartitionData<'a>>,
+}
+
+impl<'a> PartitionFetchResponse<'a> {
+    fn read(r: &mut ZReader<'a>) -> Result<PartitionFetchResponse<'a>> {
+        let partition = try!(r.read_i32());
+        let error = Error::from_protocol_error(try!(r.read_i16()));
+        // we need to parse the rest even if there was an error to
+        // consume the input stream (zreader)
+        let highwatermark = try!(r.read_i64());
+        let msgset = try!(MessageSet::from_slice(try!(r.read_bytes())));
+        Ok(PartitionFetchResponse {
+            partition: partition,
+            data: match error {
+                Some(error) => Err(error),
+                None => Ok(PartitionData {
+                    highwatermark_offset: highwatermark,
+                    message_set: msgset,
+                }),
+            },
+        })
+    }
+
+    /// Retrieves the identifier of the represented partition.
+    #[inline]
+    pub fn partition(&self) -> i32 {
+        self.partition
+    }
+
+    /// Retrieves the data payload for this partition.
+    pub fn data(&'a self) -> &'a Result<PartitionData<'a>> {
+        &self.data
     }
 }
 
-impl FromByte for FetchResponse {
-    type R = FetchResponse;
+/// The successfully fetched data payload for a particular partition.
+pub struct PartitionData<'a> {
+    highwatermark_offset: i64,
+    message_set: MessageSet<'a>,
+}
 
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.topic_partitions.decode(buffer)
-        )
+impl<'a> PartitionData<'a> {
+    /// Retrieves the so-called "high water mark offset" indicating
+    /// the "latest" offset for this partition at the remote broker.
+    /// This can be used by clients to find out how much behind the
+    /// latest available message they are.
+    #[inline]
+    pub fn highwatermark_offset(&self) -> i64 {
+        self.highwatermark_offset
+    }
+
+    /// Retrieves the fetched message data for this partition.
+    #[inline]
+    pub fn messages(&self) -> &[Message<'a>] {
+        return &self.message_set.messages
     }
 }
 
-impl FromByte for TopicPartitionFetchResponse {
-    type R = TopicPartitionFetchResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
-    }
+struct MessageSet<'a> {
+    #[allow(dead_code)]
+    raw_data: Cow<'a, [u8]>, // ~ this field is used to potentially "own" the underlying vector
+    messages: Vec<Message<'a>>,
 }
 
-impl FromByte for PartitionFetchResponse {
-    type R = PartitionFetchResponse;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.decode(buffer),
-            self.error.decode(buffer),
-            self.highwatermark_offset.decode(buffer),
-            self.message_set.decode(buffer)
-        )
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct MessageSet {
-    pub message: Vec<MessageSetInner>
-}
-
-#[derive(Default, Debug)]
-pub struct MessageSetInner {
+/// A fetched message from a remote Kafka broker for a particular
+/// topic partition.
+#[derive(Debug)]
+pub struct Message<'a> {
+    /// The offset at which this message resides in the remote kafka
+    /// broker topic partition.
     pub offset: i64,
-    pub messagesize: i32,
-    pub message: Message
+
+    /// The "key" data of this message.  Empty if there is no such
+    /// data for this message.
+    pub key: &'a [u8],
+
+    /// The value data of this message.  Empty if there is no such
+    /// data for this message.
+    pub value: &'a [u8],
 }
 
-#[derive(Default, Debug)]
-pub struct Message {
-    pub crc: i32,
-    pub magic: i8,
-    pub attributes: i8,
-    pub key: Vec<u8>,
-    pub value: Vec<u8>
-}
-
-impl MessageSet {
-    fn into_messages(self) -> Vec<OffsetMessage> {
-        self.message
-            .into_iter()
-            .flat_map(|m| m.into_messages())
-            .collect()
+impl<'a> MessageSet<'a> {
+    fn from_vec(data: Vec<u8>) -> Result<MessageSet<'a>> {
+        // since we're going to keep the original
+        // uncompressed vector around without
+        // further modifying it and providing
+        // publicly no mutability possibilities
+        // this is safe
+        let ms = try!(MessageSet::from_slice(unsafe {
+            mem::transmute(&data[..])
+        }));
+        return Ok(MessageSet {
+            raw_data: Cow::Owned(data),
+            messages: ms.messages,
+        });
     }
-}
 
-impl MessageSetInner {
-    fn into_messages(self) -> Vec<OffsetMessage>{
-        self.message.into_messages(self.offset)
-    }
-}
-
-impl Message {
-    fn into_messages(self, offset: i64) -> Vec<OffsetMessage> {
-        match self.attributes & 3 {
-            codec if codec == Compression::NONE as i8 => vec!(OffsetMessage{
-                offset:offset,
-                value: self.value
-            }),
-            codec if codec == Compression::GZIP as i8 => message_decode_gzip(self.value),
-            codec if codec == Compression::SNAPPY as i8 => message_decode_snappy(self.value),
-            _ => vec!()
+    fn from_slice<'b>(raw_data: &'b [u8]) -> Result<MessageSet<'b>> {
+        let mut r = ZReader::new(raw_data);
+        let mut msgs = Vec::new();
+        while !r.is_empty() {
+            match MessageSet::next_message(&mut r) {
+                // this is the last messages which might be
+                // incomplete; a valid case to be handled by
+                // consumers
+                Err(Error::UnexpectedEOF) => {
+                    break;
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+                Ok((offset, pmsg)) => {
+                    // handle compression (denoted by the last 2 bits
+                    // of the attr field)
+                    match pmsg.attr & 0x03 {
+                        c if c == Compression::NONE as i8 => {
+                            msgs.push(Message {
+                                offset: offset,
+                                key: pmsg.key,
+                                value: pmsg.value
+                            });
+                        }
+                        // XXX handle recursive compression in future
+                        c if c == Compression::GZIP as i8 => {
+                            let v = try!(gzip::uncompress(pmsg.value));
+                            return Ok(try!(MessageSet::from_vec(v)));
+                        }
+                        c if c == Compression::SNAPPY as i8 => {
+                            let mut v = Vec::new();
+                            try!(try!(SnappyReader::new(pmsg.value)).read_to_end(&mut v));
+                            return Ok(try!(MessageSet::from_vec(v)));
+                        }
+                        _ => panic!("Unknown compression type!"),
+                    }
+                }
+            };
         }
+        Ok(MessageSet {
+            raw_data: Cow::Borrowed(raw_data),
+            messages: msgs,
+        })
+    }
+
+    fn next_message<'b>(r: &mut ZReader<'b>) -> Result<(i64, ProtocolMessage<'b>)> {
+        let offset = try!(r.read_i64());
+        let msg_data = try!(r.read_bytes());
+        Ok((offset, try!(ProtocolMessage::from_slice(msg_data))))
     }
 }
 
-fn message_decode_snappy(value: Vec<u8>) -> Vec<OffsetMessage> {
-    // XXX avoid unwrap, have this return an error!!!
-    let mut r = SnappyReader::new(&value).unwrap();
-    let mset = MessageSet::decode_new(&mut r).unwrap();
-    mset.into_messages()
+/// Represents a messages exactly as defined in the protocol.
+struct ProtocolMessage<'a> {
+    crc: i32,
+    magic: i8,
+    attr: i8,
+    key: &'a [u8],
+    value: &'a [u8],
 }
 
-fn message_decode_gzip(value: Vec<u8>) -> Vec<OffsetMessage>{
-    // Gzip
-    let mut buffer = Cursor::new(value);
-    // XXX is the loop really necessary?
-    match message_decode_loop_gzip(&mut buffer) {
-        Ok(x) => x,
-        Err(_) => vec!()
+impl<'a> ProtocolMessage<'a> {
+    /// Parses a raw message from the given byte slice.  Does _not_
+    /// handle any compression.
+    fn from_slice<'b>(raw_data: &'b [u8]) -> Result<ProtocolMessage<'b>> {
+        let mut r = ZReader::new(raw_data);
+
+        let msg_crc = try!(r.read_i32());
+        // XXX later validate the checksum
+        let msg_magic = try!(r.read_i8());
+        // XXX validate that `msg_magic == 0`
+        let msg_attr = try!(r.read_i8());
+        let msg_key = try!(r.read_bytes());
+        let msg_val = try!(r.read_bytes());
+
+        debug_assert!(r.is_empty());
+
+        Ok(ProtocolMessage {
+            crc: msg_crc,
+            magic: msg_magic,
+            attr: msg_attr,
+            key: msg_key,
+            value: msg_val,
+        })
     }
 }
 
-fn message_decode_loop_gzip<T:Read>(buffer: &mut T) -> Result<Vec<OffsetMessage>> {
-    let msg = try!(gzip::uncompress(buffer));
-    let mset = try!(MessageSet::decode_new(&mut Cursor::new(msg)));
-    Ok(mset.into_messages())
-}
-
-impl FromByte for MessageSet {
-    type R = MessageSet;
-
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        let mssize = try!(i32::decode_new(buffer));
-        if mssize <= 0 { return Ok(()); }
-
-        let mssize = mssize as u64;
-        let mut buf = buffer.take(mssize);
-
-        while buf.limit() > 0 {
-            match MessageSetInner::decode_new(&mut buf) {
-                Ok(val) => self.message.push(val),
-                // handle partial trailing messages (see #17)
-                Err(Error::UnexpectedEOF) => (),
-                Err(err) => return Err(err)
-            }
-        }
-        Ok(())
-    }
-
-    fn decode_new<T: Read>(buffer: &mut T) -> Result<Self::R> {
-        let mut temp: Self::R = Default::default();
-        while let Ok(mi) = MessageSetInner::decode_new(buffer) {
-            temp.message.push(mi);
-        }
-        if temp.message.is_empty() {
-            return Err(Error::UnexpectedEOF)
-        }
-        Ok(temp)
-    }
-}
-
-impl FromByte for MessageSetInner {
-    type R = MessageSetInner;
-
-    #[allow(unused_must_use)]
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.offset.decode(buffer),
-            self.messagesize.decode(buffer),
-            self.message.decode(buffer)
-        )
-    }
-}
-
-impl FromByte for Message {
-    type R = Message;
-
-    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.crc.decode(buffer),
-            self.magic.decode(buffer),
-            self.attributes.decode(buffer),
-            self.key.decode(buffer),
-            self.value.decode(buffer)
-        )
-    }
-}
-
-// --------------------------------------------------------------------
+// tests --------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use std::str;
 
-    use super::FetchResponse;
-    use codecs::FromByte;
+    use super::{FetchResponse, Message};
 
     static FETCH1_TXT: &'static str =
         include_str!("../../test-data/fetch1.txt");
@@ -367,76 +329,102 @@ mod tests {
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
-    fn test_decode_new_fetch_response(msg_per_line: &str, mut fetch_response_bytes: &[u8]) {
-        let resp = FetchResponse::decode_new(&mut fetch_response_bytes);
+    fn into_messages<'a>(r: &'a FetchResponse) -> Vec<&'a Message<'a>> {
+        let mut all_msgs = Vec::new();
+        for t in r.topics() {
+            for p in t.partitions() {
+                match p.data() {
+                    &Err(_) => {
+                        println!("Skipping error partition: {}:{}", t.topic, p.partition);
+                    }
+                    &Ok(ref data) => {
+                        all_msgs.extend(data.messages());
+                    }
+                }
+            }
+        }
+        all_msgs
+    }
+
+    fn test_decode_new_fetch_response(msg_per_line: &str, response: Vec<u8>) {
+        let resp = FetchResponse::from_vec(response);
         let resp = resp.unwrap();
 
-        // ~ response for exactly one topic expected
-        assert_eq!(1, resp.topic_partitions.len());
-
-        let msgs = resp.into_messages();
         let original: Vec<_> = msg_per_line.lines().collect();
+
+        // ~ response for exactly one topic expected
+        assert_eq!(1, resp.topics.len());
+        // ~ topic name
+        assert_eq!("my-topic", resp.topics[0].topic);
+        // ~ exactly one partition
+        assert_eq!(1, resp.topics[0].partitions.len());
+        // ~ the first partition
+        assert_eq!(0, resp.topics[0].partitions[0].partition);
+        // ~ no error
+        assert!(resp.topics[0].partitions[0].data.is_ok());
+
+        let msgs = into_messages(&resp);
         assert_eq!(original.len(), msgs.len());
         for (msg, orig) in msgs.into_iter().zip(original.iter()) {
-            assert_eq!(str::from_utf8(&msg.message.unwrap().value).unwrap(), *orig);
+            assert_eq!(str::from_utf8(msg.value).unwrap(), *orig);
         }
     }
 
     #[test]
-    fn test_decode_new_fetch_response_nocompression_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821);
+    fn test_from_slice_nocompression_k0821() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned());
     }
 
     #[test]
-    fn test_decode_new_fetch_response_snappy_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821);
+    fn test_from_slice_snappy_k0821() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned());
     }
 
     #[test]
-    fn test_decode_new_fetch_response_snappy_k0822() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822);
+    fn test_from_slice_snappy_k0822() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned());
     }
 
     #[test]
-    fn test_decode_new_fetch_response_gzip_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821);
+    fn test_from_slice_gzip_k0821() {
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned());
     }
 
     #[cfg(feature = "nightly")]
     mod benches {
-        use std::io::Cursor;
         use test::{black_box, Bencher};
 
-        use codecs::FromByte;
         use super::super::FetchResponse;
+        use super::into_messages;
 
-        fn bench_decode_new_fetch_response(b: &mut Bencher, data: &[u8]) {
+        fn bench_decode_new_fetch_response(b: &mut Bencher, data: Vec<u8>) {
             b.bytes = data.len() as u64;
             b.iter(|| {
-                let r = black_box(FetchResponse::decode_new(&mut Cursor::new(data)).unwrap());
-                let v = black_box(r.into_messages());
+                let data = data.clone();
+                let r = black_box(FetchResponse::from_vec(data).unwrap());
+                let v = black_box(into_messages(&r));
                 v.len()
             });
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821)
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned())
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821)
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned())
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822)
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned())
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821)
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned())
         }
     }
 }
