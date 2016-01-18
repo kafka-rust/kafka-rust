@@ -2,19 +2,6 @@
 
 use error::{Result,Error};
 
-#[derive(Clone, Debug)]
-pub struct OffsetMessage {
-    pub offset: i64,
-    pub value: Vec<u8>,
-}
-
-#[derive(Clone, Debug)]
-pub struct TopicMessage {
-    pub topic: String,
-    pub partition: i32,
-    pub message: Result<OffsetMessage>,
-}
-
 #[derive(Debug)]
 pub struct ProduceMessage<'a, 'b> {
     pub topic: &'a str,
@@ -62,12 +49,6 @@ pub struct TopicPartitionOffsetError {
     pub partition: i32,
     pub offset: i64,
     pub error: Option<Error>
-}
-
-#[derive(Debug)]
-pub struct TopicPartitions {
-    pub topic: String,
-    pub partitions: Vec<i32>
 }
 
 #[derive(Debug)]

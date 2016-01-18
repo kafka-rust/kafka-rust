@@ -43,6 +43,7 @@ pub const DEFAULT_FETCH_MAX_BYTES_PER_PARTITION: i32 = 32 * 1024;
 /// Implements methods described by the [Kafka Protocol](https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol).
 ///
 /// You will have to load metadata before making any other request.
+// XXX rename to client
 #[derive(Debug)]
 pub struct KafkaClient {
     // ~ this kafka client configuration
