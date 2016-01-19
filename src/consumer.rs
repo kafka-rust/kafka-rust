@@ -154,18 +154,26 @@ impl Consumer {
         for resp in &resps {
             for t in resp.topics() {
                 for p in t.partitions() {
-                    // XXX handle partitions with errors (will
-                    // probably need to refetch metadata)
 
                     // XXX when a partition is empty but has a higher
                     // highwatermark-offset than the one we fetched
                     // from ... try to increase the max-fetch-size in
                     // the next fetch request
 
-                    if let &Ok(ref data) = p.data() {
-                        if let Some(last_msg) = data.messages().last() {
-                            empty = false;
-                            self.state.fetch_offsets.insert(p.partition(), last_msg.offset + 1);
+                    // XXX for now, as soon as a partition has an
+                    // error we fail to prevent client programs from
+                    // not noticing.  however, in future we don't need
+                    // to fail immediately, we can try to recover from
+                    // certain errors and retry the fetch operation
+                    // transparently for the caller.
+
+                    match p.data() {
+                        &Err(ref e) => return Err(e.clone()),
+                        &Ok(ref data) => {
+                            if let Some(last_msg) = data.messages().last() {
+                                empty = false;
+                                self.state.fetch_offsets.insert(p.partition(), last_msg.offset + 1);
+                            }
                         }
                     }
                 }
