@@ -112,7 +112,6 @@ impl Consumer {
     /// Unless this method is called and there is no offset committed
     /// for the underlying group yet, this consumer will _not_ retrieve
     /// any messages from the underlying topic.
-    // XXX rename to set_fallback_offset
     pub fn with_fallback_offset(mut self, fallback_offset_time: FetchOffset) -> Consumer {
         self.config.fallback_offset = Some(fallback_offset_time);
         // XXX potentially reinitialize offsets and pre-fetched data
