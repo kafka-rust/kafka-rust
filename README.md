@@ -4,24 +4,33 @@
 
 ### Documentation
 
-The [documentation](https://spicavigo.github.io/kafka-rust/) include some examples, too.
+The [documentation](https://spicavigo.github.io/kafka-rust/) include
+some examples, too.
 
 
 ### Installation
 
-This crate works with Cargo and is on [crates.io](https://crates.io/crates/kafka).  The API is currently under heavy movement although we do follow semantic versioning.
+This crate works with Cargo and is on
+[crates.io](https://crates.io/crates/kafka).  The API is currently
+under heavy movement although we do follow semantic versioning.
 
 ```toml
 [dependencies]
-kafka = "*"
+kafka = "0.2"
 ```
 
-To build kafka-rust you'll need `libsnappy-dev` on your local machine. If that library is not installed in the usual path, you can export the `LD_LIBRARY_PATH` environment variable before issueing `cargo build`.
+To build kafka-rust you'll need `libsnappy-dev` on your local
+machine. If that library is not installed in the usual path, you can
+export the `LD_LIBRARY_PATH` and `LD_RUN_PATH` environment variables
+before issueing `cargo build`.
 
 
 ### Example:
 
-As mentioned, the cargo generated documentation constains some examples. Further, standalone, compilable example programs are provided in the [examples directory of the repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
+As mentioned, the cargo generated documentation constains some
+examples. Further, standalone, compilable example programs are
+provided in the [examples directory of the
+repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
 
 [KafkaClient](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html)
 is the main entry point into the API. This is a mid-level abstraction
@@ -30,7 +39,7 @@ for Kafka.  Its main methods are:
 * [Loading metadata](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.load_metadata_all)
 * [Fetching topic offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_offsets)
 * [Sending messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.send_messages)
-* [Fetching messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_messages_multi)
+* [Fetching messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_messages)
 * [Committing a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.commit_offsets)
 * [Fetching a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_topics_offset)
 
