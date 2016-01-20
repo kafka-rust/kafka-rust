@@ -11,12 +11,13 @@ The documentation includes some examples too.
 
 ### Installation
 
-This crate works with Cargo and is on [crates.io](https://crates.io/crates/kafka). I will be updating the package frequently till we move out of pre-release. So add this to your `Cargo.toml` (instead of a specific version):
+This crate works with Cargo and is on [crates.io](https://crates.io/crates/kafka). Use the following dependency in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-kafka = "*"
+kafka = "0.1"
 ```
+
 
 #### Usage:
 
