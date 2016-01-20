@@ -1,7 +1,7 @@
 extern crate kafka;
 
 use kafka::client::KafkaClient;
-use kafka::utils::TopicPartitionOffset;
+use kafka::utils::FetchPartition;
 
 /// This program demonstrates the low level api for fetching messages.
 /// Please look at examles/consume.rs for an easier to use API.
@@ -28,7 +28,7 @@ fn main() {
         return;
     }
 
-    match client.fetch_messages(&[TopicPartitionOffset::new(topic, partition, offset)]) {
+    match client.fetch_messages(&[FetchPartition::new(topic, partition, offset)]) {
         Err(e) => {
             println!("Failed to fetch messages: {}", e);
         }

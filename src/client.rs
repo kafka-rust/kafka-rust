@@ -360,6 +360,7 @@ impl KafkaClient {
     /// Exposes the hosts used for discovery of the target kafka
     /// cluster.  This set of hosts corresponds to the values supplied
     /// to `KafkaClient::new`.
+    #[inline]
     pub fn hosts(&self) -> &[String] {
         &self.config.hosts
     }
@@ -378,6 +379,12 @@ impl KafkaClient {
         self.config.compression = compression;
     }
 
+    /// Retrieves the current `KafkaClient::set_compression` setting.
+    #[inline]
+    pub fn compression(&self) -> Compression {
+        self.config.compression
+    }
+
     /// Sets the maximum time in milliseconds to wait for insufficient
     /// data to become available when fetching messages.
     ///
@@ -386,6 +393,13 @@ impl KafkaClient {
     #[inline]
     pub fn set_fetch_max_wait_time(&mut self, max_wait_time: i32) {
         self.config.fetch_max_wait_time = max_wait_time;
+    }
+
+    /// Retrieves the current `KafkaClient::set_fetch_max_wait_time`
+    /// setting.
+    #[inline]
+    pub fn fetch_max_wait_time(&self) -> i32 {
+        self.config.fetch_max_wait_time
     }
 
     /// Sets the minimum number of bytes of available data to wait for
@@ -403,13 +417,13 @@ impl KafkaClient {
     ///
     /// ```no_run
     /// use kafka::client::KafkaClient;
-    /// use kafka::utils::TopicPartitionOffset;
+    /// use kafka::utils::FetchPartition;
     ///
     /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
     /// client.set_fetch_max_wait_time(100);
     /// client.set_fetch_min_bytes(64 * 1024);
-    /// let r = client.fetch_messages(&[TopicPartitionOffset::new("my-topic", 0, 0)]);
+    /// let r = client.fetch_messages(&[FetchPartition::new("my-topic", 0, 0)]);
     /// ```
     ///
     /// See also `KafkaClient::set_fetch_max_wait_time(..)` and
@@ -419,24 +433,43 @@ impl KafkaClient {
         self.config.fetch_min_bytes = min_bytes;
     }
 
-    /// Sets the maximum number of bytes to fetch from _a single kafka
-    /// partition_ when fetching messages.
+    /// Retrieves the current `KafkaClient::set_fetch_min_bytes`
+    /// setting.
+    #[inline]
+    pub fn fetch_min_bytes(&self) -> i32 {
+        self.config.fetch_min_bytes
+    }
+
+    /// Sets the default maximum number of bytes to obtain from _a
+    /// single kafka partition_ when fetching messages.
     ///
     /// This basically determines the maximum message size this client
     /// will be able to fetch.  If a topic partition contains a
     /// message larger than this specified number of bytes, the server
     /// will not deliver it.
     ///
-    /// Note that this setting is related to a single partition. The
-    /// overall maximum possible data size in a fetch messages
-    /// response will thus be determined by the number of partitions
-    /// in the fetch messages request.
+    /// Note that this setting is related to a single partition.  The
+    /// overall potential data size in a fetch messages response will
+    /// thus be determined by the number of partitions in the fetch
+    /// messages request times this "max bytes per partitions."
     ///
-    /// See also `KafkaClient::set_fetch_max_wait_time(..)` and
-    /// `KafkaClient::set_fetch_min_bytes(..)`.
+    /// This client will use this setting by default for all queried
+    /// partitions, however, `fetch_messages` does allow you to
+    /// override this setting for a particular partition being
+    /// queried.
+    ///
+    /// See also `KafkaClient::set_fetch_max_wait_time`,
+    /// `KafkaClient::set_fetch_min_bytes`, and `KafkaClient::fetch_messages`.
     #[inline]
     pub fn set_fetch_max_bytes_per_partition(&mut self, max_bytes: i32) {
         self.config.fetch_max_bytes_per_partition = max_bytes;
+    }
+
+    /// Retrieves the current
+    /// `KafkaClient::set_fetch_max_bytes_per_partition` setting.
+    #[inline]
+    pub fn fetch_max_bytes_per_partition(&self) -> i32 {
+        self.config.fetch_max_bytes_per_partition
     }
 
     /// Provides a view onto the currently loaded metadata of known topics.
@@ -628,15 +661,18 @@ impl KafkaClient {
         }
     }
 
-    /// Fetch messages from Kafka (multiple topic, partition, offset)
-    /// exposing low level details.
+    /// Fetch messages from Kafka (multiple topic, partitions).
     ///
-    /// It takes a vector specifying the partitions and their offsets
-    /// as of which to fetch messages.  The result is exposed in a
-    /// raw, complicated manner but allows for very efficient
-    /// consumption possibilities.  In particular, each of the
-    /// returned fetch responses directly corresponds to fetch
-    /// requests to the underlying kafka brokers.  Except of
+    /// It takes a vector specifying the topic partitions and their
+    /// offsets as of which to fetch messages.  Additionally, the
+    /// default "max fetch size per partition" can be explicitely
+    /// overriden if it is "defined" - this is, if `max_size` is
+    /// greater than zero.
+    ///
+    /// The result is exposed in a raw, complicated manner but allows
+    /// for very efficient consumption possibilities.  In particular,
+    /// each of the returned fetch responses directly corresponds to
+    /// fetch requests to the underlying kafka brokers.  Except of
     /// transparently uncompressing compressed messages, the result is
     /// not otherwise prepared.
     ///
@@ -646,19 +682,27 @@ impl KafkaClient {
     /// individual messages for a longer time than the whole fetch
     /// responses, you'll need to make a copy of the message data.
     ///
+    /// Note: before using this method consider using
+    /// `kafka::consumer::Consumer` instead which provides a much
+    /// easier API for the use-case of fetching messesage from Kafka.
+    ///
     /// # Example
     ///
     /// This example demonstrates iterating all fetched messages from
-    /// two topic partitions.
+    /// two topic partitions.  From one partition we allow Kafka to
+    /// deliver to us the default number bytes as defined by
+    /// `KafkaClient::set_max_fetch_size_per_partition`, from the
+    /// other partition we allow Kafka to deliver up to 1MiB of
+    /// messages.
     ///
     /// ```no_run
     /// use kafka::client::KafkaClient;
-    /// use kafka::utils::TopicPartitionOffset;
+    /// use kafka::utils::FetchPartition;
     ///
     /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// let reqs = &[TopicPartitionOffset{ topic: "my-topic", partition: 0, offset: 0 },
-    ///              TopicPartitionOffset{ topic: "my-topic-2", partition: 0, offset: 0 }];
+    /// let reqs = &[FetchPartition::new("my-topic", 0, 0),
+    ///              FetchPartition::new("my-topic-2", 0, 0).with_max_bytes(1024*1024)];
     /// let resps = client.fetch_messages(reqs).unwrap();
     /// for resp in resps {
     ///   for t in resp.topics() {
@@ -681,8 +725,9 @@ impl KafkaClient {
     /// }
     /// ```
     /// See also `kafka::consumer`.
+    /// See also `KafkaClient::set_max_fetch_size_per_partition`.
     pub fn fetch_messages<'a, I, J>(&mut self, input: I) -> Result<Vec<fetch::FetchResponse>>
-        where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J>
+        where J: AsRef<utils::FetchPartition<'a>>, I: IntoIterator<Item=J>
     {
         let state = &mut self.state;
         let config = &self.config;
@@ -691,15 +736,21 @@ impl KafkaClient {
 
         // Map topic and partition to the corresponding broker
         let mut reqs: HashMap<&str, protocol::FetchRequest> = HashMap::new();
-        for tpo in input {
-            let tpo = tpo.as_ref();
-            if let Some(broker) = state.find_broker(tpo.topic, tpo.partition) {
+        for inp in input {
+            let inp = inp.as_ref();
+            if let Some(broker) = state.find_broker(inp.topic, inp.partition) {
                 reqs.entry(broker)
                     .or_insert_with(|| {
-                        protocol::FetchRequest::new(correlation, &config.client_id,
-                                                    config.fetch_max_wait_time, config.fetch_min_bytes)
+                        protocol::FetchRequest::new(
+                            correlation, &config.client_id,
+                            config.fetch_max_wait_time, config.fetch_min_bytes)
                     })
-                    .add(tpo.topic, tpo.partition, tpo.offset, config.fetch_max_bytes_per_partition);
+                    .add(inp.topic, inp.partition, inp.offset,
+                         if inp.max_bytes > 0 {
+                             inp.max_bytes
+                         } else {
+                             config.fetch_max_bytes_per_partition
+                         });
             }
         }
 

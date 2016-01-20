@@ -45,7 +45,7 @@ use std::slice;
 
 use client::{KafkaClient, FetchOffset, Topics};
 use error::{Error, KafkaCode, Result};
-use utils::{TopicPartition, TopicPartitionOffset};
+use utils::{TopicPartition, TopicPartitionOffset, FetchPartition};
 
 // public re-exports
 pub use client::fetch::Message;
@@ -258,7 +258,7 @@ impl Consumer {
         let topic = &self.config.topic;
         let fetch_offsets = &self.state.fetch_offsets;
         debug!("fetching messages: (topic: {} / fetch-offsets: {:?})", topic, fetch_offsets);
-        let reqs = fetch_offsets.iter().map(|(&p, &o)| TopicPartitionOffset::new(topic, p, o));
+        let reqs = fetch_offsets.iter().map(|(&p, &o)| FetchPartition::new(topic, p, o));
         self.client.fetch_messages(reqs)
     }
 }
