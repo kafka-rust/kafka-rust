@@ -124,7 +124,7 @@ impl Consumer {
     /// If this function is never called, all available partitions of
     /// the underlying topic will be consumed assumed.
     pub fn with_partitions(mut self, partition: &[i32]) -> Consumer {
-        self.config.partitions.extend(partition);
+        self.config.partitions.extend_from_slice(partition);
         // XXX might need to reinitialize offsets and potentially pre-fetched data
         self
     }

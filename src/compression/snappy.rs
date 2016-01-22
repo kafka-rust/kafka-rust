@@ -173,7 +173,7 @@ impl<'a> SnappyReader<'a> {
         // ~ first consume already uncompressed and unconsumed data - if any
         if self.uncompressed_pos < self.uncompressed_chunk.len() {
             let rest = &self.uncompressed_chunk[self.uncompressed_pos..];
-            buf.extend(rest);
+            buf.extend_from_slice(rest);
             self.uncompressed_pos += rest.len();
         }
         // ~ now decompress data directly to the output target
@@ -268,7 +268,7 @@ mod tests {
         loop {
             match r.read(&mut tmp_buf).unwrap() {
                 0 => break,
-                n => buf.extend(&tmp_buf[..n]),
+                n => buf.extend_from_slice(&tmp_buf[..n]),
             }
         }
         assert_eq!(ORIGINAL.as_bytes(), &buf[..]);
