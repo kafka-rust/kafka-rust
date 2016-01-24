@@ -666,7 +666,7 @@ impl KafkaClient {
     /// It takes a vector specifying the topic partitions and their
     /// offsets as of which to fetch messages.  Additionally, the
     /// default "max fetch size per partition" can be explicitely
-    /// overriden if it is "defined" - this is, if `max_size` is
+    /// overriden if it is "defined" - this is, if `max_bytes` is
     /// greater than zero.
     ///
     /// The result is exposed in a raw, complicated manner but allows
@@ -691,7 +691,7 @@ impl KafkaClient {
     /// This example demonstrates iterating all fetched messages from
     /// two topic partitions.  From one partition we allow Kafka to
     /// deliver to us the default number bytes as defined by
-    /// `KafkaClient::set_max_fetch_size_per_partition`, from the
+    /// `KafkaClient::set_fetch_max_bytes_per_partition`, from the
     /// other partition we allow Kafka to deliver up to 1MiB of
     /// messages.
     ///
@@ -725,7 +725,7 @@ impl KafkaClient {
     /// }
     /// ```
     /// See also `kafka::consumer`.
-    /// See also `KafkaClient::set_max_fetch_size_per_partition`.
+    /// See also `KafkaClient::set_fetch_max_bytes_per_partition`.
     pub fn fetch_messages<'a, I, J>(&mut self, input: I) -> Result<Vec<fetch::FetchResponse>>
         where J: AsRef<utils::FetchPartition<'a>>, I: IntoIterator<Item=J>
     {

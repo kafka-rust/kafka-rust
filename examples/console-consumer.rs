@@ -29,11 +29,14 @@ fn process(cfg: &Config) -> Result<(), Error> {
     // XXX too verbose to set up the consumer ... try avoiding the
     // indirection through KafkaClient
     let mut client = KafkaClient::new(cfg.brokers.clone());
-    client.set_fetch_max_bytes_per_partition(1024*1024);
+    client.set_fetch_max_wait_time(100);
+    client.set_fetch_min_bytes(1_000);
+    client.set_fetch_max_bytes_per_partition(100_000);
     try!(client.load_metadata_all());
 
     let mut c = Consumer::new(client, cfg.group.clone(), cfg.topic.clone())
-        .with_fallback_offset(FetchOffset::Earliest);
+        .with_fallback_offset(FetchOffset::Earliest)
+        .with_retry_max_bytes_limit(1_000_000);
 
     loop {
         for ms in try!(c.poll()).iter() {
@@ -43,7 +46,9 @@ fn process(cfg: &Config) -> Result<(), Error> {
             }
             c.consume_messageset(ms);
         }
-        try!(c.commit_consumed());
+        if !cfg.no_commit {
+            try!(c.commit_consumed());
+        }
     }
 }
 
@@ -79,6 +84,7 @@ struct Config {
     brokers: Vec<String>,
     group: String,
     topic: String,
+    no_commit: bool,
 }
 
 impl Config {
@@ -89,6 +95,7 @@ impl Config {
         opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
         opts.optopt("", "topic", "Specify target topic", "NAME");
         opts.optopt("", "group", "Specify the group_id file", "NAME");
+        opts.optflag("", "no-commit", "Do not commit consumed messages");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -108,6 +115,7 @@ impl Config {
                 .unwrap_or_else(|| "my-group".to_owned()),
             topic: m.opt_str("topic")
                 .unwrap_or_else(|| "my-topic".to_owned()),
+            no_commit: m.opt_present("no-commit"),
         })
    }
 }
