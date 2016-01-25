@@ -27,8 +27,8 @@ pub struct TopicPartitionFetchRequest<'a> {
 
 #[derive(Debug)]
 pub struct PartitionFetchRequest {
-    pub partition: i32,
     pub offset: i64,
+    pub partition: i32,
     pub max_bytes: i32
 }
 
