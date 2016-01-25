@@ -97,6 +97,10 @@ struct Config {
     retry_max_bytes_limit: i32,
 }
 
+// XXX 1) Make sure to skip kafka delivered messages with a lower offset than the one we asked for (need to property main a messageset's empty property)
+// XXX 2) Support multiple topics
+// XXX 3) Issue IO in a separate (background) thread and pre-fetch messagesets
+
 impl Consumer {
 
     /// Creates a new consumer over the specified managing offsets on
@@ -146,13 +150,12 @@ impl Consumer {
     /// in an underlying partition which could not be delivered, the
     /// request to that partition might be retried a few times with an
     /// increased `fetch_max_bytes_per_partition`.  The value
-    /// specified here defines a limit to this increment before an
-    /// error is issued.
+    /// specified here defines a limit to this increment.
     ///
     /// A value smaller than the
     /// `KafkaClient::fetch_max_bytes_per_partition`, e.g. zero, will
-    /// disable the retry feature of this consumer. Note: the default
-    /// value for this setting is `DEFAULT_RETRY_MAX_BYTES_LIMIT`.
+    /// disable the retry feature of this consumer.  The default value
+    /// for this setting is `DEFAULT_RETRY_MAX_BYTES_LIMIT`.
     ///
     /// Note: if the consumed topic partitions are known to host large
     /// messages it is much more efficient to set
@@ -226,24 +229,27 @@ impl Consumer {
                         }
                     } else {
                         // ~ when a partition is empty but has a
-                        // highwatermark-offset equal to or grater
+                        // highwatermark-offset equal to or greater
                         // than the one we tried to fetch ... we'll
                         // try to increase the max-fetch-size in the
                         // next fetch request
                         if fetch_state.offset < data.highwatermark_offset() {
                             let prev_max_bytes = fetch_state.max_bytes;
+
+                            debug!("no data received for {}:{} (max_bytes: {} / fetch_offset: {} / highwatermark_offset: {})",
+                                   t.topic(), partition, prev_max_bytes, fetch_state.offset, data.highwatermark_offset());
+
                             // ~ have we already hit the limit?
-                            if prev_max_bytes >= self.config.retry_max_bytes_limit {
-                                return Err(Error::Kafka(KafkaCode::MessageSizeTooLarge));
+                            if prev_max_bytes != self.config.retry_max_bytes_limit {
+                                // ~ try to double the max_bytes
+                                if prev_max_bytes + prev_max_bytes > self.config.retry_max_bytes_limit {
+                                    fetch_state.max_bytes = self.config.retry_max_bytes_limit;
+                                } else {
+                                    fetch_state.max_bytes = prev_max_bytes + prev_max_bytes;
+                                }
+                                debug!("increased max_bytes for {}:{} from {} to {}",
+                                       t.topic(), partition, prev_max_bytes, fetch_state.max_bytes);
                             }
-                            // ~ try to double the max_bytes
-                            if prev_max_bytes + prev_max_bytes > self.config.retry_max_bytes_limit {
-                                fetch_state.max_bytes = self.config.retry_max_bytes_limit;
-                            } else {
-                                fetch_state.max_bytes = prev_max_bytes + prev_max_bytes;
-                            }
-                            debug!("increased max_bytes for {}:{} from {} to {}",
-                                   t.topic(), partition, prev_max_bytes, fetch_state.max_bytes);
                         }
                     }
                 }
