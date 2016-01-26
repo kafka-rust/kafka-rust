@@ -97,9 +97,8 @@ struct Config {
     retry_max_bytes_limit: i32,
 }
 
-// XXX 1) Make sure to skip kafka delivered messages with a lower offset than the one we asked for (need to property main a messageset's empty property)
-// XXX 2) Support multiple topics
-// XXX 3) Issue IO in a separate (background) thread and pre-fetch messagesets
+// XXX 1) Support multiple topics
+// XXX 2) Issue IO in a separate (background) thread and pre-fetch messagesets
 
 impl Consumer {
 
@@ -210,14 +209,19 @@ impl Consumer {
                         &Ok(ref data) => data,
                     };
 
-                    // ~ update the fetch_offsets so we don't fetch
-                    // the same messages again
                     let mut fetch_state = self.state.fetch_offsets
                             .get_mut(&partition)
                             .expect("non-requested partition");
+                    // ~ make sure we skip messages we have not asked
+                    // for in further processing
+                    unsafe {
+                        data.forget_before_offset(fetch_state.offset);
+                    }
+                    // ~ book keeping
                     if let Some(last_msg) = data.messages().last() {
                         fetch_state.offset = last_msg.offset + 1;
                         empty = false;
+
                         // ~ reset the max_bytes again to its usual
                         // value if we had a retry request before
                         // going on and now finally got some data
@@ -228,28 +232,27 @@ impl Consumer {
                                    t.topic(), partition, prev_max_bytes, fetch_state.max_bytes);
                         }
                     } else {
+                        debug!("no data received for {}:{} (max_bytes: {} / fetch_offset: {} / highwatermark_offset: {})",
+                               t.topic(), partition, fetch_state.max_bytes, fetch_state.offset, data.highwatermark_offset());
+
                         // ~ when a partition is empty but has a
                         // highwatermark-offset equal to or greater
                         // than the one we tried to fetch ... we'll
                         // try to increase the max-fetch-size in the
                         // next fetch request
-                        if fetch_state.offset < data.highwatermark_offset() {
+                        if fetch_state.offset < data.highwatermark_offset()
+                            && fetch_state.max_bytes != self.config.retry_max_bytes_limit
+                        {
+                            // ~ try to double the max_bytes
                             let prev_max_bytes = fetch_state.max_bytes;
-
-                            debug!("no data received for {}:{} (max_bytes: {} / fetch_offset: {} / highwatermark_offset: {})",
-                                   t.topic(), partition, prev_max_bytes, fetch_state.offset, data.highwatermark_offset());
-
-                            // ~ have we already hit the limit?
-                            if prev_max_bytes != self.config.retry_max_bytes_limit {
-                                // ~ try to double the max_bytes
-                                if prev_max_bytes + prev_max_bytes > self.config.retry_max_bytes_limit {
-                                    fetch_state.max_bytes = self.config.retry_max_bytes_limit;
-                                } else {
-                                    fetch_state.max_bytes = prev_max_bytes + prev_max_bytes;
-                                }
-                                debug!("increased max_bytes for {}:{} from {} to {}",
-                                       t.topic(), partition, prev_max_bytes, fetch_state.max_bytes);
+                            let incr_max_bytes = prev_max_bytes + prev_max_bytes;
+                            if incr_max_bytes > self.config.retry_max_bytes_limit {
+                                fetch_state.max_bytes = self.config.retry_max_bytes_limit;
+                            } else {
+                                fetch_state.max_bytes = incr_max_bytes;
                             }
+                            debug!("increased max_bytes for {}:{} from {} to {}",
+                                   t.topic(), partition, prev_max_bytes, fetch_state.max_bytes);
                         }
                     }
                 }
