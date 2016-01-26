@@ -204,6 +204,9 @@ impl<'a> PartitionData<'a> {
         let msgs = &self.message_set.messages;
         if let Some(m) = msgs.first() {
             if offset <= m.offset {
+                if self.first_message_idx.get() != 0 {
+                    self.first_message_idx.set(0);
+                }
                 return;
             }
         }
@@ -438,7 +441,7 @@ mod tests {
             data.forget_before_offset(100);
             assert!(data.messages().is_empty());
 
-            // 4) verify rewinding works
+            // 4) verify "re-winding" works
             data.forget_before_offset(-1);
             assert_offsets(data.messages(), 42, 0, 41);
         }
