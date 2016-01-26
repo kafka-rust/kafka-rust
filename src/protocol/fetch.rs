@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::io::Read;
 use std::mem;
+use std::cell::Cell;
 
 use error::{Error, Result};
 use compression::{gzip, Compression};
@@ -143,6 +144,7 @@ impl<'a> PartitionFetchResponse<'a> {
                 None => Ok(PartitionData {
                     highwatermark_offset: highwatermark,
                     message_set: msgset,
+                    first_message_idx: Cell::new(0),
                 }),
             },
         })
@@ -164,6 +166,10 @@ impl<'a> PartitionFetchResponse<'a> {
 pub struct PartitionData<'a> {
     highwatermark_offset: i64,
     message_set: MessageSet<'a>,
+
+    // ~ points to the first message in message_set#messages to
+    // deliver through messages()
+    first_message_idx: Cell<usize>,
 }
 
 impl<'a> PartitionData<'a> {
@@ -179,7 +185,35 @@ impl<'a> PartitionData<'a> {
     /// Retrieves the fetched message data for this partition.
     #[inline]
     pub fn messages(&self) -> &[Message<'a>] {
-        return &self.message_set.messages
+        &self.message_set.messages[self.first_message_idx.get()..]
+    }
+
+    /// *Mutates* this partition data in such a way that the next call
+    /// to `messages()` will deliver a slice of messages with the
+    /// property `msg.offset >= offset`.  A convenient method to skip
+    /// past a certain message offset in the retrieved data.
+    ///
+    /// Note: this method *does* mutate the receiver even though it is
+    /// accepted merely through a shared reference for convenience
+    /// reasons.  Calling this method is safe as long as you don't
+    /// rely on the length of a previously retrieved `messages()`
+    /// slice while working with a newly retrieved `messages()` slice.
+    /// Therefore, this method is marked as unsafe.
+    #[inline]
+    pub unsafe fn forget_before_offset(&self, offset: i64) {
+        let msgs = &self.message_set.messages;
+        if let Some(m) = msgs.first() {
+            if offset <= m.offset {
+                if self.first_message_idx.get() != 0 {
+                    self.first_message_idx.set(0);
+                }
+                return;
+            }
+        }
+        match msgs.binary_search_by(|m| m.offset.cmp(&offset)) {
+            Ok(i) => self.first_message_idx.set(i),
+            Err(i) => self.first_message_idx.set(i),
+        };
     }
 }
 
@@ -367,6 +401,49 @@ mod tests {
         assert_eq!(original.len(), msgs.len());
         for (msg, orig) in msgs.into_iter().zip(original.iter()) {
             assert_eq!(str::from_utf8(msg.value).unwrap(), *orig);
+        }
+    }
+
+    #[test]
+    fn test_forget_before_offset() {
+        let r = FetchResponse::from_vec(FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned()).unwrap();
+        let t = &r.topics()[0];
+        let p = &t.partitions()[0];
+        let data = p.data().as_ref().unwrap();
+
+        fn assert_offsets(msgs: &[Message], len: usize, first_offset: i64, last_offset: i64) {
+            assert_eq!(len, msgs.len());
+            assert_eq!(first_offset, msgs[0].offset);
+            assert_eq!(last_offset, msgs[msgs.len()-1].offset);
+        }
+
+        unsafe {
+            // verify our assumptions about the input data
+            assert_offsets(data.messages(), 42, 0, 41);
+
+            // 1) forget about very early, not present offsets
+            data.forget_before_offset(-1);
+            assert_offsets(data.messages(), 42, 0, 41);
+            data.forget_before_offset(0);
+            assert_offsets(data.messages(), 42, 0, 41);
+
+            // 2) forget about present offsets
+            data.forget_before_offset(1);
+            assert_offsets(data.messages(), 41, 1, 41);
+            data.forget_before_offset(30);
+            assert_offsets(data.messages(), 12, 30, 41);
+            data.forget_before_offset(41);
+            assert_offsets(data.messages(), 1, 41, 41);
+
+            // 3) forget about very late, not present offsets
+            data.forget_before_offset(42);
+            assert!(data.messages().is_empty());
+            data.forget_before_offset(100);
+            assert!(data.messages().is_empty());
+
+            // 4) verify "re-winding" works
+            data.forget_before_offset(-1);
+            assert_offsets(data.messages(), 42, 0, 41);
         }
     }
 
