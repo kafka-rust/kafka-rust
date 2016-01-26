@@ -402,6 +402,49 @@ mod tests {
     }
 
     #[test]
+    fn test_forget_before_offset() {
+        let r = FetchResponse::from_vec(FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned()).unwrap();
+        let t = &r.topics()[0];
+        let p = &t.partitions()[0];
+        let data = p.data().as_ref().unwrap();
+
+        fn assert_offsets(msgs: &[Message], len: usize, first_offset: i64, last_offset: i64) {
+            assert_eq!(len, msgs.len());
+            assert_eq!(first_offset, msgs[0].offset);
+            assert_eq!(last_offset, msgs[msgs.len()-1].offset);
+        }
+
+        unsafe {
+            // verify our assumptions about the input data
+            assert_offsets(data.messages(), 42, 0, 41);
+
+            // 1) forget about very early, not present offsets
+            data.forget_before_offset(-1);
+            assert_offsets(data.messages(), 42, 0, 41);
+            data.forget_before_offset(0);
+            assert_offsets(data.messages(), 42, 0, 41);
+
+            // 2) forget about present offsets
+            data.forget_before_offset(1);
+            assert_offsets(data.messages(), 41, 1, 41);
+            data.forget_before_offset(30);
+            assert_offsets(data.messages(), 12, 30, 41);
+            data.forget_before_offset(41);
+            assert_offsets(data.messages(), 1, 41, 41);
+
+            // 3) forget about very late, not present offsets
+            data.forget_before_offset(42);
+            assert!(data.messages().is_empty());
+            data.forget_before_offset(100);
+            assert!(data.messages().is_empty());
+
+            // 4) verify rewinding works
+            data.forget_before_offset(-1);
+            assert_offsets(data.messages(), 42, 0, 41);
+        }
+    }
+
+    #[test]
     fn test_from_slice_nocompression_k0821() {
         test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned());
     }
