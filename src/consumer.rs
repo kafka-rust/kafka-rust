@@ -127,12 +127,6 @@ impl Consumer {
 
     /// Polls for the next available message data.
     pub fn poll(&mut self) -> Result<MessageSets> {
-        if !self.state.initialized() {
-            try!(self.state.initialize(&self.config, &mut self.client));
-            debug!("initialized: (topic: {} / group: {} / state: {:?})",
-                   self.config.topic, self.config.group, self.state);
-        }
-
         let resps = try!(self.fetch_messages());
         let mut empty = true;
 
@@ -298,27 +292,16 @@ impl Consumer {
 // --------------------------------------------------------------------
 
 impl State {
-    fn new() -> State {
-        State {
-            fetch_offsets: HashMap::new(),
-            consumed_offsets: HashMap::new(),
-            consumed_offsets_dirty: false,
-        }
-    }
-
-    fn initialized(&self) -> bool {
-        !self.fetch_offsets.is_empty()
-    }
-
-    fn initialize(&mut self, config: &Config, client: &mut KafkaClient) -> Result<()> {
+    fn new(client: &mut KafkaClient, config: &Config) -> Result<State> {
         let partitions = try!(determine_partitions(config, client.topics()));
         let consumed_offsets = try!(load_consumed_offsets(config, client, &partitions));
         let fetch_offsets = try!(load_fetch_states(config, client, &partitions, &consumed_offsets));
 
-        self.fetch_offsets = fetch_offsets;
-        self.consumed_offsets = consumed_offsets;
-        self.consumed_offsets_dirty = false;
-        Ok(())
+        Ok(State {
+            fetch_offsets: fetch_offsets,
+            consumed_offsets: consumed_offsets,
+            consumed_offsets_dirty: false,
+        })
     }
 }
 
@@ -690,20 +673,18 @@ impl Builder {
         client.set_fetch_min_bytes(self.fetch_min_bytes);
         client.set_fetch_max_bytes_per_partition(self.fetch_max_bytes_per_partition);
 
-        // XXX might want to initialize the consumer eagerly here
-        // ... this might not always be desirable as it can block the
-        // clients init code
+        let config = Config {
+            group: self.group,
+            topic: self.topic,
+            partitions: self.partitions,
+            fallback_offset: self.fallback_offset,
+            retry_max_bytes_limit: self.retry_max_bytes_limit,
+        };
 
-        Ok(Consumer {
-            client: client,
-            state: State::new(),
-            config: Config {
-                group: self.group,
-                topic: self.topic,
-                partitions: self.partitions,
-                fallback_offset: self.fallback_offset,
-                retry_max_bytes_limit: self.retry_max_bytes_limit,
-            },
-        })
+        let state = try!(State::new(&mut client, &config));
+
+        debug!("initialized: (topic: {} / group: {} / state: {:?})",
+               config.topic, config.group, state);
+        Ok(Consumer{ client: client, state: state, config: config })
     }
 }
