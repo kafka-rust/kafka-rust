@@ -1,47 +1,36 @@
 extern crate kafka;
 
-use kafka::client::{KafkaClient, FetchOffset};
-use kafka::consumer::Consumer;
+use kafka::consumer::{Consumer, FetchOffset};
 use kafka::error::Error as KafkaError;
 
 /// This program demonstrates consuming messages through a `Consumer`.
 /// This is a convenient client that will fit most use cases.  Note
-/// that consumed messages are tracked by Kafka so you can only
-/// consume them once.  This is what you want for most use cases, you
-/// can look at `examples/fetch.rs` for a lower level API.
+/// that messages must be marked and commited as consumed to ensure
+/// once once delivery.
 fn main() {
-    let broker = "localhost:9092";
-    let topic = "my-topic";
+    let broker = "localhost:9092".to_owned();
+    let topic = "my-topic".to_owned();
+    let group = "my-group".to_owned();
 
-    println!("About to consume messages at {} from: {}", broker, topic);
-
-    let mut client = KafkaClient::new(vec!(broker.to_owned()));
-    if let Err(e) = client.load_metadata_all() {
-        println!("Failed to load meta data from {}: {}", broker, e);
-        return;
-    }
-
-    // ~ make sure to print out a warning message when the target
-    // topic does not yet exist
-    if !client.topics().contains(topic) {
-        println!("No such topic at {}: {}", broker, topic);
-        return;
-    }
-
-    let con = Consumer::new(client, "test-group".to_owned(), topic.to_owned())
-        .with_fallback_offset(FetchOffset::Earliest);
-    if let Err(e) = consume_messages(con) {
+    if let Err(e) = consume_messages(group, topic, vec![broker]) {
         println!("Failed consuming messages: {}", e);
     }
 }
 
-fn consume_messages(mut con: Consumer) -> Result<(), KafkaError> {
+fn consume_messages(group: String, topic: String, brokers: Vec<String>)
+                    -> Result<(), KafkaError>
+{
+    let mut con = try!(Consumer::from_hosts(brokers, group, topic)
+                       .with_fallback_offset(FetchOffset::Earliest)
+                       .create());
+
     loop {
         let mss = try!(con.poll());
         if mss.is_empty() {
-            println!("No more messages.");
+            println!("No messages available right now.");
             return Ok(());
         }
+
         for ms in mss.iter() {
             for m in ms.messages() {
                 println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);

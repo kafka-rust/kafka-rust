@@ -7,14 +7,14 @@
 //!
 //! # Example
 //! ```no_run
-//! use kafka::client::{KafkaClient, FetchOffset};
-//! use kafka::consumer::Consumer;
+//! use kafka::consumer::{Consumer, FetchOffset};
 //!
-//! let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
-//! client.load_metadata_all().unwrap();
-//! let mut consumer = Consumer::new(client, "my-group".to_owned(), "my-topic".to_owned())
-//!                     .with_partitions(&[0, 1])
-//!                     .with_fallback_offset(FetchOffset::Earliest);
+//! let mut consumer =
+//!    Consumer::from_hosts(vec!("localhost:9092".to_owned()), "my-group".to_owned(), "my-topic".to_owned())
+//!       .with_partitions(&[0, 1])
+//!       .with_fallback_offset(FetchOffset::Earliest)
+//!       .create()
+//!       .unwrap();
 //! loop {
 //!   for ms in consumer.poll().unwrap().iter() {
 //!     for m in ms.messages() {
@@ -40,15 +40,16 @@
 //! frequency of the commits.  The consumer will *not* commit any
 //! messages to Kafka automatically.
 
-use std::collections::hash_map::{HashMap,Entry};
+use std::collections::hash_map::{HashMap, Entry};
 use std::slice;
 
-use client::{KafkaClient, FetchOffset, Topics};
+use client::{self, KafkaClient, Topics};
 use error::{Error, KafkaCode, Result};
 use utils::{TopicPartition, TopicPartitionOffset, FetchPartition};
 
 // public re-exports
 pub use client::fetch::Message;
+pub use client::FetchOffset;
 use client::fetch::{FetchResponse, TopicFetchResponse, PartitionFetchResponse};
 
 /// The default value for `Consumer::with_retry_max_bytes_limit`.
@@ -102,79 +103,21 @@ struct Config {
 
 impl Consumer {
 
-    /// Creates a new consumer over the specified managing offsets on
-    /// behalf of the specified group.
-    pub fn new(client: KafkaClient, group: String, topic: String) -> Consumer {
-        Consumer {
-            client: client,
-            state: State::new(),
-            config: Config {
-                group: group,
-                topic: topic,
-                partitions: Vec::new(),
-                fallback_offset: None,
-                retry_max_bytes_limit: DEFAULT_RETRY_MAX_BYTES_LIMIT,
-            },
-        }
+    /// Starts building a consumer for the given topic on behalf of
+    /// the given group using the given kafka client.
+    pub fn from_client(client: KafkaClient, group: String, topic: String) -> Builder {
+        Builder::new(Some(client), Vec::new())
+            .with_group(group)
+            .with_topic(topic)
     }
 
-    /// Specifies the offset to use when none was committed for the
-    /// underlying group yet.
-    ///
-    /// Running the underlying group for the first time against a
-    /// topic results in the question where to start reading from the
-    /// topic?  It might already contain a lot of messages.  Common
-    /// strategies are starting at the earliest available message
-    /// (thereby consuming whatever is currently in the topic) or at
-    /// the latest one (thereby staring to consume only newly arriving
-    /// messages.)  The parameter here corresponds to `time` in
-    /// `KafkaClient::fetch_offsets`.
-    ///
-    /// Unless this method is called and there is no offset committed
-    /// for the underlying group yet, this consumer will _not_ retrieve
-    /// any messages from the underlying topic.
-    pub fn with_fallback_offset(mut self, fallback_offset_time: FetchOffset) -> Consumer {
-        self.config.fallback_offset = Some(fallback_offset_time);
-        // XXX potentially reinitialize offsets and pre-fetched data
-        self
-    }
-
-    /// Specifies the upper bound of data bytes to allow fetching from
-    /// a kafka partition when retrying the fetch request due to too
-    /// big messages in the partition.
-    ///
-    /// By default, this consumer will fetch up to
-    /// `KafkaClient::fetch_max_bytes_per_partition` data from each
-    /// partition.  However, when it discovers that there are messages
-    /// in an underlying partition which could not be delivered, the
-    /// request to that partition might be retried a few times with an
-    /// increased `fetch_max_bytes_per_partition`.  The value
-    /// specified here defines a limit to this increment.
-    ///
-    /// A value smaller than the
-    /// `KafkaClient::fetch_max_bytes_per_partition`, e.g. zero, will
-    /// disable the retry feature of this consumer.  The default value
-    /// for this setting is `DEFAULT_RETRY_MAX_BYTES_LIMIT`.
-    ///
-    /// Note: if the consumed topic partitions are known to host large
-    /// messages it is much more efficient to set
-    /// `KafkaClient::fetch_max_bytes_per_partition` appropriately
-    /// instead of relying on the limit specified here.  This limit is
-    /// just an upper bound for already additional retry requests.
-    pub fn with_retry_max_bytes_limit(mut self, limit: i32) -> Consumer {
-        self.config.retry_max_bytes_limit = limit;
-        self
-    }
-
-    /// Explicitely specifies the partitions to consume. This will
-    /// override any previous assignments.
-    ///
-    /// If this function is never called, all available partitions of
-    /// the underlying topic will be consumed assumed.
-    pub fn with_partitions(mut self, partition: &[i32]) -> Consumer {
-        self.config.partitions.extend_from_slice(partition);
-        // XXX might need to reinitialize offsets and potentially pre-fetched data
-        self
+    /// Starts building a consumer for the given topic on behalf of
+    /// the given group bootstraping internally a new kafka client
+    /// from the given kafka hosts.
+    pub fn from_hosts(hosts: Vec<String>, group: String, topic: String) -> Builder {
+        Builder::new(None, hosts)
+            .with_group(group)
+            .with_topic(topic)
     }
 
     /// Destroys this consumer returning back the underlying kafka client.
@@ -602,5 +545,165 @@ impl<'a> Iterator for MessageSetsIter<'a> {
             // ~ finally we know there's nothing available anymore
             return None;
         }
+    }
+}
+
+// --------------------------------------------------------------------
+
+/// A Kafka Consumer builder easing the process of setting up various
+/// configuration settings.
+#[derive(Debug)]
+pub struct Builder {
+    client: Option<KafkaClient>,
+    hosts: Vec<String>,
+    group: String,
+    topic: String,
+    partitions: Vec<i32>,
+    fallback_offset: Option<FetchOffset>,
+    fetch_max_wait_time: i32,
+    fetch_min_bytes: i32,
+    fetch_max_bytes_per_partition: i32,
+    retry_max_bytes_limit: i32,
+}
+
+impl Builder {
+    fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
+        let mut b = Builder {
+            client: client,
+            hosts: hosts,
+            fetch_max_wait_time: client::DEFAULT_FETCH_MAX_WAIT_TIME,
+            fetch_min_bytes: client::DEFAULT_FETCH_MIN_BYTES,
+            fetch_max_bytes_per_partition: client::DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
+            retry_max_bytes_limit: DEFAULT_RETRY_MAX_BYTES_LIMIT,
+            group: "".to_owned(),
+            topic: "".to_owned(),
+            partitions: Vec::new(),
+            fallback_offset: None,
+        };
+        if let Some(ref c) = b.client {
+            b.fetch_max_wait_time = c.fetch_max_wait_time();
+            b.fetch_min_bytes = c.fetch_min_bytes();
+            b.fetch_max_bytes_per_partition = c.fetch_max_bytes_per_partition();
+        }
+        b
+    }
+
+    /// Specifies the group on whose behalf to maintain consumed
+    /// message offsets.
+    fn with_group(mut self, group: String) -> Builder {
+        self.group = group;
+        self
+    }
+
+    /// Specifies the topic to consume.
+    fn with_topic(mut self, topic: String) -> Builder {
+        self.topic = topic;
+        self
+    }
+
+    /// Explicitely specifies the partitions to consume.
+    ///
+    /// If this function is never called, all available partitions of
+    /// the underlying topic will be consumed assumed.
+    pub fn with_partitions(mut self, partitions: &[i32]) -> Builder {
+        self.partitions.extend_from_slice(partitions);
+        self
+    }
+
+    /// Specifies the offset to use when none was committed for the
+    /// underlying group yet.
+    ///
+    /// Running the underlying group for the first time against a
+    /// topic results in the question where to start reading from the
+    /// topic, since it might already contain a lot of messages.
+    /// Common strategies are starting at the earliest available
+    /// message (thereby consuming whatever is currently in the topic)
+    /// or at the latest one (thereby staring to consume only newly
+    /// arriving messages.)  The parameter here corresponds to `time`
+    /// in `KafkaClient::fetch_offsets`.
+    ///
+    /// Unless this method is called and there is no offset committed
+    /// for the underlying group yet, this consumer will _not_ retrieve
+    /// any messages from the underlying topic.
+    pub fn with_fallback_offset(mut self, fallback_offset_time: FetchOffset) -> Builder {
+        self.fallback_offset = Some(fallback_offset_time);
+        self
+    }
+
+    /// See `KafkaClient::set_fetch_max_wait_time`
+    pub fn with_fetch_max_wait_time(mut self, max_wait_time: i32) -> Builder {
+        self.fetch_max_wait_time = max_wait_time;
+        self
+    }
+
+    /// See `KafkaClient::set_fetch_min_bytes`
+    pub fn with_fetch_min_bytes(mut self, min_bytes: i32) -> Builder {
+        self.fetch_min_bytes = min_bytes;
+        self
+    }
+
+    /// See `KafkaClient::set_fetch_max_bytes_per_partition`
+    pub fn with_fetch_max_bytes_per_partition(mut self, max_bytes_per_partition: i32) -> Builder {
+        self.fetch_max_bytes_per_partition = max_bytes_per_partition;
+        self
+    }
+
+    /// Specifies the upper bound of data bytes to allow fetching from
+    /// a kafka partition when retrying a fetch request due to a too
+    /// big message in the partition.
+    ///
+    /// By default, this consumer will fetch up to
+    /// `KafkaClient::fetch_max_bytes_per_partition` data from each
+    /// partition.  However, when it discovers that there are messages
+    /// in an underlying partition which could not be delivered, the
+    /// request to that partition might be retried a few times with an
+    /// increased `fetch_max_bytes_per_partition`.  The value
+    /// specified here defines a limit to this increment.
+    ///
+    /// A value smaller than the
+    /// `KafkaClient::fetch_max_bytes_per_partition`, e.g. zero, will
+    /// disable the retry feature of this consumer.  The default value
+    /// for this setting is `DEFAULT_RETRY_MAX_BYTES_LIMIT`.
+    ///
+    /// Note: if the consumed topic partitions are known to host large
+    /// messages it is much more efficient to set
+    /// `KafkaClient::fetch_max_bytes_per_partition` appropriately
+    /// instead of relying on the limit specified here.  This limit is
+    /// just an upper bound for already additional retry requests.
+    pub fn with_retry_max_bytes_limit(mut self, limit: i32) -> Builder {
+        self.retry_max_bytes_limit = limit;
+        self
+    }
+
+    /// Finally creates/builds a new consumer based on the so far
+    /// supplied confirmation settings.
+    pub fn create(self) -> Result<Consumer> {
+        let mut client = match self.client {
+            Some(client) => client,
+            None => {
+                let mut client = KafkaClient::new(self.hosts);
+                try!(client.load_metadata_all());
+                client
+            }
+        };
+        client.set_fetch_max_wait_time(self.fetch_max_wait_time);
+        client.set_fetch_min_bytes(self.fetch_min_bytes);
+        client.set_fetch_max_bytes_per_partition(self.fetch_max_bytes_per_partition);
+
+        // XXX might want to initialize the consumer eagerly here
+        // ... this might not always be desirable as it can block the
+        // clients init code
+
+        Ok(Consumer {
+            client: client,
+            state: State::new(),
+            config: Config {
+                group: self.group,
+                topic: self.topic,
+                partitions: self.partitions,
+                fallback_offset: self.fallback_offset,
+                retry_max_bytes_limit: self.retry_max_bytes_limit,
+            },
+        })
     }
 }

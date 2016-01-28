@@ -4,8 +4,7 @@ extern crate env_logger;
 
 use std::{env, io, fmt, process};
 
-use kafka::client::{KafkaClient, FetchOffset};
-use kafka::consumer::Consumer;
+use kafka::consumer::{Consumer, FetchOffset};
 
 /// This is a very simple command line application reading from a
 /// specific kafka topic and dumping the messages to standard output.
@@ -19,25 +18,23 @@ fn main() {
             process::exit(1);
         }
     };
-    if let Err(e) = process(&cfg) {
+    if let Err(e) = process(cfg) {
         println!("{}", e);
         process::exit(1);
     }
 }
 
-fn process(cfg: &Config) -> Result<(), Error> {
-    // XXX too verbose to set up the consumer ... try avoiding the
-    // indirection through KafkaClient
-    let mut client = KafkaClient::new(cfg.brokers.clone());
-    client.set_fetch_max_wait_time(100);
-    client.set_fetch_min_bytes(1_000);
-    client.set_fetch_max_bytes_per_partition(100_000);
-    try!(client.load_metadata_all());
+fn process(cfg: Config) -> Result<(), Error> {
+    let mut c =
+        try!(Consumer::from_hosts(cfg.brokers, cfg.group, cfg.topic)
+             .with_fetch_max_wait_time(100)
+             .with_fetch_min_bytes(1_000)
+             .with_fetch_max_bytes_per_partition(100_000)
+             .with_fallback_offset(FetchOffset::Earliest)
+             .with_retry_max_bytes_limit(1_000_000)
+             .create());
 
-    let mut c = Consumer::new(client, cfg.group.clone(), cfg.topic.clone())
-        .with_fallback_offset(FetchOffset::Earliest)
-        .with_retry_max_bytes_limit(1_000_000);
-
+    let do_commit = !cfg.no_commit;
     loop {
         for ms in try!(c.poll()).iter() {
             for m in ms.messages() {
@@ -46,7 +43,7 @@ fn process(cfg: &Config) -> Result<(), Error> {
             }
             c.consume_messageset(ms);
         }
-        if !cfg.no_commit {
+        if do_commit {
             try!(c.commit_consumed());
         }
     }
