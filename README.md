@@ -49,9 +49,8 @@ single topic or partition.
 
 ### [Consumer] (https://spicavigo.github.io/kafka-rust/kafka/consumer/index.html)
 
-This is a simple higher-level Consumer for Kafka. It handles offset
-management internally on behalf of a specified group and provides an
-`Iterator` interface.
+This is a slightly higher-level Consumer for Kafka. It provides convenient
+offset management support on behalf of a specified group.
 
 
 ### [Creating a topic] (https://kafka.apache.org/08/quickstart.html)
