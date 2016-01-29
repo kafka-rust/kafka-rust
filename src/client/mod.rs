@@ -7,7 +7,6 @@ use std::io::Cursor;
 use std::io::Read;
 use std::iter::Iterator;
 use std::mem;
-use std::slice;
 use std::cell::Cell;
 
 // pub re-export
@@ -43,7 +42,6 @@ pub const DEFAULT_FETCH_MAX_BYTES_PER_PARTITION: i32 = 32 * 1024;
 /// Implements methods described by the [Kafka Protocol](https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol).
 ///
 /// You will have to load metadata before making any other request.
-// XXX rename to client
 #[derive(Debug)]
 pub struct KafkaClient {
     // ~ this kafka client configuration
@@ -94,7 +92,7 @@ struct Broker {
 
 /// A representation of partitions for a single topic.
 #[derive(Debug)]
-pub struct TopicPartitions {
+struct TopicPartitions {
     curr_partition_idx: Cell<usize>,
     partitions: Vec<TopicPartition>,
 }
@@ -106,7 +104,7 @@ struct BrokerIndex(u32);
 
 /// Metadata for a single topic partition.
 #[derive(Debug)]
-pub struct TopicPartition {
+struct TopicPartition {
     partition_id: i32,
     // ~ an index into ClientState#brokers
     broker_index: BrokerIndex,
@@ -117,20 +115,7 @@ impl TopicPartitions {
         TopicPartitions { curr_partition_idx: Cell::new(0), partitions: partitions }
     }
 
-    /// Retrieves an iterator of the partitions for the underlying topic.
-    #[inline]
-    pub fn iter(&self) -> slice::Iter<TopicPartition> {
-        self.partitions.iter()
-    }
-
-    /// Retrieves the list of known partitions for the underlying topic.
-    #[inline]
-    pub fn as_slice(&self) -> &[TopicPartition] {
-        &self.partitions
-    }
-
-    /// Finds a specified partition identified by its id.
-    pub fn partition(&self, partition_id: i32) -> Option<&TopicPartition> {
+    fn partition(&self, partition_id: i32) -> Option<&TopicPartition> {
         // ~ XXX might also just normally iterate and try to
         // find the element.  the number of partitions is
         // typically very constrainted.
@@ -146,12 +131,6 @@ impl TopicPartitions {
 impl TopicPartition {
     fn new(partition_id: i32, broker_index: BrokerIndex) -> TopicPartition {
         TopicPartition { partition_id: partition_id, broker_index: broker_index }
-    }
-
-    /// Retrieves the identifier of this topic partition.
-    #[inline]
-    pub fn id(&self) -> i32 {
-        self.partition_id
     }
 }
 
@@ -399,9 +378,9 @@ impl KafkaClient {
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// for topic in client.topics().iter() {
-    ///   for partition in topic.partitions().iter() {
-    ///     println!("{} => {}", topic.name(), partition.id());
+    /// for topic in client.topics() {
+    ///   for partition in topic.partitions() {
+    ///     println!("{} #{} => {}", topic.name(), partition.id(), partition.leader_host());
     ///   }
     /// }
     /// ```

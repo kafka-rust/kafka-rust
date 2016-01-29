@@ -1,49 +1,85 @@
-//! Topics related metadata. See `KafkaClient::topics`.
+//! Types related to topic metadata for introspection by clients.
+//! Example: `KafkaClient::topics()`.
 
-use std::collections::hash_map::{self, HashMap};
+use std::collections::hash_map;
+use std::slice;
 
-use super::{KafkaClient, TopicPartitions};
+use super::{KafkaClient, ClientState, TopicPartitions, TopicPartition};
 
-/// An immutable view on the load metadata about topics and their partitions.
+/// A view on the loaded metadata about topics and their partitions.
 #[derive(Debug)]
 pub struct Topics<'a> {
-    topic_partitions: &'a HashMap<String, TopicPartitions>,
+    state: &'a ClientState
 }
 
 impl<'a> Topics<'a> {
     /// Constructs a view of the currently loaded topic metadata from
     /// the specified kafka client.
+    #[inline]
     pub fn new(client: &KafkaClient) -> Topics {
-        Topics { topic_partitions: &client.state.topic_partitions }
+        Topics { state: &client.state }
     }
 
     /// Provides an iterator over the known topics.
     #[inline]
     pub fn iter(&'a self) -> TopicIter<'a> {
-        TopicIter { iter: self.topic_partitions.iter() }
+        TopicIter::new(self.state)
     }
 
     /// A conveniece method to return an iterator the topics' names.
     #[inline]
     pub fn names(&'a self) -> TopicNames<'a> {
-        TopicNames { iter: self.topic_partitions.keys() }
+        TopicNames { iter: self.state.topic_partitions.keys() }
     }
 
     /// A convenience method to determine whether the specified topic
     /// is known.
+    #[inline]
     pub fn contains(&'a self, topic: &str) -> bool {
-        self.topic_partitions.contains_key(topic)
+        self.state.topic_partitions.contains_key(topic)
     }
 
     /// Retrieves the partitions of a known topic.
-    pub fn partitions(&'a self, topic: &str) -> Option<&'a TopicPartitions> {
-        self.topic_partitions.get(topic)
+    #[inline]
+    pub fn partitions(&'a self, topic: &str) -> Option<Partitions<'a>> {
+        self.state.topic_partitions.get(topic).map(|tp| Partitions {
+            state: self.state,
+            tp: tp,
+        })
     }
 }
 
-/// An interator over the underlying topics' metadata.
+impl<'a> IntoIterator for &'a Topics<'a> {
+    type Item=Topic<'a>;
+    type IntoIter=TopicIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for Topics<'a> {
+    type Item=Topic<'a>;
+    type IntoIter=TopicIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TopicIter::new(self.state)
+    }
+}
+
+/// An interator over topics.
 pub struct TopicIter<'a> {
+    state: &'a ClientState,
     iter: hash_map::Iter<'a, String, TopicPartitions>,
+}
+
+impl<'a> TopicIter<'a> {
+    fn new(state: &'a ClientState) -> TopicIter<'a> {
+        TopicIter {
+            state: state,
+            iter: state.topic_partitions.iter()
+        }
+    }
 }
 
 impl<'a> Iterator for TopicIter<'a> {
@@ -52,8 +88,9 @@ impl<'a> Iterator for TopicIter<'a> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(name, tps) | Topic {
+            state: self.state,
             name: &name[..],
-            partitions: &tps,
+            tp: tps,
         })
     }
 }
@@ -73,26 +110,15 @@ impl<'a> Iterator for TopicNames<'a> {
     }
 }
 
-#[test]
-fn test_topics_names_iter() {
-    let mut m = HashMap::new();
-    m.insert("foo".to_owned(), TopicPartitions::new(vec![]));
-    m.insert("bar".to_owned(), TopicPartitions::new(vec![]));
-
-    let topics = Topics { topic_partitions: &m };
-    let mut names: Vec<String> = topics.names().map(ToOwned::to_owned).collect();
-    names.sort();
-    assert_eq!(vec!["bar".to_owned(), "foo".to_owned()], names);
-}
-
-/// An immutable view on a topic.
+/// A view on the loaded metadata for a particular topic.
+#[derive(Debug)]
 pub struct Topic<'a> {
+    state: &'a ClientState,
     name: &'a str,
-    partitions: &'a TopicPartitions,
+    tp: &'a TopicPartitions,
 }
 
 impl<'a> Topic<'a> {
-
     /// Retrieves the name of this topic.
     #[inline]
     pub fn name(&self) -> &str {
@@ -101,7 +127,112 @@ impl<'a> Topic<'a> {
 
     /// Retrieves the list of known partitions for this topic.
     #[inline]
-    pub fn partitions(&self) -> &'a TopicPartitions {
-        self.partitions
+    pub fn partitions(&self) -> Partitions<'a> {
+        Partitions {
+            state: self.state,
+            tp: self.tp,
+        }
+    }
+}
+
+/// Metadata relevant to partitions of a particular topic.
+#[derive(Debug)]
+pub struct Partitions<'a> {
+    state: &'a ClientState,
+    tp: &'a TopicPartitions,
+}
+
+impl<'a> Partitions<'a> {
+    /// Retrieves the number of the underlygin partitions.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.tp.partitions.len()
+    }
+
+    /// Tests for `.len() > 0`.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.tp.partitions.is_empty()
+    }
+
+    /// Retrieves an iterator of the partitions for the underlying topic.
+    #[inline]
+    pub fn iter(&self) -> PartitionIter<'a> {
+        PartitionIter::new(self.state, self.tp.partitions.iter())
+    }
+
+    /// Finds a specified partition identified by its id.
+    #[inline]
+    pub fn partition(&self, partition_id: i32) -> Option<Partition<'a>> {
+        self.tp.partition(partition_id).map(|p| Partition::new(self.state, p))
+    }
+}
+
+impl<'a> IntoIterator for &'a Partitions<'a> {
+    type Item=Partition<'a>;
+    type IntoIter=PartitionIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for Partitions<'a> {
+    type Item=Partition<'a>;
+    type IntoIter=PartitionIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        PartitionIter::new(self.state, self.tp.partitions.iter())
+    }
+}
+
+/// An interator over a topic's partitions.
+pub struct PartitionIter<'a> {
+    state: &'a ClientState,
+    iter: slice::Iter<'a, TopicPartition>
+}
+
+impl<'a> PartitionIter<'a> {
+    fn new(state: &'a ClientState, iter: slice::Iter<'a, TopicPartition>) -> Self {
+        PartitionIter { state: state, iter: iter }
+    }
+}
+
+impl<'a> Iterator for PartitionIter<'a> {
+    type Item=Partition<'a>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|tp| Partition::new(self.state, tp))
+    }
+}
+
+/// Metadata about a particular topic partition.
+pub struct Partition<'a> {
+    state: &'a ClientState,
+    partition: &'a TopicPartition,
+}
+
+impl<'a> Partition<'a> {
+    fn new(state: &'a ClientState, partition: &'a TopicPartition) -> Partition<'a> {
+        Partition { state: state, partition: partition }
+    }
+
+    /// Retrieves the identifier of this topic partition.
+    #[inline]
+    pub fn id(&self) -> i32 {
+        self.partition.partition_id
+    }
+
+    /// Retrives the node_id of the current leader of this partition.
+    #[inline]
+    pub fn leader_id(&self) -> i32 {
+        self.state.broker_by_partition(self.partition).node_id
+    }
+
+    /// Retrieves the host of the current leader of this partition.
+    #[inline]
+    pub fn leader_host(&self) -> &'a str {
+        &self.state.broker_by_partition(self.partition).host
     }
 }
