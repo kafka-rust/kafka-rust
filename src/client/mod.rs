@@ -73,8 +73,12 @@ struct ClientState {
     // (see `#next_correlation_id`)
     correlation: i32,
 
-    // ~ a list of known brokers, identified by their index, also
-    // referred to as BrokerId.
+    // ~ a list of known brokers referred to by the index in this
+    // vector.  This index is also referred to as `BrokerIndex` in
+    // this module.
+    //
+    // note: loading of additional topic metadata must preserve
+    // already present brokers in this vector at their position.
     brokers: Vec<Broker>,
 
     // ~ a mapping of topic to information about its partitions
