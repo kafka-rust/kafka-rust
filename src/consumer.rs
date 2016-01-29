@@ -43,7 +43,8 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::slice;
 
-use client::{self, KafkaClient, Topics};
+use client::{self, KafkaClient};
+use client::metadata::Topics;
 use error::{Error, KafkaCode, Result};
 use utils::{TopicPartition, TopicPartitionOffset, FetchPartition};
 

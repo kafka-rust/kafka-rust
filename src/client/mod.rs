@@ -2,7 +2,7 @@
 //! abstraction for a kafka server while supposed to allow building
 //! higher level constructs.
 
-use std::collections::hash_map::{self, HashMap, Entry};
+use std::collections::hash_map::{HashMap, Entry};
 use std::io::Cursor;
 use std::io::Read;
 use std::iter::Iterator;
@@ -20,6 +20,7 @@ use error::{Result, Error, KafkaCode};
 use protocol::{self, FromResponse};
 use utils;
 
+pub mod metadata;
 
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_SO_TIMEOUT_SECS: i32 = 120; // socket read, write timeout seconds
@@ -243,103 +244,6 @@ impl FetchOffset {
     }
 }
 
-// view objects on the currently loaded topics metadata ---------------
-
-/// An immutable view on the load metadata about topics and their partitions.
-#[derive(Debug)]
-pub struct Topics<'a> {
-    topic_partitions: &'a HashMap<String, TopicPartitions>,
-}
-
-impl<'a> Topics<'a> {
-    /// Provides an iterator over the known topics.
-    #[inline]
-    pub fn iter(&'a self) -> TopicIter<'a> {
-        TopicIter { iter: self.topic_partitions.iter() }
-    }
-
-    /// A conveniece method to return an iterator the topics' names.
-    #[inline]
-    pub fn names(&'a self) -> TopicNames<'a> {
-        TopicNames { iter: self.topic_partitions.keys() }
-    }
-
-    /// A convenience method to determine whether the specified topic
-    /// is known.
-    pub fn contains(&'a self, topic: &str) -> bool {
-        self.topic_partitions.contains_key(topic)
-    }
-
-    /// Retrieves the partitions of a known topic.
-    pub fn partitions(&'a self, topic: &str) -> Option<&'a TopicPartitions> {
-        self.topic_partitions.get(topic)
-    }
-}
-
-pub struct TopicIter<'a> {
-    iter: hash_map::Iter<'a, String, TopicPartitions>,
-}
-
-impl<'a> Iterator for TopicIter<'a> {
-    type Item=Topic<'a>;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(name, tps) | Topic {
-            name: &name[..],
-            partitions: &tps,
-        })
-    }
-}
-
-/// An iterator over the names of topics known to the originating
-/// kafka client.
-pub struct TopicNames<'a> {
-    iter: hash_map::Keys<'a, String, TopicPartitions>,
-}
-
-impl<'a> Iterator for TopicNames<'a> {
-    type Item=&'a str;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|s| &s[..])
-    }
-}
-
-#[test]
-fn test_topics_names_iter() {
-    let mut m = HashMap::new();
-    m.insert("foo".to_owned(), TopicPartitions::new(vec![]));
-    m.insert("bar".to_owned(), TopicPartitions::new(vec![]));
-
-    let topics = Topics { topic_partitions: &m };
-    let mut names: Vec<String> = topics.names().map(ToOwned::to_owned).collect();
-    names.sort();
-    assert_eq!(vec!["bar".to_owned(), "foo".to_owned()], names);
-}
-
-/// An immutable view on a topic.
-pub struct Topic<'a> {
-    name: &'a str,
-    partitions: &'a TopicPartitions,
-}
-
-impl<'a> Topic<'a> {
-
-    /// Retrieves the name of this topic.
-    #[inline]
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    /// Retrieves the list of known partitions for this topic.
-    #[inline]
-    pub fn partitions(&self) -> &'a TopicPartitions {
-        self.partitions
-    }
-}
-
 // --------------------------------------------------------------------
 
 impl KafkaClient {
@@ -502,8 +406,8 @@ impl KafkaClient {
     /// }
     /// ```
     #[inline]
-    pub fn topics(&self) -> Topics {
-        Topics { topic_partitions: &self.state.topic_partitions }
+    pub fn topics(&self) -> metadata::Topics {
+        metadata::Topics::new(self)
     }
 
     /// Resets and loads metadata for all topics from the underlying
