@@ -45,10 +45,10 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::slice;
 
-use client::{self, KafkaClient};
+use client::{self, KafkaClient, FetchPartition};
 use client::metadata::Topics;
 use error::{Error, KafkaCode, Result};
-use utils::{TopicPartition, TopicPartitionOffset, FetchPartition};
+use utils::{TopicPartition, TopicPartitionOffset};
 
 // public re-exports
 pub use client::fetch::Message;

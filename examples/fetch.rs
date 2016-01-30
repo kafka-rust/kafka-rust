@@ -1,7 +1,6 @@
 extern crate kafka;
 
-use kafka::client::KafkaClient;
-use kafka::utils::FetchPartition;
+use kafka::client::{KafkaClient, FetchPartition};
 
 /// This program demonstrates the low level api for fetching messages.
 /// Please look at examles/consume.rs for an easier to use API.
