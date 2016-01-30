@@ -329,8 +329,8 @@ fn determine_partitions(config: &Config, metadata: Topics) -> Result<Vec<i32>> {
         for &p in config.partitions.iter() {
             match avail_partitions.partition(p) {
                 None => {
-                    // debug!("no such partition: {} (all metadata for {}: {:?})",
-                    //        p, config.topic, avail_partitions.as_slice());
+                    debug!("no such partition: {} (all metadata for {}: {:?})",
+                           p, config.topic, avail_partitions);
                     return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(_) => ps.push(p),

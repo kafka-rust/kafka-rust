@@ -3,11 +3,11 @@
 
 use std::collections::hash_map;
 use std::slice;
+use std::fmt;
 
 use super::{KafkaClient, ClientState, TopicPartitions, TopicPartition};
 
 /// A view on the loaded metadata about topics and their partitions.
-#[derive(Debug)]
 pub struct Topics<'a> {
     state: &'a ClientState
 }
@@ -46,6 +46,20 @@ impl<'a> Topics<'a> {
             state: self.state,
             tp: tp,
         })
+    }
+}
+
+impl<'a> fmt::Debug for Topics<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "Topics {{ topics: ["));
+        let mut ts = self.iter();
+        if let Some(t) = ts.next() {
+            try!(write!(f, "{:?}", t));
+        }
+        for t in ts {
+            try!(write!(f, ", {:?}", t));
+        }
+        write!(f, "] }}")
     }
 }
 
@@ -111,7 +125,6 @@ impl<'a> Iterator for TopicNames<'a> {
 }
 
 /// A view on the loaded metadata for a particular topic.
-#[derive(Debug)]
 pub struct Topic<'a> {
     state: &'a ClientState,
     name: &'a str,
@@ -135,8 +148,14 @@ impl<'a> Topic<'a> {
     }
 }
 
+impl<'a> fmt::Debug for Topic<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Topic {{ name: {}, partitions: {:?} }}",
+               self.name, self.partitions())
+    }
+}
+
 /// Metadata relevant to partitions of a particular topic.
-#[derive(Debug)]
 pub struct Partitions<'a> {
     state: &'a ClientState,
     tp: &'a TopicPartitions,
@@ -165,6 +184,20 @@ impl<'a> Partitions<'a> {
     #[inline]
     pub fn partition(&self, partition_id: i32) -> Option<Partition<'a>> {
         self.tp.partition(partition_id).map(|p| Partition::new(self.state, p))
+    }
+}
+
+impl<'a> fmt::Debug for Partitions<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "Partitions {{ ["));
+        let mut ps = self.iter();
+        if let Some(p) = ps.next() {
+            try!(write!(f, "{:?}", p));
+        }
+        for p in ps {
+            try!(write!(f, ", {:?}", p));
+        }
+        write!(f, "] }}")
     }
 }
 
@@ -234,5 +267,12 @@ impl<'a> Partition<'a> {
     #[inline]
     pub fn leader_host(&self) -> &'a str {
         &self.state.broker_by_partition(self.partition).host
+    }
+}
+
+impl<'a> fmt::Debug for Partition<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Partition {{ id: {}, leader_id: {}, leader_host: {} }}",
+               self.id(), self.leader_id(), self.leader_host())
     }
 }
