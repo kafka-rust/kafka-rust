@@ -10,7 +10,9 @@
 //! use kafka::consumer::{Consumer, FetchOffset};
 //!
 //! let mut consumer =
-//!    Consumer::from_hosts(vec!("localhost:9092".to_owned()), "my-group".to_owned(), "my-topic".to_owned())
+//!    Consumer::from_hosts(vec!("localhost:9092".to_owned()),
+//!                              "my-group".to_owned(),
+//!                              "my-topic".to_owned())
 //!       .with_partitions(&[0, 1])
 //!       .with_fallback_offset(FetchOffset::Earliest)
 //!       .create()
@@ -191,6 +193,9 @@ impl Consumer {
                             }
                             debug!("increased max_bytes for {}:{} from {} to {}",
                                    t.topic(), partition, prev_max_bytes, fetch_state.max_bytes);
+
+                            // XXX in future issue a retry request immediatelly just for this single partition
+
                         }
                     }
                 }

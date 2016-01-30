@@ -120,9 +120,6 @@ impl TopicPartitions {
     }
 
     fn partition(&self, partition_id: i32) -> Option<&TopicPartition> {
-        // ~ XXX might also just normally iterate and try to
-        // find the element.  the number of partitions is
-        // typically very constrainted.
         self.partitions.binary_search_by(|e| {
             e.partition_id.cmp(&partition_id)
         }).ok().and_then(|i| {
