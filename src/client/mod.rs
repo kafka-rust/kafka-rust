@@ -2,13 +2,11 @@
 //! abstraction for a kafka server while supposed to allow building
 //! higher level constructs.
 
-use std::collections::hash_map::{self, HashMap};
+use std::collections::hash_map::{HashMap, Entry};
 use std::io::Cursor;
 use std::io::Read;
 use std::iter::Iterator;
 use std::mem;
-use std::rc::Rc;
-use std::slice;
 use std::cell::Cell;
 
 // pub re-export
@@ -21,6 +19,7 @@ use error::{Result, Error, KafkaCode};
 use protocol::{self, FromResponse};
 use utils;
 
+pub mod metadata;
 
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_SO_TIMEOUT_SECS: i32 = 120; // socket read, write timeout seconds
@@ -43,7 +42,6 @@ pub const DEFAULT_FETCH_MAX_BYTES_PER_PARTITION: i32 = 32 * 1024;
 /// Implements methods described by the [Kafka Protocol](https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol).
 ///
 /// You will have to load metadata before making any other request.
-// XXX rename to client
 #[derive(Debug)]
 pub struct KafkaClient {
     // ~ this kafka client configuration
@@ -75,16 +73,45 @@ struct ClientState {
     // (see `#next_correlation_id`)
     correlation: i32,
 
+    // ~ a list of known brokers referred to by the index in this
+    // vector.  This index is also referred to as `BrokerIndex` in
+    // this module.
+    //
+    // note: loading of additional topic metadata must preserve
+    // already present brokers in this vector at their position.
+    brokers: Vec<Broker>,
+
     // ~ a mapping of topic to information about its partitions
     // ~ `TopicPartitions#partitions` are kept in ascending order by `partition_id`
     topic_partitions: HashMap<String, TopicPartitions>,
 }
 
+#[derive(Debug)]
+struct Broker {
+    /// ~ the kafka identifier of this broker
+    node_id: i32,
+    /// ~ host:port of this broker
+    host: String,
+}
+
 /// A representation of partitions for a single topic.
 #[derive(Debug)]
-pub struct TopicPartitions {
+struct TopicPartitions {
     curr_partition_idx: Cell<usize>,
     partitions: Vec<TopicPartition>,
+}
+
+/// A custom identifier for a broker. KafkaClient maintains an array
+/// of brokers where a BrokerId is the index into this array.
+#[derive(Debug, Copy, Clone)]
+struct BrokerIndex(u32);
+
+/// Metadata for a single topic partition.
+#[derive(Debug)]
+struct TopicPartition {
+    partition_id: i32,
+    // ~ an index into ClientState#brokers
+    broker_index: BrokerIndex,
 }
 
 impl TopicPartitions {
@@ -92,23 +119,7 @@ impl TopicPartitions {
         TopicPartitions { curr_partition_idx: Cell::new(0), partitions: partitions }
     }
 
-    /// Retrieves an iterator of the partitions for the underlying topic.
-    #[inline]
-    pub fn iter(&self) -> slice::Iter<TopicPartition> {
-        self.partitions.iter()
-    }
-
-    /// Retrieves the list of known partitions for the underlying topic.
-    #[inline]
-    pub fn as_slice(&self) -> &[TopicPartition] {
-        &self.partitions
-    }
-
-    /// Finds a specified partition identified by its id.
-    pub fn partition(&self, partition_id: i32) -> Option<&TopicPartition> {
-        // ~ XXX might also just normally iterate and try to
-        // find the element.  the number of partitions is
-        // typically very constrainted.
+    fn partition(&self, partition_id: i32) -> Option<&TopicPartition> {
         self.partitions.binary_search_by(|e| {
             e.partition_id.cmp(&partition_id)
         }).ok().and_then(|i| {
@@ -118,29 +129,9 @@ impl TopicPartitions {
     }
 }
 
-/// Metadata for a single topic partition.
-#[derive(Debug)]
-pub struct TopicPartition {
-    partition_id: i32,
-    broker_host: Rc<String>,
-}
-
 impl TopicPartition {
-    fn new(partition_id: i32, broker_host: Rc<String>) -> TopicPartition {
-        TopicPartition { partition_id: partition_id, broker_host: broker_host }
-    }
-
-    /// Retrieves the identifier of this topic partition.
-    #[inline]
-    pub fn id(&self) -> i32 {
-        self.partition_id
-    }
-
-    /// Retrieves the leader broker this partitions is currently
-    /// served by.
-    #[inline]
-    pub fn leader(&self) -> &str {
-        &self.broker_host
+    fn new(partition_id: i32, broker_index: BrokerIndex) -> TopicPartition {
+        TopicPartition { partition_id: partition_id, broker_index: broker_index }
     }
 }
 
@@ -150,9 +141,16 @@ impl ClientState {
         self.correlation
     }
 
+    fn broker_by_partition(&self, partition: &TopicPartition) -> &Broker {
+        &self.brokers[partition.broker_index.0 as usize]
+    }
+
     fn find_broker<'a>(&'a self, topic: &str, partition: i32) -> Option<&'a str> {
         self.topic_partitions.get(topic)
-            .and_then(|tp| tp.partition(partition).map(|p| &p.broker_host[..]))
+            .and_then(|tp| tp.partition(partition).map(|p| {
+                let host: &str = &self.broker_by_partition(p).host;
+                host
+            }))
     }
 
     /// Chooses for the given topic a partition to write the next message to.
@@ -165,7 +163,7 @@ impl ClientState {
                 let p_idx = (topic.curr_partition_idx.get() + 1) % topic.partitions.len();
                 topic.curr_partition_idx.set(p_idx);
                 let p = &topic.partitions[p_idx];
-                let broker: &str = &p.broker_host;
+                let broker: &str = &self.broker_by_partition(p).host;
                 Some((p.partition_id, broker))
             }
         }
@@ -226,100 +224,54 @@ impl FetchOffset {
     }
 }
 
-// view objects on the currently loaded topics metadata ---------------
+// --------------------------------------------------------------------
 
-/// An immutable view on the load metadata about topics and their partitions.
+/// Partition related request data for fetching messages.
+/// See `KafkaClient::fetch_messages`.
 #[derive(Debug)]
-pub struct Topics<'a> {
-    topic_partitions: &'a HashMap<String, TopicPartitions>,
+pub struct FetchPartition<'a> {
+    /// The topic to fetch messages from.
+    pub topic: &'a str,
+
+    /// The offset as of which to fetch messages.
+    pub offset: i64,
+
+    /// The partition to fetch messasges from.
+    pub partition: i32,
+
+    /// Specifies the max. amount of data to fetch (for this
+    /// partition.)  This implicitely defines the biggest message the
+    /// client can accept.  If this value is too small, no messages
+    /// can be delivered.  Setting this size should be in sync with
+    /// the producers to the partition.
+    ///
+    /// Zero or negative values are treated as "unspecified".
+    pub max_bytes: i32,
 }
 
-impl<'a> Topics<'a> {
-    /// Provides an iterator over the known topics.
-    #[inline]
-    pub fn iter(&'a self) -> TopicIter<'a> {
-        TopicIter { iter: self.topic_partitions.iter() }
+impl<'a> FetchPartition<'a> {
+
+    /// Creates a new "fetch messages" request structure with an
+    /// unspecified `max_bytes`.
+    pub fn new(topic: &'a str, partition: i32, offset: i64) -> Self {
+        FetchPartition {
+            topic: topic,
+            partition: partition,
+            offset: offset,
+            max_bytes: -1,
+        }
     }
 
-    /// A conveniece method to return an iterator the topics' names.
-    #[inline]
-    pub fn names(&'a self) -> TopicNames<'a> {
-        TopicNames { iter: self.topic_partitions.keys() }
-    }
-
-    /// A convenience method to determine whether the specified topic
-    /// is known.
-    pub fn contains(&'a self, topic: &str) -> bool {
-        self.topic_partitions.contains_key(topic)
-    }
-
-    /// Retrieves the partitions of a known topic.
-    pub fn partitions(&'a self, topic: &str) -> Option<&'a TopicPartitions> {
-        self.topic_partitions.get(topic)
-    }
-}
-
-pub struct TopicIter<'a> {
-    iter: hash_map::Iter<'a, String, TopicPartitions>,
-}
-
-impl<'a> Iterator for TopicIter<'a> {
-    type Item=Topic<'a>;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(name, tps) | Topic {
-            name: &name[..],
-            partitions: &tps,
-        })
+    /// Sets the `max_bytes` value for the "fetch messages" request.
+    pub fn with_max_bytes(mut self, max_bytes: i32) -> Self {
+        self.max_bytes = max_bytes;
+        self
     }
 }
 
-/// An iterator over the names of topics known to the originating
-/// kafka client.
-pub struct TopicNames<'a> {
-    iter: hash_map::Keys<'a, String, TopicPartitions>,
-}
-
-impl<'a> Iterator for TopicNames<'a> {
-    type Item=&'a str;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|s| &s[..])
-    }
-}
-
-#[test]
-fn test_topics_names_iter() {
-    let mut m = HashMap::new();
-    m.insert("foo".to_owned(), TopicPartitions::new(vec![]));
-    m.insert("bar".to_owned(), TopicPartitions::new(vec![]));
-
-    let topics = Topics { topic_partitions: &m };
-    let mut names: Vec<String> = topics.names().map(ToOwned::to_owned).collect();
-    names.sort();
-    assert_eq!(vec!["bar".to_owned(), "foo".to_owned()], names);
-}
-
-/// An immutable view on a topic.
-pub struct Topic<'a> {
-    name: &'a str,
-    partitions: &'a TopicPartitions,
-}
-
-impl<'a> Topic<'a> {
-
-    /// Retrieves the name of this topic.
-    #[inline]
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    /// Retrieves the list of known partitions for this topic.
-    #[inline]
-    pub fn partitions(&self) -> &'a TopicPartitions {
-        self.partitions
+impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
+    fn as_ref(&self) -> &Self {
+        &self
     }
 }
 
@@ -339,7 +291,6 @@ impl KafkaClient {
     ///
     /// See also `KafkaClient::load_metadatata_all` and `KafkaClient::load_metadata`
     pub fn new(hosts: Vec<String>) -> KafkaClient {
-        let n_hosts = hosts.len();
         KafkaClient {
             config: ClientConfig {
                 client_id: CLIENTID.to_owned(),
@@ -352,7 +303,8 @@ impl KafkaClient {
             conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
             state: ClientState {
                 correlation: 0,
-                topic_partitions: HashMap::with_capacity(n_hosts),
+                brokers: Vec::new(),
+                topic_partitions: HashMap::new(),
             },
         }
     }
@@ -416,8 +368,7 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
-    /// use kafka::client::KafkaClient;
-    /// use kafka::utils::FetchPartition;
+    /// use kafka::client::{KafkaClient, FetchPartition};
     ///
     /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
@@ -478,15 +429,15 @@ impl KafkaClient {
     /// ```no_run
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// for topic in client.topics().iter() {
-    ///   for partition in topic.partitions().iter() {
-    ///     println!("{}:{} => {}", topic.name(), partition.id(), partition.leader());
+    /// for topic in client.topics() {
+    ///   for partition in topic.partitions() {
+    ///     println!("{} #{} => {}", topic.name(), partition.id(), partition.leader_host());
     ///   }
     /// }
     /// ```
     #[inline]
-    pub fn topics(&self) -> Topics {
-        Topics { topic_partitions: &self.state.topic_partitions }
+    pub fn topics(&self) -> metadata::Topics {
+        metadata::Topics::new(self)
     }
 
     /// Resets and loads metadata for all topics from the underlying
@@ -543,23 +494,53 @@ impl KafkaClient {
     // generic (and hence will _not_ get generated for each distinct
     // input type T to the `load_metadata` method).
     fn load_metadata_impl(&mut self, md: protocol::MetadataResponse) -> Result<()> {
-        let mut brokers: HashMap<i32, Rc<String>> = HashMap::new();
-        for broker in md.brokers {
-            brokers.insert(broker.nodeid, Rc::new(format!("{}:{}", broker.host, broker.port)));
+        // ~ build up an index of the already loaded brokers -- if any
+        let mut brokers: HashMap<i32, BrokerIndex> =
+            HashMap::with_capacity(md.brokers.len() + self.state.brokers.len());
+        for (i, broker) in (0u32..).zip(self.state.brokers.iter()) {
+            brokers.insert(broker.node_id, BrokerIndex(i));
         }
-        for topic in md.topics {
-            let mut known_partitions = Vec::with_capacity(topic.partitions.len());
-            for partition in topic.partitions {
+        // ~ now update add new brokers or updated existing ones
+        for broker in md.brokers {
+            let broker_host = format!("{}:{}", broker.host, broker.port);
+            match brokers.entry(broker.nodeid) {
+                Entry::Occupied(e) => {
+                    // ~ verify our information of the already tracked
+                    // broker is up-to-date
+                    let broker_index = *e.get();
+                    let b = &mut self.state.brokers[broker_index.0 as usize];
+                    if b.host != broker_host {
+                        b.host = broker_host;
+                    }
+                }
+                Entry::Vacant(e) => {
+                    // ~ insert the new broker
+                    self.state.brokers.push(Broker {
+                        node_id: broker.nodeid,
+                        host: broker_host,
+                    });
+                    // ~ track the new broker's index
+                    e.insert(BrokerIndex((self.state.brokers.len() - 1) as u32));
+                }
+            }
+        }
+
+        for t in md.topics {
+            let mut known_partitions = Vec::with_capacity(t.partitions.len());
+            for partition in t.partitions {
                 match brokers.get(&partition.leader) {
-                    Some(broker) => {
-                        known_partitions.push(TopicPartition::new(partition.id, broker.clone()));
+                    Some(broker_index) => {
+                        known_partitions.push(TopicPartition::new(partition.id, *broker_index));
                     },
-                    None => {}
+                    None => {
+                        debug!("unknown leader {} for topic-partition: {}:{}",
+                               partition.leader, t.topic, partition.id);
+                    }
                 }
             }
             known_partitions.sort_by(|a, b| a.partition_id.cmp(&b.partition_id));
             self.state.topic_partitions.insert(
-                topic.topic, TopicPartitions::new(known_partitions));
+                t.topic, TopicPartitions::new(known_partitions));
         }
         Ok(())
     }
@@ -569,6 +550,7 @@ impl KafkaClient {
     #[inline]
     pub fn reset_metadata(&mut self) {
         self.state.topic_partitions.clear();
+        self.state.brokers.clear();
     }
 
     /// Fetches metadata about the specified topics from all of the
@@ -609,12 +591,13 @@ impl KafkaClient {
 
         // Map topic and partition to the corresponding broker
         let config = &self.config;
-        let mut reqs: HashMap<Rc<String>, protocol::OffsetRequest> = HashMap::with_capacity(n_topics);
+        let mut reqs: HashMap<&str, protocol::OffsetRequest> = HashMap::with_capacity(n_topics);
         for topic in topics {
             let topic = topic.as_ref();
             if let Some(tp) = state.topic_partitions.get(topic) {
                 for p in &tp.partitions {
-                    let entry = reqs.entry(p.broker_host.clone())
+                    let host: &str = &state.broker_by_partition(p).host;
+                    let entry = reqs.entry(host)
                         .or_insert_with(|| protocol::OffsetRequest::new(correlation, &config.client_id));
                     entry.add(topic, p.partition_id, time);
                 }
@@ -696,8 +679,7 @@ impl KafkaClient {
     /// messages.
     ///
     /// ```no_run
-    /// use kafka::client::KafkaClient;
-    /// use kafka::utils::FetchPartition;
+    /// use kafka::client::{KafkaClient, FetchPartition};
     ///
     /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
@@ -727,7 +709,7 @@ impl KafkaClient {
     /// See also `kafka::consumer`.
     /// See also `KafkaClient::set_fetch_max_bytes_per_partition`.
     pub fn fetch_messages<'a, I, J>(&mut self, input: I) -> Result<Vec<fetch::FetchResponse>>
-        where J: AsRef<utils::FetchPartition<'a>>, I: IntoIterator<Item=J>
+        where J: AsRef<FetchPartition<'a>>, I: IntoIterator<Item=J>
     {
         let state = &mut self.state;
         let config = &self.config;

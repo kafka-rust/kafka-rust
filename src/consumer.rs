@@ -10,7 +10,9 @@
 //! use kafka::consumer::{Consumer, FetchOffset};
 //!
 //! let mut consumer =
-//!    Consumer::from_hosts(vec!("localhost:9092".to_owned()), "my-group".to_owned(), "my-topic".to_owned())
+//!    Consumer::from_hosts(vec!("localhost:9092".to_owned()),
+//!                              "my-group".to_owned(),
+//!                              "my-topic".to_owned())
 //!       .with_partitions(&[0, 1])
 //!       .with_fallback_offset(FetchOffset::Earliest)
 //!       .create()
@@ -43,9 +45,10 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::slice;
 
-use client::{self, KafkaClient, Topics};
+use client::{self, KafkaClient, FetchPartition};
+use client::metadata::Topics;
 use error::{Error, KafkaCode, Result};
-use utils::{TopicPartition, TopicPartitionOffset, FetchPartition};
+use utils::{TopicPartition, TopicPartitionOffset};
 
 // public re-exports
 pub use client::fetch::Message;
@@ -190,6 +193,9 @@ impl Consumer {
                             }
                             debug!("increased max_bytes for {}:{} from {} to {}",
                                    t.topic(), partition, prev_max_bytes, fetch_state.max_bytes);
+
+                            // XXX in future issue a retry request immediatelly just for this single partition
+
                         }
                     }
                 }
@@ -329,7 +335,7 @@ fn determine_partitions(config: &Config, metadata: Topics) -> Result<Vec<i32>> {
             match avail_partitions.partition(p) {
                 None => {
                     debug!("no such partition: {} (all metadata for {}: {:?})",
-                           p, config.topic, avail_partitions.as_slice());
+                           p, config.topic, avail_partitions);
                     return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(_) => ps.push(p),
