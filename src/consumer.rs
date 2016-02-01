@@ -50,11 +50,11 @@ use client::{self, KafkaClient, FetchPartition};
 use client::metadata::Topics;
 use error::{Error, KafkaCode, Result};
 use utils::{TopicPartition, TopicPartitionOffset};
+use client::fetch;
 
 // public re-exports
 pub use client::fetch::Message;
 pub use client::FetchOffset;
-use client::fetch::{FetchResponse, TopicFetchResponse, PartitionFetchResponse};
 
 /// The default value for `Consumer::with_retry_max_bytes_limit`.
 pub const DEFAULT_RETRY_MAX_BYTES_LIMIT: i32 = 0;
@@ -144,7 +144,7 @@ impl Consumer {
     }
 
     // ~ returns (number partitions queried, fecth responses)
-    fn fetch_messages(&mut self) -> (u32, Result<Vec<FetchResponse>>) {
+    fn fetch_messages(&mut self) -> (u32, Result<Vec<fetch::Response>>) {
         let topic = &self.config.topic;
         let fetch_offsets = &self.state.fetch_offsets;
         // ~ if there's a retry partition ... fetch messages just for
@@ -181,7 +181,7 @@ impl Consumer {
     // ~ num_partitions_queried: the original number of partitions requested/queried for
     //   the responses
     // ~ resps: the responses to post process
-    fn process_fetch_responses(&mut self, num_partitions_queried: u32, resps: Vec<FetchResponse>)
+    fn process_fetch_responses(&mut self, num_partitions_queried: u32, resps: Vec<fetch::Response>)
                                -> Result<MessageSets>
     {
         let single_partition_consumer = self.single_partition_consumer();
@@ -486,7 +486,7 @@ fn load_fetch_states(config: &Config,
 /// the consumed topic partitions.  Each such partitions is guaranteed
 /// to be present at most once in this structure.
 pub struct MessageSets {
-    responses: Vec<FetchResponse>,
+    responses: Vec<fetch::Response>,
 
     /// Precomputed; Says whether there are some messages or whether
     /// the responses actually contain consumeable messages
@@ -545,10 +545,10 @@ impl<'a> MessageSet<'a> {
 
 /// An iterator over the consumed topic partition message sets.
 pub struct MessageSetsIter<'a> {
-    responses: slice::Iter<'a, FetchResponse>,
-    topics: Option<slice::Iter<'a, TopicFetchResponse<'a>>>,
+    responses: slice::Iter<'a, fetch::Response>,
+    topics: Option<slice::Iter<'a, fetch::Topic<'a>>>,
     curr_topic: &'a str,
-    partitions: Option<slice::Iter<'a, PartitionFetchResponse<'a>>>,
+    partitions: Option<slice::Iter<'a, fetch::Partition<'a>>>,
 }
 
 impl<'a> Iterator for MessageSetsIter<'a> {
