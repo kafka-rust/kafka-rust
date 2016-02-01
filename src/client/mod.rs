@@ -739,6 +739,18 @@ impl KafkaClient {
         __fetch_messages(&mut self.conn_pool, reqs)
     }
 
+    /// Fetch messages from a single kafka partition.
+    ///
+    /// See `KafkaClient::fetch_messages`.
+    pub fn fetch_messages_for_partition<'a>(&mut self, req: &FetchPartition<'a>)
+                                            -> Result<Vec<fetch::FetchResponse>>
+    {
+        // XXX since we deal with exactly one partition we can generate
+        // the fetch request to the corresponding kafka broker more
+        // efficiently
+        self.fetch_messages(&[req])
+    }
+
     /// Send a message to Kafka
     ///
     /// `required_acks` - indicates how many acknowledgements the servers should receive before

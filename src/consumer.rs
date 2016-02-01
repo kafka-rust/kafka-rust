@@ -43,6 +43,7 @@
 //! messages to Kafka automatically.
 
 use std::collections::hash_map::{HashMap, Entry};
+use std::collections::VecDeque;
 use std::slice;
 
 use client::{self, KafkaClient, FetchPartition};
@@ -80,12 +81,14 @@ struct FetchState {
 struct State {
     /// Contains the information relevant for the next fetch operation
     /// on the corresponding partitions
-    // XXX might want to change into a Vec<_> where index denotes the partition_id
     fetch_offsets: HashMap<i32, FetchState>,
+
+    /// Specifies partitions to be fetched on their own in the next
+    /// poll request.
+    retry_partitions: VecDeque<i32>,
 
     /// Contains the offsets of messages marked as "consumed" (to be
     /// committed)
-    // XXX might want to change into a Vec<_> where index denotes the partition_id
     consumed_offsets: HashMap<i32, i64>,
 
     /// `true` iff the consumed_offsets contain data which needs to be
@@ -130,8 +133,60 @@ impl Consumer {
 
     /// Polls for the next available message data.
     pub fn poll(&mut self) -> Result<MessageSets> {
-        let resps = try!(self.fetch_messages());
+        let (n, resps) = self.fetch_messages();
+        self.process_fetch_responses(n, try!(resps))
+    }
+
+    /// Determines whether this consumer is set up to consume only a
+    /// single partition.
+    pub fn single_partition_consumer(&self) -> bool {
+        self.state.fetch_offsets.len() == 1
+    }
+
+    // ~ returns (number partitions queried, fecth responses)
+    fn fetch_messages(&mut self) -> (u32, Result<Vec<FetchResponse>>) {
+        let topic = &self.config.topic;
+        let fetch_offsets = &self.state.fetch_offsets;
+        // ~ if there's a retry partition ... fetch messages just for
+        // that one. Otherwise try to fetch messages for all assigned
+        // partitions.
+        match self.state.retry_partitions.pop_front() {
+            Some(partition) => {
+                let s = match fetch_offsets.get(&partition) {
+                    Some(fstate) => fstate,
+                    None => return (1, Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition))),
+                };
+                debug!("fetching messages: (topic: {} / fetch-offset: {{{}: {:?}}})",
+                       topic, partition, s);
+                (1, self.client.fetch_messages_for_partition(
+                    &FetchPartition::new(topic, partition, s.offset)
+                        .with_max_bytes(s.max_bytes)))
+            }
+            None => {
+                debug!("fetching messages: (topic: {} / fetch-offsets: {:?})",
+                       topic, fetch_offsets);
+                let reqs = fetch_offsets.iter()
+                    .map(|(&p, s)| {
+                        FetchPartition::new(topic, p, s.offset)
+                            .with_max_bytes(s.max_bytes)
+                    });
+                (fetch_offsets.len() as u32, self.client.fetch_messages(reqs))
+            }
+        }
+    }
+
+    // ~ post process a data retrieved through fetch_messages before
+    // handing them out to client code
+    //   - update the fetch state for the next fetch cycle
+    // ~ num_partitions_queried: the original number of partitions requested/queried for
+    //   the responses
+    // ~ resps: the responses to post process
+    fn process_fetch_responses(&mut self, num_partitions_queried: u32, resps: Vec<FetchResponse>)
+                               -> Result<MessageSets>
+    {
+        let single_partition_consumer = self.single_partition_consumer();
         let mut empty = true;
+        let mut retry_partitions = &mut self.state.retry_partitions;
 
         for resp in &resps {
             for t in resp.topics() {
@@ -145,6 +200,7 @@ impl Consumer {
                     // certain errors and retry the fetch operation
                     // transparently for the caller.
                     let data = match p.data() {
+                        // XXX need to prevent updating fetch_offsets in case we're gonna fail here
                         &Err(ref e) => return Err(e.clone()),
                         &Ok(ref data) => data,
                     };
@@ -163,8 +219,8 @@ impl Consumer {
                         empty = false;
 
                         // ~ reset the max_bytes again to its usual
-                        // value if we had a retry request before
-                        // going on and now finally got some data
+                        // value if we had a retry request and finally
+                        // got some data
                         if fetch_state.max_bytes != self.client.fetch_max_bytes_per_partition() {
                             let prev_max_bytes = fetch_state.max_bytes;
                             fetch_state.max_bytes = self.client.fetch_max_bytes_per_partition();
@@ -180,22 +236,36 @@ impl Consumer {
                         // than the one we tried to fetch ... we'll
                         // try to increase the max-fetch-size in the
                         // next fetch request
-                        if fetch_state.offset < data.highwatermark_offset()
-                            && fetch_state.max_bytes != self.config.retry_max_bytes_limit
-                        {
-                            // ~ try to double the max_bytes
-                            let prev_max_bytes = fetch_state.max_bytes;
-                            let incr_max_bytes = prev_max_bytes + prev_max_bytes;
-                            if incr_max_bytes > self.config.retry_max_bytes_limit {
-                                fetch_state.max_bytes = self.config.retry_max_bytes_limit;
-                            } else {
-                                fetch_state.max_bytes = incr_max_bytes;
+                        if fetch_state.offset < data.highwatermark_offset() {
+                            if fetch_state.max_bytes < self.config.retry_max_bytes_limit {
+                                // ~ try to double the max_bytes
+                                let prev_max_bytes = fetch_state.max_bytes;
+                                let incr_max_bytes = prev_max_bytes + prev_max_bytes;
+                                if incr_max_bytes > self.config.retry_max_bytes_limit {
+                                    fetch_state.max_bytes = self.config.retry_max_bytes_limit;
+                                } else {
+                                    fetch_state.max_bytes = incr_max_bytes;
+                                }
+                                debug!("increased max_bytes for {}:{} from {} to {}",
+                                       t.topic(), partition, prev_max_bytes, fetch_state.max_bytes);
+                            } else if num_partitions_queried == 1 {
+                                // ~ this was a single partition
+                                // request and we didn't get anything
+                                // and we won't be increasing the max
+                                // fetch size ... this is will fail
+                                // forever ... signal the problem to
+                                // the user
+                                return Err(Error::Kafka(KafkaCode::MessageSizeTooLarge));
                             }
-                            debug!("increased max_bytes for {}:{} from {} to {}",
-                                   t.topic(), partition, prev_max_bytes, fetch_state.max_bytes);
-
-                            // XXX in future issue a retry request immediatelly just for this single partition
-
+                            // ~ if this consumer is subscribed to one
+                            // partition only, there's no need to push
+                            // the partition to the 'retry_partitions'
+                            // (this is just a small optimization)
+                            if !single_partition_consumer {
+                                // ~ mark this partition for a retry on its own
+                                debug!("rescheduled for retry: {}:{}", t.topic(), partition);
+                                retry_partitions.push_back(partition)
+                            }
                         }
                     }
                 }
@@ -208,18 +278,6 @@ impl Consumer {
         // consumption
 
         Ok(MessageSets{ responses: resps, empty: empty })
-    }
-
-    fn fetch_messages(&mut self) -> Result<Vec<FetchResponse>> {
-        let topic = &self.config.topic;
-        let fetch_offsets = &self.state.fetch_offsets;
-        debug!("fetching messages: (topic: {} / fetch-offsets: {:?})", topic, fetch_offsets);
-        let reqs = fetch_offsets.iter()
-            .map(|(&p, s)| {
-                FetchPartition::new(topic, p, s.offset)
-                    .with_max_bytes(s.max_bytes)
-            });
-        self.client.fetch_messages(reqs)
     }
 
     /// Retrieves the offset of the last "consumed" message in the
@@ -305,6 +363,7 @@ impl State {
 
         Ok(State {
             fetch_offsets: fetch_offsets,
+            retry_partitions: VecDeque::new(),
             consumed_offsets: consumed_offsets,
             consumed_offsets_dirty: false,
         })
