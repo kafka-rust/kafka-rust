@@ -30,7 +30,7 @@ macro_rules! array_of {
 /// The result of a "fetch messages" request from a particular Kafka
 /// broker. Such a response can contain messages for multiple topic
 /// partitions.
-pub struct FetchResponse {
+pub struct Response {
     // used to "own" the data all other references of this struct
     // point to.
     #[allow(dead_code)]
@@ -38,28 +38,28 @@ pub struct FetchResponse {
 
     correlation_id: i32,
 
-    // ~ static is used here to get around the fact that we don't want
-    // FetchResponse have a lifetime parameter as well. the field is
+    // ~ Static is used here to get around the fact that we don't want
+    // Response have to a lifetime parameter as well.  The field is
     // exposed only through an accessor which binds the exposed
-    // lifetime to the lifetime of the FetchResponse instance
-    topics: Vec<TopicFetchResponse<'static>>,
+    // lifetime to the lifetime of the Response instance.
+    topics: Vec<Topic<'static>>,
 }
 
-impl FromResponse for FetchResponse {
+impl FromResponse for Response {
     fn from_response(response: Vec<u8>) -> Result<Self> {
-        FetchResponse::from_vec(response)
+        Response::from_vec(response)
     }
 }
 
-impl FetchResponse {
-    /// Parses a FetchResponse from binary data as defined by the
+impl Response {
+    /// Parses a Response from binary data as defined by the
     /// Kafka Protocol.
-    fn from_vec(response: Vec<u8>) -> Result<FetchResponse> {
+    fn from_vec(response: Vec<u8>) -> Result<Response> {
         let slice = unsafe { mem::transmute(&response[..]) };
         let mut r = ZReader::new(slice);
         let correlation_id = try!(r.read_i32());
-        let topics = array_of!(r, TopicFetchResponse::read(&mut r));
-        Ok(FetchResponse {
+        let topics = array_of!(r, Topic::read(&mut r));
+        Ok(Response {
             raw_data: response,
             correlation_id: correlation_id,
             topics: topics
@@ -76,7 +76,7 @@ impl FetchResponse {
     /// Provides an iterator over all the topics and the fetched data
     /// relative to these topics.
     #[inline]
-    pub fn topics<'a>(&'a self) -> &[TopicFetchResponse<'a>] {
+    pub fn topics<'a>(&'a self) -> &[Topic<'a>] {
         &self.topics
     }
 }
@@ -85,16 +85,16 @@ impl FetchResponse {
 /// broker for a single topic only.  Beside the name of the topic,
 /// this structure provides an iterator over the topic partitions from
 /// which messages were requested.
-pub struct TopicFetchResponse<'a> {
+pub struct Topic<'a> {
     topic: &'a str,
-    partitions: Vec<PartitionFetchResponse<'a>>,
+    partitions: Vec<Partition<'a>>,
 }
 
-impl<'a> TopicFetchResponse<'a> {
-    fn read(r: &mut ZReader<'a>) -> Result<TopicFetchResponse<'a>> {
+impl<'a> Topic<'a> {
+    fn read(r: &mut ZReader<'a>) -> Result<Topic<'a>> {
         let name = try!(r.read_str());
-        let partitions = array_of!(r, PartitionFetchResponse::read(r));
-        Ok(TopicFetchResponse {
+        let partitions = array_of!(r, Partition::read(r));
+        Ok(Topic {
             topic: name,
             partitions: partitions,
         })
@@ -109,7 +109,7 @@ impl<'a> TopicFetchResponse<'a> {
     /// Provides an iterator over all the partitions of this topic for
     /// which messages were requested.
     #[inline]
-    pub fn partitions(&self) -> &[PartitionFetchResponse<'a>] {
+    pub fn partitions(&self) -> &[Partition<'a>] {
         &self.partitions
     }
 }
@@ -121,27 +121,27 @@ impl<'a> TopicFetchResponse<'a> {
 ///
 /// Note: There might have been a (recoverable) error for a particular
 /// partition (but not for another).
-pub struct PartitionFetchResponse<'a> {
+pub struct Partition<'a> {
     /// The identifier of the represented partition.
     partition: i32,
 
     /// Either an error or the partition data.
-    data: Result<PartitionData<'a>>,
+    data: Result<Data<'a>>,
 }
 
-impl<'a> PartitionFetchResponse<'a> {
-    fn read(r: &mut ZReader<'a>) -> Result<PartitionFetchResponse<'a>> {
+impl<'a> Partition<'a> {
+    fn read(r: &mut ZReader<'a>) -> Result<Partition<'a>> {
         let partition = try!(r.read_i32());
         let error = Error::from_protocol_error(try!(r.read_i16()));
         // we need to parse the rest even if there was an error to
         // consume the input stream (zreader)
         let highwatermark = try!(r.read_i64());
         let msgset = try!(MessageSet::from_slice(try!(r.read_bytes())));
-        Ok(PartitionFetchResponse {
+        Ok(Partition {
             partition: partition,
             data: match error {
                 Some(error) => Err(error),
-                None => Ok(PartitionData {
+                None => Ok(Data {
                     highwatermark_offset: highwatermark,
                     message_set: msgset,
                     first_message_idx: Cell::new(0),
@@ -157,13 +157,13 @@ impl<'a> PartitionFetchResponse<'a> {
     }
 
     /// Retrieves the data payload for this partition.
-    pub fn data(&'a self) -> &'a Result<PartitionData<'a>> {
+    pub fn data(&'a self) -> &'a Result<Data<'a>> {
         &self.data
     }
 }
 
 /// The successfully fetched data payload for a particular partition.
-pub struct PartitionData<'a> {
+pub struct Data<'a> {
     highwatermark_offset: i64,
     message_set: MessageSet<'a>,
 
@@ -172,7 +172,7 @@ pub struct PartitionData<'a> {
     first_message_idx: Cell<usize>,
 }
 
-impl<'a> PartitionData<'a> {
+impl<'a> Data<'a> {
     /// Retrieves the so-called "high water mark offset" indicating
     /// the "latest" offset for this partition at the remote broker.
     /// This can be used by clients to find out how much behind the
@@ -350,7 +350,7 @@ impl<'a> ProtocolMessage<'a> {
 mod tests {
     use std::str;
 
-    use super::{FetchResponse, Message};
+    use super::{Response, Message};
 
     static FETCH1_TXT: &'static str =
         include_str!("../../test-data/fetch1.txt");
@@ -363,7 +363,7 @@ mod tests {
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
-    fn into_messages<'a>(r: &'a FetchResponse) -> Vec<&'a Message<'a>> {
+    fn into_messages<'a>(r: &'a Response) -> Vec<&'a Message<'a>> {
         let mut all_msgs = Vec::new();
         for t in r.topics() {
             for p in t.partitions() {
@@ -381,7 +381,7 @@ mod tests {
     }
 
     fn test_decode_new_fetch_response(msg_per_line: &str, response: Vec<u8>) {
-        let resp = FetchResponse::from_vec(response);
+        let resp = Response::from_vec(response);
         let resp = resp.unwrap();
 
         let original: Vec<_> = msg_per_line.lines().collect();
@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     fn test_forget_before_offset() {
-        let r = FetchResponse::from_vec(FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned()).unwrap();
+        let r = Response::from_vec(FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned()).unwrap();
         let t = &r.topics()[0];
         let p = &t.partitions()[0];
         let data = p.data().as_ref().unwrap();
@@ -471,14 +471,14 @@ mod tests {
     mod benches {
         use test::{black_box, Bencher};
 
-        use super::super::FetchResponse;
+        use super::super::Response;
         use super::into_messages;
 
         fn bench_decode_new_fetch_response(b: &mut Bencher, data: Vec<u8>) {
             b.bytes = data.len() as u64;
             b.iter(|| {
                 let data = data.clone();
-                let r = black_box(FetchResponse::from_vec(data).unwrap());
+                let r = black_box(Response::from_vec(data).unwrap());
                 let v = black_box(into_messages(&r));
                 v.len()
             });

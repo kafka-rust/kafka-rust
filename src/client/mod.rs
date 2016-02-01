@@ -708,7 +708,7 @@ impl KafkaClient {
     /// ```
     /// See also `kafka::consumer`.
     /// See also `KafkaClient::set_fetch_max_bytes_per_partition`.
-    pub fn fetch_messages<'a, I, J>(&mut self, input: I) -> Result<Vec<fetch::FetchResponse>>
+    pub fn fetch_messages<'a, I, J>(&mut self, input: I) -> Result<Vec<fetch::Response>>
         where J: AsRef<FetchPartition<'a>>, I: IntoIterator<Item=J>
     {
         let state = &mut self.state;
@@ -743,7 +743,7 @@ impl KafkaClient {
     ///
     /// See `KafkaClient::fetch_messages`.
     pub fn fetch_messages_for_partition<'a>(&mut self, req: &FetchPartition<'a>)
-                                            -> Result<Vec<fetch::FetchResponse>>
+                                            -> Result<Vec<fetch::Response>>
     {
         // XXX since we deal with exactly one partition we can generate
         // the fetch request to the corresponding kafka broker more
@@ -979,12 +979,12 @@ fn __fetch_group_offsets_multi(conn_pool: &mut ConnectionPool,
 
 /// ~ carries out the given fetch requests and returns the response
 fn __fetch_messages(conn_pool: &mut ConnectionPool, reqs: HashMap<&str, protocol::FetchRequest>)
-                    -> Result<Vec<fetch::FetchResponse>>
+                    -> Result<Vec<fetch::Response>>
 {
     // Call each broker with the request formed earlier
     let mut res = Vec::with_capacity(reqs.len());
     for (host, req) in reqs {
-        let resp = try!(__z_send_receive::<protocol::FetchRequest, fetch::FetchResponse>(conn_pool, host, req));
+        let resp = try!(__z_send_receive::<protocol::FetchRequest, fetch::Response>(conn_pool, host, req));
         res.push(resp);
     }
     Ok(res)
