@@ -9,18 +9,13 @@ documentation = "https://spicavigo.github.io/kafka-rust/kafka/index.html"
 readme = "README.md"
 keywords = ["kafka", "queue"]
 license = "MIT"
-build = "build.rs"
-
 
 [dependencies]
 byteorder = "0.4"
-libc = "0.2"
 flate2 = "0.2"
 crc = "1.2"
 log = "0.3"
-
-[build-dependencies]
-pkg-config = "0.3"
+snappy = { git = "https://github.com/xitep/rust-snappy.git", branch = "build.rs", version = "0.3" }
 
 [dev-dependencies]
 getopts = "0.2"
