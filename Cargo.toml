@@ -15,7 +15,7 @@ byteorder = "0.4"
 flate2 = "0.2"
 crc = "1.2"
 log = "0.3"
-snappy = { git = "https://github.com/xitep/rust-snappy.git", branch = "uncompress_to", version = "0.3" }
+snappy = "0.3"
 
 [dev-dependencies]
 getopts = "0.2"
