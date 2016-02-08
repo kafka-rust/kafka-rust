@@ -1,69 +1,18 @@
-extern crate libc;
-
-use self::libc::{c_int, size_t};
 use std::io::{self, Read};
 
 use byteorder::{BigEndian, ByteOrder};
+use snappy;
+
 use error::{Result, Error};
 
-extern {
-    fn snappy_compress(input: *const u8,
-                       input_length: size_t,
-                       compressed: *mut u8,
-                       compressed_length: *mut size_t) -> c_int;
-
-    fn snappy_max_compressed_length(source_length: size_t) -> size_t;
-
-    fn snappy_uncompress(compressed: *const u8,
-                             compressed_length: size_t,
-                             uncompressed: *mut u8,
-                             uncompressed_length: *mut size_t) -> c_int;
-
-    fn snappy_uncompressed_length(compressed: *const u8,
-                                  compressed_length: size_t,
-                                  result: *mut size_t) -> c_int;
-}
-
-// ~ Uncompresse 'src' into 'dst'.
-// ~ 'dst' will receive the newly uncompressed data appended.
-// ~ No guarantees are provided about the contents of 'dst' if this function
-// results in an error.
-fn uncompress_into(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
-    unsafe {
-        let src_len = src.len() as size_t;
-        let src_ptr = src.as_ptr();
-
-        let dst_cur_len = dst.len();
-        let mut dst_add_len: size_t = 0;
-        snappy_uncompressed_length(src_ptr, src_len, &mut dst_add_len);
-
-        // now make sure the vector is large enough
-        dst.reserve(dst_add_len as usize);
-        let dst_ptr = dst[dst_cur_len..].as_mut_ptr();
-        if snappy_uncompress(src_ptr, src_len, dst_ptr, &mut dst_add_len) == 0 {
-            dst.set_len(dst_cur_len + dst_add_len as usize);
-            Ok(())
-        } else {
-            Err(Error::InvalidInputSnappy) // SNAPPY_INVALID_INPUT
-        }
-    }
-}
-
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
-    unsafe {
-        let (_, x) = src.split_at(0);
-        let srclen = x.len() as size_t;
-        let psrc = x.as_ptr();
-        let mut dstlen = snappy_max_compressed_length(srclen);
-        let mut dst = Vec::with_capacity(dstlen as usize);
-        let pdst = dst.as_mut_ptr();
-        if snappy_compress(psrc, srclen, pdst, &mut dstlen) == 0 {
-            dst.set_len(dstlen as usize);
-            Ok(dst)
-        } else {
-            Err(Error::InvalidInputSnappy)
-        }
-    }
+    Ok(snappy::compress(src))
+}
+
+fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
+    snappy::uncompress_to(src, dst)
+        .map(|_| ())
+        .map_err(|_| Error::InvalidInputSnappy)
 }
 
 // --------------------------------------------------------------------
@@ -163,7 +112,7 @@ impl<'a> SnappyReader<'a> {
         }
         let chunk_size = chunk_size as usize;
         self.uncompressed_chunk.clear();
-        try!(uncompress_into(&self.compressed_data[..chunk_size], &mut self.uncompressed_chunk));
+        try!(uncompress_to(&self.compressed_data[..chunk_size], &mut self.uncompressed_chunk));
         self.compressed_data = &self.compressed_data[chunk_size..];
         Ok(true)
     }
@@ -183,7 +132,7 @@ impl<'a> SnappyReader<'a> {
                 return Err(Error::InvalidInputSnappy);
             }
             let (c1, c2) = self.compressed_data.split_at(chunk_size as usize);
-            try!(uncompress_into(c1, buf));
+            try!(uncompress_to(c1, buf));
             self.compressed_data = c2;
         }
         Ok(buf.len() - init_len)
@@ -219,11 +168,11 @@ mod tests {
     use std::io::Read;
 
     use error::{Error, Result};
-    use super::{compress, uncompress_into, SnappyReader};
+    use super::{compress, uncompress_to, SnappyReader};
 
     fn uncompress(src: &[u8]) -> Result<Vec<u8>> {
         let mut v = Vec::new();
-        match uncompress_into(src, &mut v) {
+        match uncompress_to(src, &mut v) {
             Ok(_) => Ok(v),
             Err(e) => Err(e),
         }
