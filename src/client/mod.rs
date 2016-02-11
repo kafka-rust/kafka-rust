@@ -209,7 +209,7 @@ impl FetchOffset {
 // --------------------------------------------------------------------
 
 /// Message data to be sent/produced to a particular topic partition.
-/// See `KafkaClient::produce_messages`.
+/// See `KafkaClient::produce_messages` and `Producer::send`.
 #[derive(Debug)]
 pub struct ProduceMessage<'a, 'b> {
     /// The "key" data of this message.
@@ -228,6 +228,48 @@ pub struct ProduceMessage<'a, 'b> {
 
 impl<'a, 'b> AsRef<ProduceMessage<'a, 'b>> for ProduceMessage<'a, 'b> {
     fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl<'a, 'b> ProduceMessage<'a, 'b> {
+    /// A convenient constructor method to create a new produce
+    /// message with all attributes specified.
+    pub fn new(topic: &'a str, partition: i32, key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> Self {
+        ProduceMessage { key: key, value: value, topic: topic, partition: partition }
+    }
+
+    /// A convenient method to create a produce message for the
+    /// specified topic with the specified value data.  The partition
+    /// is left "unspecified" by being set to a negative value.
+    ///
+    /// You'll have to either set the partition manually using
+    /// `ProduceMessage::with_partition` or rely on `Producer` to
+    /// figure out a partition automatically.
+    ///
+    /// See `Producer::send`, `KafkaClient::produce_messages`.
+    pub fn from_value(topic: &'a str, value: &'b [u8]) -> Self {
+        Self::new(topic, -1, None, Some(value))
+    }
+
+    /// A convenient method to create a produce message for the
+    /// specified topic with the specified key and value data.  The
+    /// partition is left "unspecified" by being set to a negative
+    /// value.
+    ///
+    /// You'll have to either set the partition manually using
+    /// `ProduceMessage::with_partition` or rely on `Producer` to
+    /// figure out a partition automatically.
+    ///
+    /// See `Producer::send`, `KafkaClient::produce_messages`.
+    pub fn from_key_value(topic: &'a str, key: &'b [u8], value: &'b [u8]) -> Self {
+        Self::new(topic, -1, Some(key), Some(value))
+    }
+
+    /// Sets the partition and returns the produce message allowing
+    /// convenient method chaining.
+    pub fn with_partition(mut self, partition: i32) -> Self {
+        self.partition = partition;
         self
     }
 }
@@ -779,6 +821,11 @@ impl KafkaClient {
     /// acknowledgements in `required_acks`
     ///
     /// `input` - A set of `ProduceMessage`s
+    ///
+    /// Note: Unlike the higher-level `Producer`, this method will not
+    /// automatically determine the partition to deliver the message
+    /// to, but will strict try to send the message to the specified
+    /// partition.
     ///
     /// # Example
     ///

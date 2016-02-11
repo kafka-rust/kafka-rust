@@ -4,13 +4,13 @@
 //! producer has only synchronous capabilities.
 //!
 //! In Kafka, each message is basically a key/value pair. A
-//! `ProduceRecord` is all the data necessary to produce such a
-//! message
+//! `ProduceMessage` is all the data necessary to produce such a
+//! message.
 //!
 //! # Example
 //! ```no_run
 //! use std::fmt::Write;
-//! use kafka::producer::{Producer, ProduceRecord};
+//! use kafka::producer::{Producer, ProduceMessage};
 //!
 //! let mut producer =
 //!     Producer::from_hosts(vec!("localhost:9092".to_owned()))
@@ -22,7 +22,7 @@
 //! let mut buf = String::with_capacity(2);
 //! for i in 0..10 {
 //!   let _ = write!(&mut buf, "{}", i); // some computation of the message data to be sent
-//!   let r = producer.send(&ProduceRecord::from_value("my-topic", buf.as_bytes())).unwrap();
+//!   producer.send(&ProduceMessage::from_value("my-topic", buf.as_bytes())).unwrap();
 //!   buf.clear();
 //! }
 //! ```
@@ -33,16 +33,16 @@
 //! multiple messages just like this example, it is more efficient to
 //! send them in batches using `Producer::send_all`.
 
-// XXX 1) document me (including an example)
-// XXX 2) rethink return values for the send* methods
-// XXX 3) maintain a background thread to provide an async version of the send* methods
-// XXX 4) allow client to pass in real objects (instead of raw byte slices) which get serialized using a registered serializer
-// XXX 5) Handle recoverable errors behind the scenes through retrying
+// XXX 1) rethink return values for the send* methods
+// XXX 2) maintain a background thread to provide an async version of the send* methods
+// XXX 3) allow client to pass in real objects (instead of raw byte slices) which get serialized using a registered serializer
+// XXX 4) Handle recoverable errors behind the scenes through retry attempts
 
 use std::collections::HashMap;
 
 use client::{self, KafkaClient};
-pub use client::Compression;
+// public re-exports
+pub use client::{Compression, ProduceMessage};
 use error::Result;
 use utils::TopicPartitionOffsetError;
 
@@ -51,72 +51,6 @@ pub const DEFAULT_ACK_TIMEOUT: i32 = 30 * 1000;
 
 /// The default value for `Builder::with_required_acks`.
 pub const DEFAULT_REQUIRED_ACKS: i16 = 1;
-
-// --------------------------------------------------------------------
-
-// XXX consider using ProduceMessage simply (introduce Cow<'b, [u8]> for the key and value)
-
-/// A record to be sent through a `Producer`. It specifies the target
-/// topic, a message key or value or both, and optionally the topic
-/// partition.
-///
-/// If the partition of a `ProduceRecord` is not specified, then upon
-/// sending such a record `Producer` will determine a target partition
-/// for it using it's underlying partitioner.
-pub struct ProduceRecord<'a, 'b> {
-    key: Option<&'b [u8]>,
-    value: Option<&'b [u8]>,
-    topic: &'a str,
-    partition: i32,
-}
-
-impl<'a, 'b> AsRef<ProduceRecord<'a, 'b>> for ProduceRecord<'a, 'b> {
-    fn as_ref(&self) -> &Self {
-        self
-    }
-}
-
-impl<'a, 'b> ProduceRecord<'a, 'b> {
-    fn new(topic: &'a str, partition: i32,
-           key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> Self
-    {
-        ProduceRecord { key: key, value: value, topic: topic, partition: partition }
-    }
-
-    /// Constructs a new produce record with the given target topic
-    /// and the specified 'value' data.  The partition of the newly
-    /// returned record is left "unspecified".
-    pub fn from_value(topic: &'a str, value: &'b [u8]) -> Self {
-        ProduceRecord::new(topic, -1, None, Some(value))
-    }
-
-    /// Constructs a new produce record with the given target topic
-    /// and the specified 'key' and 'value' data.  The partition of
-    /// the newly returned record is left "unspecified".
-    pub fn from_key_value(topic: &'a str, key: &'b [u8], value: &'b [u8]) -> Self {
-        ProduceRecord::new(topic, -1, Some(key), Some(value))
-    }
-
-    /// Sets the 'key' data of this record.
-    pub fn with_key(mut self, key: &'b [u8]) -> Self {
-        self.key = Some(key);
-        self
-    }
-
-    /// Sets the 'value' data of this record.
-    pub fn with_value(mut self, value: &'b [u8]) -> Self {
-        self.value = Some(value);
-        self
-    }
-
-    /// Specifies the topic partition this record is to be sent to.
-    /// Negative values denote that the partition is to be
-    /// "unspecified".
-    pub fn with_partition(mut self, partition: i32) -> Self {
-        self.partition = partition;
-        self
-    }
-}
 
 // --------------------------------------------------------------------
 
@@ -165,8 +99,12 @@ impl Producer {
 
 impl<P: Partitioner> Producer<P> {
 
-    /// Synchronously send the specified record to Kafka.
-    pub fn send<'a, 'b>(&mut self, msg: &ProduceRecord<'a, 'b>) -> Result<()> {
+    /// Synchronously send the specified message to Kafka.
+    ///
+    /// If the given message's `ProduceMessage::partition` is
+    /// negative, the underlying partitioner will be called to
+    /// determine the partition to deliver this message to.
+    pub fn send<'a, 'b>(&mut self, msg: &ProduceMessage<'a, 'b>) -> Result<()> {
 
         let mut rs = try!(self.send_all(&[msg]));
         assert_eq!(1, rs.len());
@@ -177,9 +115,9 @@ impl<P: Partitioner> Producer<P> {
         }
     }
 
-    /// Synchronously send all of the specified records to Kafka.
+    /// Synchronously send all of the specified messages to Kafka.
     pub fn send_all<'a, 'b, I, J>(&mut self, msgs: I) -> Result<Vec<TopicPartitionOffsetError>>
-        where J: AsRef<ProduceRecord<'a, 'b>>, I: IntoIterator<Item=J>
+        where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
         let partitioner = &mut self.state.partitioner;
         let partition_ids = &self.state.partition_ids;
@@ -289,8 +227,8 @@ impl Builder {
 
 impl<P> Builder<P> {
 
-    /// Sets the partitioner to dispatch when sending records/messages
-    /// wihtout an explicit partition assignment.
+    /// Sets the partitioner to dispatch when sending messages without
+    /// an explicit partition assignment.
     pub fn with_partitioner<Q: Partitioner>(self, partitioner: Q) -> Builder<Q> {
         Builder {
             client: self.client,
@@ -325,21 +263,21 @@ impl<P> Builder<P> {
 
 // --------------------------------------------------------------------
 
-/// A partitioner chooses a partition for a to-be-sent `ProduceRecord`
-/// which has an "unspecified" partition.  See also
-/// `ProduceRecord#with_partition`.
+/// A partitioner chooses a partition for a to-be-sent message which
+/// has an "unspecified" partition.  See also
+/// `ProduceMessage#with_partition`.
 ///
-/// An implementation may be stateful.
+/// Implementations can be stateful.
 pub trait Partitioner {
     /// Given a list of available `partitions`, decides for the given
-    /// `ProduceRecord` which partition to send it to.  The returned
+    /// `ProduceMessage` which partition to send it to.  The returned
     /// value must be chosen from the given `partitions` slice which
     /// specifies the list of currently available partitions for the
-    /// record's topic.
+    /// message's topic.
     ///
-    /// Due to potential retry attempts to send a record a partitioner
-    /// might be invoked multiple times for a partitioner records.
-    fn partition(&mut self, record: &ProduceRecord, partitions: &[i32]) -> i32;
+    /// Due to potential retry attempts to send a message a partitioner
+    /// might be invoked multiple times for a particular message.
+    fn partition(&mut self, msg: &ProduceMessage, partitions: &[i32]) -> i32;
 }
 
 /// As its name implies `DefaultPartitioner` is the default
@@ -358,7 +296,7 @@ pub struct DefaultPartitioner {
 
 impl Partitioner for DefaultPartitioner {
     #[allow(unused_variables)]
-    fn partition(&mut self, rec: &ProduceRecord, partitions: &[i32]) -> i32 {
+    fn partition(&mut self, rec: &ProduceMessage, partitions: &[i32]) -> i32 {
         let p = partitions[self.cntr as usize % partitions.len()];
         self.cntr = self.cntr.wrapping_add(1);
         p

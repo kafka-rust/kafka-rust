@@ -1,6 +1,6 @@
 extern crate kafka;
 
-use kafka::producer::{Producer, ProduceRecord};
+use kafka::producer::{Producer, ProduceMessage};
 use kafka::error::Error as KafkaError;
 
 /// This program demonstrates sending a single message through a
@@ -42,7 +42,5 @@ fn produce_message(data: &[u8], topic: &str, brokers: Vec<String>)
     // producer would respect our choice.
     // ~ we're sending 'data' as a 'value'. there will be no key
     // associated with the sent message.
-    let r = try!(producer.send(&ProduceRecord::from_value(topic, data)));
-    println!("message sent: {:?}", r);
-    Ok(())
+    producer.send(&ProduceMessage::from_value(topic, data))
 }

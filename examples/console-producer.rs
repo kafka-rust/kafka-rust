@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
 
 use kafka::client::{KafkaClient, Compression};
-use kafka::producer::{Producer, ProduceRecord};
+use kafka::producer::{Producer, ProduceMessage};
 
 // how many brokers do we require to acknowledge the send messages
 const REQUIRED_ACKS: i16 = 1;
@@ -80,7 +80,7 @@ fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config
             continue; // ~ skip empty lines
         }
         // ~ directly send to kafka
-        let r = try!(producer.send(&ProduceRecord::from_value(&cfg.topic, s.as_bytes())));
+        let r = try!(producer.send(&ProduceMessage::from_value(&cfg.topic, s.as_bytes())));
         let _ = write!(stderr, "debug: {:?}\n", r);
     }
     Ok(())
@@ -120,7 +120,7 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
 
 fn send_lines_batch(producer: &mut Producer, topic: &str, lines: &[String]) -> Result<(), Error> {
     let rs = try!(producer.send_all(lines.iter().map(|line| {
-        ProduceRecord::from_value(topic, line.trim().as_bytes())
+        ProduceMessage::from_value(topic, line.trim().as_bytes())
     })));
     for r in rs {
         if let Some(e) = r.error {
