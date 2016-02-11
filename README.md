@@ -28,29 +28,38 @@ before issueing `cargo build`.
 ### Example:
 
 As mentioned, the cargo generated documentation constains some
-examples. Further, standalone, compilable example programs are
+examples.  Further, standalone, compilable example programs are
 provided in the [examples directory of the
 repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
 
 [KafkaClient](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html)
-is the main entry point into the API. This is a mid-level abstraction
-for Kafka.  Its main methods are:
+is the central point of this API.  However, this is a mid-level
+abstraction for Kafka suitable for building higher-level APIs.
+Application's typically want to use `Consumer`s and
+`Producers`. `KafkaClient`'s main methods are:
 
 * [Loading metadata](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.load_metadata_all)
 * [Fetching topic offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_offsets)
-* [Sending messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.send_messages)
+* [Sending messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.produce_messages)
 * [Fetching messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_messages)
 * [Committing a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.commit_offsets)
 * [Fetching a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_topics_offset)
 
-Many of these methods also have convenience partners acting on a
-single topic or partition.
-
 
 ### [Consumer] (https://spicavigo.github.io/kafka-rust/kafka/consumer/index.html)
 
-This is a slightly higher-level Consumer for Kafka. It provides convenient
-offset management support on behalf of a specified group.
+This is a higher-level Consumer API for Kafka.  It provides convenient
+offset management support on behalf of a specified group.  This is the
+API a client application of this library wants to use for receiving
+messages from Kafka.
+
+
+### [Producer] (https://spicavigo.github.io/kafka-rust/kafka/producer/index.html)
+
+This is a higher-level Producer API for Kafka.  It provides convenient
+automatic partition assignment capabilities through partitioners.
+This is the API a client application of this library wants to use for
+sending messsages to Kafka.
 
 
 ### [Creating a topic] (https://kafka.apache.org/08/quickstart.html)

@@ -1,4 +1,4 @@
-//! The primary module of this library providing a mid-level
+//! The primary module of this library providing only a mid-level
 //! abstraction for a kafka server while supposed to allow building
 //! higher level constructs.
 
@@ -7,7 +7,6 @@ use std::io::Cursor;
 use std::io::Read;
 use std::iter::Iterator;
 use std::mem;
-use std::cell::Cell;
 
 // pub re-export
 pub use compression::Compression;
@@ -97,7 +96,6 @@ struct Broker {
 /// A representation of partitions for a single topic.
 #[derive(Debug)]
 struct TopicPartitions {
-    curr_partition_idx: Cell<usize>,
     partitions: Vec<TopicPartition>,
 }
 
@@ -116,7 +114,7 @@ struct TopicPartition {
 
 impl TopicPartitions {
     fn new(partitions: Vec<TopicPartition>) -> TopicPartitions {
-        TopicPartitions { curr_partition_idx: Cell::new(0), partitions: partitions }
+        TopicPartitions { partitions: partitions }
     }
 
     fn partition(&self, partition_id: i32) -> Option<&TopicPartition> {
@@ -145,28 +143,12 @@ impl ClientState {
         &self.brokers[partition.broker_index.0 as usize]
     }
 
-    fn find_broker<'a>(&'a self, topic: &str, partition: i32) -> Option<&'a str> {
+    fn find_broker<'a>(&'a self, topic: &str, partition_id: i32) -> Option<&'a str> {
         self.topic_partitions.get(topic)
-            .and_then(|tp| tp.partition(partition).map(|p| {
+            .and_then(|tp| tp.partition(partition_id).map(|p| {
                 let host: &str = &self.broker_by_partition(p).host;
                 host
             }))
-    }
-
-    /// Chooses for the given topic a partition to write the next message to.
-    /// Returns the partition_id and the corresponding broker host.
-    fn choose_partition<'a, 'b>(&'a self, topic: &'b str) -> Option<(i32, &'a str)> {
-        match self.topic_partitions.get(topic) {
-            None => None,
-            Some(ref topic) if topic.partitions.is_empty() => None,
-            Some(ref topic) => {
-                let p_idx = (topic.curr_partition_idx.get() + 1) % topic.partitions.len();
-                topic.curr_partition_idx.set(p_idx);
-                let p = &topic.partitions[p_idx];
-                let broker: &str = &self.broker_by_partition(p).host;
-                Some((p.partition_id, broker))
-            }
-        }
     }
 }
 
@@ -226,6 +208,32 @@ impl FetchOffset {
 
 // --------------------------------------------------------------------
 
+/// Message data to be sent/produced to a particular topic partition.
+/// See `KafkaClient::produce_messages`.
+#[derive(Debug)]
+pub struct ProduceMessage<'a, 'b> {
+    /// The "key" data of this message.
+    pub key: Option<&'b [u8]>,
+
+    /// The "value" data of this message.
+    pub value: Option<&'b [u8]>,
+
+    /// The topic to produce this message to.
+    pub topic: &'a str,
+
+    /// The partition (of the corresponding topic) to produce this
+    /// message to.
+    pub partition: i32,
+}
+
+impl<'a, 'b> AsRef<ProduceMessage<'a, 'b>> for ProduceMessage<'a, 'b> {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+// --------------------------------------------------------------------
+
 /// Partition related request data for fetching messages.
 /// See `KafkaClient::fetch_messages`.
 #[derive(Debug)]
@@ -271,7 +279,7 @@ impl<'a> FetchPartition<'a> {
 
 impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
     fn as_ref(&self) -> &Self {
-        &self
+        self
     }
 }
 
@@ -290,6 +298,7 @@ impl KafkaClient {
     /// ```
     ///
     /// See also `KafkaClient::load_metadatata_all` and `KafkaClient::load_metadata`
+    // XXX make this a top-level function of this module
     pub fn new(hosts: Vec<String>) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
@@ -753,35 +762,44 @@ impl KafkaClient {
 
     /// Send a message to Kafka
     ///
-    /// `required_acks` - indicates how many acknowledgements the servers should receive before
-    /// responding to the request. If it is 0 the server will not send any response
-    /// (this is the only case where the server will not reply to a request).
-    /// If it is 1, the server will wait the data is written to the local log before sending
-    /// a response. If it is -1 the server will block until the message is committed by all
-    /// in sync replicas before sending a response. For any number > 1 the server will block
-    /// waiting for this number of acknowledgements to occur (but the server will never wait
-    /// for more acknowledgements than there are in-sync replicas).
+    /// `required_acks` - indicates how many acknowledgements the
+    /// servers should receive before responding to the request. If it
+    /// is 0 the server will not send any response (this is the only
+    /// case where the server will not reply to a request).  If it is
+    /// 1, the server will wait the data is written to the local log
+    /// before sending a response. If it is -1 the server will block
+    /// until the message is committed by all in sync replicas before
+    /// sending a response. For any number > 1 the server will block
+    /// waiting for this number of acknowledgements to occur (but the
+    /// server will never wait for more acknowledgements than there
+    /// are in-sync replicas).
     ///
-    /// `ack_timeout` - This provides a maximum time in milliseconds the server can await the
-    /// receipt of the number of acknowledgements in `required_acks`
+    /// `ack_timeout` - This provides a maximum time in milliseconds
+    /// the server can await the receipt of the number of
+    /// acknowledgements in `required_acks`
     ///
-    /// `input` - A vector of `utils::ProduceMessage`
+    /// `input` - A set of `ProduceMessage`s
     ///
     /// # Example
     ///
     /// ```no_run
-    /// use kafka::utils;
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let req = vec!(utils::ProduceMessage{topic: "my-topic", message: "a".as_bytes()},
-    ///                 utils::ProduceMessage{topic: "my-topic-2", message: "b".as_bytes()});
-    /// println!("{:?}", client.send_messages(1, 100, req));
+    /// use kafka::client::{KafkaClient, ProduceMessage};
+    ///
+    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// client.load_metadata_all().unwrap();
+    /// let req = vec![ProduceMessage{topic: "my-topic",   partition: 0, key: None, value: Some("a".as_bytes())},
+    ///                ProduceMessage{topic: "my-topic-2", partition: 0, key: None, value: Some("b".as_bytes())}];
+    /// println!("{:?}", client.produce_messages(1, 100, req));
     /// ```
     /// The return value will contain a vector of topic, partition, offset and error if any
     /// OR error:Error
-    pub fn send_messages<'a, 'b, I, J>(&mut self, required_acks: i16, ack_timeout: i32, messages: I)
+
+    // XXX rework signaling an error; note that we need to either return the
+    // messages which kafka failed to accept or otherwise tell the client about them
+
+    pub fn produce_messages<'a, 'b, I, J>(&mut self, required_acks: i16, ack_timeout: i32, messages: I)
                                        -> Result<Vec<utils::TopicPartitionOffsetError>>
-        where J: AsRef<utils::ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
+        where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
         let state = &mut self.state;
         let correlation = state.next_correlation_id();
@@ -791,46 +809,17 @@ impl KafkaClient {
         let mut reqs: HashMap<&str, protocol::ProduceRequest> = HashMap::new();
         for msg in messages {
             let msg = msg.as_ref();
-            if let Some((partition, broker)) = state.choose_partition(msg.topic) {
-                reqs.entry(broker)
+            match state.find_broker(msg.topic, msg.partition) {
+                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+                Some(broker) => reqs.entry(broker)
                     .or_insert_with(
-                        || protocol::ProduceRequest::new(required_acks, ack_timeout, correlation,
-                                                         &config.client_id, config.compression))
-                    .add(msg.topic, partition, msg.message);
+                        || protocol::ProduceRequest::new(
+                            required_acks, ack_timeout, correlation,
+                            &config.client_id, config.compression))
+                    .add(msg.topic, msg.partition, msg.key, msg.value),
             }
         }
-        __send_messages(&mut self.conn_pool, reqs, required_acks == 0)
-    }
-
-    /// Send a message to Kafka
-    ///
-    /// `required_acks` - indicates how many acknowledgements the servers should receive before
-    /// responding to the request. If it is 0 the server will not send any response
-    /// (this is the only case where the server will not reply to a request).
-    /// If it is 1, the server will wait the data is written to the local log before sending
-    /// a response. If it is -1 the server will block until the message is committed by all
-    /// in sync replicas before sending a response. For any number > 1 the server will block
-    /// waiting for this number of acknowledgements to occur (but the server will never wait
-    /// for more acknowledgements than there are in-sync replicas).
-    ///
-    /// `ack_timeout` - This provides a maximum time in milliseconds the server can await the
-    /// receipt of the number of acknowledgements in `required_acks`
-    ///
-    /// `message` - A single message as a vector of u8s
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let msgs = client.send_message(1, 100, "my-topic", "msg".as_bytes());
-    /// ```
-    /// The return value will contain topic, partition, offset and error if any
-    /// OR error:Error
-    pub fn send_message(&mut self, required_acks: i16, ack_timeout: i32, topic: &str, message: &[u8])
-                        -> Result<Vec<utils::TopicPartitionOffsetError>> {
-        self.send_messages(required_acks, ack_timeout,
-                           &[utils::ProduceMessage { topic: topic, message: message }])
+        __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
     }
 
     /// Commit offset to topic, partition of a consumer group
@@ -991,10 +980,10 @@ fn __fetch_messages(conn_pool: &mut ConnectionPool, reqs: HashMap<&str, protocol
 }
 
 /// ~ carries out the given produce requests and returns the reponse
-fn __send_messages(conn_pool: &mut ConnectionPool,
-                   reqs: HashMap<&str, protocol::ProduceRequest>,
-                   no_acks: bool)
-                   -> Result<Vec<utils::TopicPartitionOffsetError>>
+fn __produce_messages(conn_pool: &mut ConnectionPool,
+                      reqs: HashMap<&str, protocol::ProduceRequest>,
+                      no_acks: bool)
+                      -> Result<Vec<utils::TopicPartitionOffsetError>>
 {
     // Call each broker with the request formed earlier
     if no_acks {
