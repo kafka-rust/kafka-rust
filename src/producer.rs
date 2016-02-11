@@ -105,7 +105,6 @@ impl<P: Partitioner> Producer<P> {
     /// negative, the underlying partitioner will be called to
     /// determine the partition to deliver this message to.
     pub fn send<'a, 'b>(&mut self, msg: &ProduceMessage<'a, 'b>) -> Result<()> {
-
         let mut rs = try!(self.send_all(&[msg]));
         assert_eq!(1, rs.len());
         if let Some(e) = rs.pop().unwrap().error {
@@ -116,6 +115,10 @@ impl<P: Partitioner> Producer<P> {
     }
 
     /// Synchronously send all of the specified messages to Kafka.
+    ///
+    /// For any message whose `ProduceMessage::partition` is negative,
+    /// the underlying partitioner will be called to determine the
+    /// partition to deliver that message to.
     pub fn send_all<'a, 'b, I, J>(&mut self, msgs: I) -> Result<Vec<TopicPartitionOffsetError>>
         where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
