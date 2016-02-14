@@ -1,16 +1,16 @@
 //! Kafka Producer
 //!
-//! A multi-topic capable producer for a Kafka cluster.  So far the
-//! producer has only synchronous capabilities.
+//! A multi-topic capable producer for a Kafka cluster providing a
+//! convenient API for sending messages.  So far the producer has only
+//! synchronous capabilities.
 //!
-//! In Kafka, each message is basically a key/value pair. A
-//! `ProduceMessage` is all the data necessary to produce such a
-//! message.
+//! In Kafka, each message is basically a key/value pair.  A `ProduceRecord`
+//! is all the data necessary to produce such a message to Kafka.
 //!
 //! # Example
 //! ```no_run
 //! use std::fmt::Write;
-//! use kafka::producer::{Producer, ProduceMessage};
+//! use kafka::producer::{Producer, Record};
 //!
 //! let mut producer =
 //!     Producer::from_hosts(vec!("localhost:9092".to_owned()))
@@ -22,7 +22,7 @@
 //! let mut buf = String::with_capacity(2);
 //! for i in 0..10 {
 //!   let _ = write!(&mut buf, "{}", i); // some computation of the message data to be sent
-//!   producer.send(&ProduceMessage::from_value("my-topic", buf.as_bytes())).unwrap();
+//!   producer.send(&Record::from_value("my-topic", buf.as_bytes())).unwrap();
 //!   buf.clear();
 //! }
 //! ```
@@ -33,24 +33,117 @@
 //! multiple messages just like this example, it is more efficient to
 //! send them in batches using `Producer::send_all`.
 
-// XXX 1) rethink return values for the send* methods
+// XXX 0) Always invoke partitioner
+// XXX 1) rethink return values for the send_all method
 // XXX 2) maintain a background thread to provide an async version of the send* methods
-// XXX 3) allow client to pass in real objects (instead of raw byte slices) which get serialized using a registered serializer
-// XXX 4) Handle recoverable errors behind the scenes through retry attempts
+// XXX 3) Handle recoverable errors behind the scenes through retry attempts
 
 use std::collections::HashMap;
+use std::fmt;
 
 use client::{self, KafkaClient};
 // public re-exports
-pub use client::{Compression, ProduceMessage};
+pub use client::{Compression};
 use error::Result;
 use utils::TopicPartitionOffsetError;
+
+use ref_slice::ref_slice;
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT: i32 = 30 * 1000;
 
 /// The default value for `Builder::with_required_acks`.
 pub const DEFAULT_REQUIRED_ACKS: i16 = 1;
+
+// --------------------------------------------------------------------
+
+/// A trait used by `Producer` to obtain the bytes `Record::key` and
+/// `Record::value` represent.  This leaves the choice of the types
+/// for `key` and `value` with the client.
+pub trait AsBytes {
+    fn as_bytes(&self) -> &[u8];
+}
+
+impl AsBytes for () {
+    fn as_bytes(&self) -> &[u8] { &[] }
+}
+
+// There seems to be some compiler issue with this:
+// impl<T: AsRef<[u8]>> AsBytes for T {
+//     fn as_bytes(&self) -> &[u8] { self.as_ref() }
+// }
+
+// for now we provide the impl for some standard library types
+impl AsBytes for String {
+    fn as_bytes(&self) -> &[u8] { self.as_ref() }
+}
+impl AsBytes for Vec<u8> {
+    fn as_bytes(&self) -> &[u8] { self.as_ref() }
+}
+
+impl<'a> AsBytes for &'a [u8] {
+    fn as_bytes(&self) -> &[u8] { self }
+}
+impl<'a> AsBytes for &'a str {
+    fn as_bytes(&self) -> &[u8] { str::as_bytes(self) }
+}
+ 
+// --------------------------------------------------------------------
+
+/// A structure representing a message to be sent to Kafka through the
+/// `Producer` API.  Such a message is basically a key/value pair
+/// specifying the target topic and optionally the topic's partition.
+pub struct Record<'a, K, V> {
+    /// Key data of this (message) record.
+    pub key: K,
+
+    /// Value data of this (message) record.
+    pub value: V,
+
+    /// Name of the topic this message is supposed to be delivered to.
+    pub topic: &'a str,
+
+    /// The partition id of the topic to deliver this message to.
+    /// This partition may be `< 0` in which case it is considered
+    /// "unspecified".  A `Producer` will then typically try to derive
+    /// a partition on its own.
+    pub partition: i32,
+}
+
+impl<'a, K, V> Record<'a, K, V> {
+
+    /// Convenience function to create a new key/value record with an
+    /// "unspecified" partition - this is, a partition set to a negative
+    /// value.
+    #[inline]
+    pub fn from_key_value(topic: &'a str, key: K, value: V) -> Record<'a, K, V> {
+        Record { key: key, value: value, topic: topic, partition: -1 }
+    }
+
+    /// Convenience method to set the partition.
+    #[inline]
+    pub fn with_partition(mut self, partition: i32) -> Self {
+        self.partition = partition;
+        self
+    }
+}
+
+impl<'a, V> Record<'a, (), V> {
+    /// Convenience function to create a new value only record with an
+    /// "unspecified" partition - this is, a partition set to a negative
+    /// value.
+    #[inline]
+    pub fn from_value(topic: &'a str, value: V) -> Record<'a, (), V> {
+        Record { key: (), value: value, topic: topic, partition: -1 }
+    }
+}
+
+impl<'a, K: fmt::Debug, V: fmt::Debug> fmt::Debug for Record<'a, K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
+               self.topic, self.partition, self.key, self.value)
+    }
+}
 
 // --------------------------------------------------------------------
 
@@ -80,14 +173,14 @@ struct Config {
 }
 
 impl Producer {
-    /// Starts building a producer using the given kafka client.
+    /// Starts building a new producer using the given Kafka client.
     pub fn from_client(client: KafkaClient) -> Builder<DefaultPartitioner> {
         Builder::new(Some(client), Vec::new())
     }
 
     /// Starts building a producer bootstraping internally a new kafka
     /// client from the given kafka hosts.
-    pub fn from_hosts(hosts: Vec<String>) -> Builder {
+    pub fn from_hosts(hosts: Vec<String>) -> Builder<DefaultPartitioner> {
         Builder::new(None, hosts)
     }
 
@@ -97,15 +190,15 @@ impl Producer {
     }
 }
 
+
 impl<P: Partitioner> Producer<P> {
 
     /// Synchronously send the specified message to Kafka.
-    ///
-    /// If the given message's `ProduceMessage::partition` is
-    /// negative, the underlying partitioner will be called to
-    /// determine the partition to deliver this message to.
-    pub fn send<'a, 'b>(&mut self, msg: &ProduceMessage<'a, 'b>) -> Result<()> {
-        let mut rs = try!(self.send_all(&[msg]));
+    pub fn send<'a, K, V>(&mut self, rec: &Record<'a, K, V>)
+                          -> Result<()>
+        where K: AsBytes, V: AsBytes
+    {
+        let mut rs = try!(self.send_all(ref_slice(rec)));
         assert_eq!(1, rs.len());
         if let Some(e) = rs.pop().unwrap().error {
             Err(e)
@@ -115,12 +208,9 @@ impl<P: Partitioner> Producer<P> {
     }
 
     /// Synchronously send all of the specified messages to Kafka.
-    ///
-    /// For any message whose `ProduceMessage::partition` is negative,
-    /// the underlying partitioner will be called to determine the
-    /// partition to deliver that message to.
-    pub fn send_all<'a, 'b, I, J>(&mut self, msgs: I) -> Result<Vec<TopicPartitionOffsetError>>
-        where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
+    pub fn send_all<'a, K, V>(&mut self, recs: &[Record<'a, K, V>])
+                              -> Result<Vec<TopicPartitionOffsetError>>
+        where K: AsBytes, V: AsBytes
     {
         let partitioner = &mut self.state.partitioner;
         let partition_ids = &self.state.partition_ids;
@@ -129,27 +219,29 @@ impl<P: Partitioner> Producer<P> {
 
         client.produce_messages(
             config.required_acks, config.ack_timeout,
-            msgs.into_iter().map(|m| {
-                let m = m.as_ref();
-                client::ProduceMessage {
-                    key: m.key,
-                    value: m.value,
-                    topic: m.topic,
-                    partition: if m.partition < 0 {
-                        match partition_ids.get(m.topic).map(|ps| &ps[..]) {
-                            // ~ invoke the partitioner (only if we
-                            // really have any partitions to choose
-                            // from)
-                            Some(ps) if !ps.is_empty() => partitioner.partition(m, ps),
-                            // ~ this is likely to result in an error
-                            // code from KafkaClient.
-                            _ => m.partition, 
-                        }
-                    } else {
-                        m.partition
+            recs.into_iter().map(|r| {
+                let mut m = client::ProduceMessage {
+                    key: to_option(r.key.as_bytes()),
+                    value: to_option(r.value.as_bytes()),
+                    topic: r.topic,
+                    partition: r.partition,
+                };
+                // XXX always invoke the partitioner
+                if r.partition < 0 {
+                    if let Some(ps) = partition_ids.get(r.topic).map(|ps| &ps[..]) {
+                        partitioner.partition(&mut m, ps);
                     }
                 }
+                m
             }))
+    }
+}
+
+fn to_option(data: &[u8]) -> Option<&[u8]> {
+    if data.is_empty() {
+        None
+    } else {
+        Some(data)
     }
 }
 
@@ -176,11 +268,13 @@ pub struct Builder<P = DefaultPartitioner> {
     compression: Compression,
     ack_timeout: i32,
     required_acks: i16,
-    partitioner: P
+    partitioner: P,
 }
 
 impl Builder {
-    fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder<DefaultPartitioner> {
+    fn new(client: Option<KafkaClient>, hosts: Vec<String>)
+           -> Builder<DefaultPartitioner>
+    {
         let mut b = Builder {
             client: client,
             hosts: hosts,
@@ -260,37 +354,50 @@ impl<P> Builder<P> {
             ack_timeout: self.ack_timeout,
             required_acks: self.required_acks,
         };
-        Ok(Producer{ client: client, state: state, config: config })
+        Ok(Producer{
+            client: client,
+            state: state,
+            config: config,
+        })
     }
 }
 
 // --------------------------------------------------------------------
 
-/// A partitioner chooses a partition for a to-be-sent message which
-/// has an "unspecified" partition.  See also
-/// `ProduceMessage#with_partition`.
+/// A partitioner is given a chance to choose/redefine a partition for
+/// a message to be sent to Kafka.  See also
+/// `Record#with_partition`.
 ///
 /// Implementations can be stateful.
 pub trait Partitioner {
-    /// Given a list of available `partitions`, decides for the given
-    /// `ProduceMessage` which partition to send it to.  The returned
-    /// value must be chosen from the given `partitions` slice which
-    /// specifies the list of currently available partitions for the
-    /// message's topic.
-    ///
-    /// Due to potential retry attempts to send a message a partitioner
-    /// might be invoked multiple times for a particular message.
-    fn partition(&mut self, msg: &ProduceMessage, partitions: &[i32]) -> i32;
+    /// Supposed to inspect the given message and if desired re-assign
+    /// the message's target partition.  Since the partitioner is
+    /// given a mutable reference and may potentially change even more
+    /// than just the partition.
+
+    // XXX needs to be given a `Cluster/Topics` structure, such that a
+    // partitioner has the chance to avoid topic look ups.
+
+    fn partition(&mut self, msg: &mut client::ProduceMessage, partitions: &[i32]);
 }
 
 /// As its name implies `DefaultPartitioner` is the default
-/// partitioner for `Producer`.  In a very simple manner, it tries to
-/// distribute every messsage to the "next" partition in a round robin
-/// fashion.  However, the implementation is kept very simplistic and
-/// may not suffice every workload.  Further, if you're application is
-/// dependent on a particular distribution scheme, you want to provide
-/// your own partioner to the `Producer` instead.  See also
-/// `Builder::with_partitioner`.
+/// partitioner for `Producer`.
+///
+/// Every received message with a non-negative value will not be
+/// changed by this partitioner and will be merely passed through.
+///
+/// However, for every message with a negative `partition` it will try
+/// to find a target partition. In a very simple manner, it tries to
+/// distribute such messsages across available partitions in a round
+/// robin fashion.
+///
+/// This behavior may not suffice every workload.  If you're
+/// application is dependent on a particular distribution scheme, you
+/// want to provide your own partioner to the `Producer` at
+/// initialization time.
+///
+/// See `Builder::with_partitioner`.
 pub struct DefaultPartitioner {
     // ~ a counter incremented with each partitioned message to
     // achieve a different partition assignment for each message
@@ -299,10 +406,14 @@ pub struct DefaultPartitioner {
 
 impl Partitioner for DefaultPartitioner {
     #[allow(unused_variables)]
-    fn partition(&mut self, rec: &ProduceMessage, partitions: &[i32]) -> i32 {
-        let p = partitions[self.cntr as usize % partitions.len()];
-        self.cntr = self.cntr.wrapping_add(1);
-        p
+    fn partition(&mut self, rec: &mut client::ProduceMessage, partitions: &[i32]) {
+        if rec.partition < 0 && !partitions.is_empty() {
+            // ~ get a partition
+            rec.partition = partitions[self.cntr as usize % partitions.len()];
+            // ~ update internal state so that the next time we choose
+            // a different partition
+            self.cntr = self.cntr.wrapping_add(1);
+        }
     }
 }
 

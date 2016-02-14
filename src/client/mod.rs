@@ -238,40 +238,6 @@ impl<'a, 'b> ProduceMessage<'a, 'b> {
     pub fn new(topic: &'a str, partition: i32, key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> Self {
         ProduceMessage { key: key, value: value, topic: topic, partition: partition }
     }
-
-    /// A convenient method to create a produce message for the
-    /// specified topic with the specified value data.  The partition
-    /// is left "unspecified" by being set to a negative value.
-    ///
-    /// You'll have to either set the partition manually using
-    /// `ProduceMessage::with_partition` or rely on `Producer` to
-    /// figure out a partition automatically.
-    ///
-    /// See `Producer::send`, `KafkaClient::produce_messages`.
-    pub fn from_value(topic: &'a str, value: &'b [u8]) -> Self {
-        Self::new(topic, -1, None, Some(value))
-    }
-
-    /// A convenient method to create a produce message for the
-    /// specified topic with the specified key and value data.  The
-    /// partition is left "unspecified" by being set to a negative
-    /// value.
-    ///
-    /// You'll have to either set the partition manually using
-    /// `ProduceMessage::with_partition` or rely on `Producer` to
-    /// figure out a partition automatically.
-    ///
-    /// See `Producer::send`, `KafkaClient::produce_messages`.
-    pub fn from_key_value(topic: &'a str, key: &'b [u8], value: &'b [u8]) -> Self {
-        Self::new(topic, -1, Some(key), Some(value))
-    }
-
-    /// Sets the partition and returns the produce message allowing
-    /// convenient method chaining.
-    pub fn with_partition(mut self, partition: i32) -> Self {
-        self.partition = partition;
-        self
-    }
 }
 
 // --------------------------------------------------------------------
@@ -822,10 +788,10 @@ impl KafkaClient {
     ///
     /// `input` - A set of `ProduceMessage`s
     ///
-    /// Note: Unlike the higher-level `Producer`, this method will not
-    /// automatically determine the partition to deliver the message
-    /// to, but will strict try to send the message to the specified
-    /// partition.
+    /// Note: Unlike the higher-level `Producer` API, this method will
+    /// *not* automatically determine the partition to deliver the
+    /// message to.  It will strictly try to send the message to the
+    /// specified partition.
     ///
     /// # Example
     ///
@@ -834,8 +800,8 @@ impl KafkaClient {
     ///
     /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// let req = vec![ProduceMessage{topic: "my-topic",   partition: 0, key: None, value: Some("a".as_bytes())},
-    ///                ProduceMessage{topic: "my-topic-2", partition: 0, key: None, value: Some("b".as_bytes())}];
+    /// let req = vec![ProduceMessage::new("my-topic", 0, None, Some("a".as_bytes())),
+    ///                ProduceMessage::new("my-topic-2", 0, None, Some("b".as_bytes()))];
     /// println!("{:?}", client.produce_messages(1, 100, req));
     /// ```
     /// The return value will contain a vector of topic, partition, offset and error if any

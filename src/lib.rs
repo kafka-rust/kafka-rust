@@ -4,6 +4,7 @@ extern crate byteorder;
 extern crate flate2;
 extern crate crc;
 extern crate snappy;
+extern crate ref_slice;
 
 #[macro_use]
 extern crate log;

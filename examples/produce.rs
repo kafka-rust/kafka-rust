@@ -1,11 +1,11 @@
 extern crate kafka;
 
-use kafka::producer::{Producer, ProduceMessage};
+use kafka::producer::{Producer, Record};
 use kafka::error::Error as KafkaError;
 
-/// This program demonstrates sending a single message through a
-/// `Producer`. This is a convenient higher-level client that will fit
-/// most use cases.
+/// This program demonstrates sending single messagess through a
+/// `Producer`.  This is a convenient higher-level client that will
+/// fit most use cases.
 fn main() {
     let broker = "localhost:9092";
     let topic = "my-topic";
@@ -17,7 +17,7 @@ fn main() {
     }
 }
 
-fn produce_message(data: &[u8], topic: &str, brokers: Vec<String>)
+fn produce_message<'a, 'b>(data: &'a [u8], topic: &'b str, brokers: Vec<String>)
                    -> Result<(), KafkaError>
 {
     println!("About to publish a message at {:?} to: {}", brokers, topic);
@@ -36,11 +36,23 @@ fn produce_message(data: &[u8], topic: &str, brokers: Vec<String>)
 
     // ~ now send a single message.  this is a synchronous/blocking
     // operation.
-    // ~ we specify -1 as the target partition which will cause the
-    // producer to find out one on its own using its underlygin
-    // partitioner.  note, if we specified `partition >= 0` the
-    // producer would respect our choice.
+
     // ~ we're sending 'data' as a 'value'. there will be no key
     // associated with the sent message.
-    producer.send(&ProduceMessage::from_value(topic, data))
+
+    // ~ we leave the partition "unspecified" - this is a negative
+    // partition - which causes the producer to find out one on its
+    // own using its underlying partitioner.
+    try!(producer.send(&Record{
+        topic: topic,
+        partition: -1,
+        key: (),
+        value: data,
+    }));
+
+    // ~ we can achive exactly the same as above in a shorter way with
+    // the following call
+    try!(producer.send(&Record::from_value(topic, data)));
+
+    Ok(())
 }
