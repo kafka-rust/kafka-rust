@@ -1,6 +1,9 @@
 //! The primary module of this library providing only a mid-level
 //! abstraction for a kafka server while supposed to allow building
 //! higher level constructs.
+//!
+//! The entry point into this module is `KafkaClient` obtained by a
+//! call to `KafkaClient::new`.
 
 use std::collections::hash_map::{HashMap, Entry};
 use std::io::Cursor;

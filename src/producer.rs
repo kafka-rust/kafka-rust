@@ -4,7 +4,7 @@
 //! convenient API for sending messages.  So far the producer has only
 //! synchronous capabilities.
 //!
-//! In Kafka, each message is basically a key/value pair.  A `ProduceRecord`
+//! In Kafka, each message is basically a key/value pair.  A `Record`
 //! is all the data necessary to produce such a message to Kafka.
 //!
 //! # Example
@@ -227,6 +227,10 @@ impl<P: Partitioner> Producer<P> {
                     partition: r.partition,
                 };
                 // XXX always invoke the partitioner
+
+                // XXX needs to be given a `Cluster/Topics` structure, such that a
+                // partitioner has the chance to avoid topic look ups.
+
                 if r.partition < 0 {
                     if let Some(ps) = partition_ids.get(r.topic).map(|ps| &ps[..]) {
                         partitioner.partition(&mut m, ps);
@@ -374,10 +378,6 @@ pub trait Partitioner {
     /// the message's target partition.  Since the partitioner is
     /// given a mutable reference and may potentially change even more
     /// than just the partition.
-
-    // XXX needs to be given a `Cluster/Topics` structure, such that a
-    // partitioner has the chance to avoid topic look ups.
-
     fn partition(&mut self, msg: &mut client::ProduceMessage, partitions: &[i32]);
 }
 
