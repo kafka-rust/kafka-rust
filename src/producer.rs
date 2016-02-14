@@ -33,9 +33,10 @@
 //! multiple messages just like this example, it is more efficient to
 //! send them in batches using `Producer::send_all`.
 
-// XXX 1) rethink return values for the send_all method
-// XXX 2) maintain a background thread to provide an async version of the send* methods
+// XXX 1) rethink return values for the send_all() method
+// XXX 2) extend DefaultPartitioner to dispatch based on message key
 // XXX 3) Handle recoverable errors behind the scenes through retry attempts
+// XXX 4) maintain a background thread to provide an async version of the send* methods
 
 use std::collections::HashMap;
 use std::fmt;
@@ -424,7 +425,16 @@ impl Partitioner for DefaultPartitioner {
             match topics.partition_ids(rec.topic) {
                 Some(ps) if !ps.is_empty() => {
 
-                    // XXX dispatch to partition by the hash of the key - if that is available, otherwise continue just like below
+                    // ~ XXX dispatch to partition by the hash of the
+                    // key - if that is available, otherwise continue
+                    // just like below
+                    //
+                    // ~ XXX dispatching by key will require that we
+                    // take '% "all-partitions"' (not just the
+                    // "currently available" ones) to guard agaist
+                    // sending the same key to a different partition
+                    // due to a temporal unavailability of a
+                    // particular partition.
 
                     // ~ get a partition
                     rec.partition = ps[self.cntr as usize % ps.len()];
