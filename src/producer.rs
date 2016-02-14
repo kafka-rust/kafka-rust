@@ -33,7 +33,6 @@
 //! multiple messages just like this example, it is more efficient to
 //! send them in batches using `Producer::send_all`.
 
-// XXX 0) Always invoke partitioner
 // XXX 1) rethink return values for the send_all method
 // XXX 2) maintain a background thread to provide an async version of the send* methods
 // XXX 3) Handle recoverable errors behind the scenes through retry attempts
@@ -226,16 +225,7 @@ impl<P: Partitioner> Producer<P> {
                     topic: r.topic,
                     partition: r.partition,
                 };
-                // XXX always invoke the partitioner
-
-                // XXX needs to be given a `Cluster/Topics` structure, such that a
-                // partitioner has the chance to avoid topic look ups.
-
-                if r.partition < 0 {
-                    if let Some(ps) = partition_ids.get(r.topic).map(|ps| &ps[..]) {
-                        partitioner.partition(&mut m, ps);
-                    }
-                }
+                partitioner.partition(Topics::new(partition_ids), &mut m);
                 m
             }))
     }
@@ -368,6 +358,25 @@ impl<P> Builder<P> {
 
 // --------------------------------------------------------------------
 
+/// A description of available topics and their available partitions.
+///
+/// Indented for use by `Partitioner`s.
+pub struct Topics<'a> {
+    partition_ids: &'a HashMap<String, Vec<i32>>,
+}
+
+impl<'a> Topics<'a> {
+    fn new(partition_ids: &'a HashMap<String, Vec<i32>>) -> Topics<'a> {
+        Topics { partition_ids: partition_ids }
+    }
+
+    /// Retrieves a list of the identifiers of available partitions
+    /// for the given topic.
+    pub fn partition_ids(&self, topic: &'a str) -> Option<&[i32]> {
+        self.partition_ids.get(topic).map(|ps| &ps[..])
+    }
+}
+
 /// A partitioner is given a chance to choose/redefine a partition for
 /// a message to be sent to Kafka.  See also
 /// `Record#with_partition`.
@@ -375,22 +384,26 @@ impl<P> Builder<P> {
 /// Implementations can be stateful.
 pub trait Partitioner {
     /// Supposed to inspect the given message and if desired re-assign
-    /// the message's target partition.  Since the partitioner is
-    /// given a mutable reference and may potentially change even more
-    /// than just the partition.
-    fn partition(&mut self, msg: &mut client::ProduceMessage, partitions: &[i32]);
+    /// the message's target partition.
+    ///
+    /// `topics` a description of the currently known topics and their
+    /// currently available partitions.
+    ///
+    /// `msg` the message whose partition assignment potentially to
+    /// change.
+    fn partition(&mut self, topics: Topics, msg: &mut client::ProduceMessage);
 }
 
 /// As its name implies `DefaultPartitioner` is the default
 /// partitioner for `Producer`.
 ///
 /// Every received message with a non-negative value will not be
-/// changed by this partitioner and will be merely passed through.
+/// changed by this partitioner and will be passed through as is.
 ///
-/// However, for every message with a negative `partition` it will try
-/// to find a target partition. In a very simple manner, it tries to
-/// distribute such messsages across available partitions in a round
-/// robin fashion.
+/// For every message with an "unspecified" `partition` - this is a
+/// negative partition - it will try to find one.  In a very simple
+/// manner, it tries to distribute such messsages across available
+/// partitions in a round robin fashion.
 ///
 /// This behavior may not suffice every workload.  If you're
 /// application is dependent on a particular distribution scheme, you
@@ -406,13 +419,21 @@ pub struct DefaultPartitioner {
 
 impl Partitioner for DefaultPartitioner {
     #[allow(unused_variables)]
-    fn partition(&mut self, rec: &mut client::ProduceMessage, partitions: &[i32]) {
-        if rec.partition < 0 && !partitions.is_empty() {
-            // ~ get a partition
-            rec.partition = partitions[self.cntr as usize % partitions.len()];
-            // ~ update internal state so that the next time we choose
-            // a different partition
-            self.cntr = self.cntr.wrapping_add(1);
+    fn partition(&mut self, topics: Topics, rec: &mut client::ProduceMessage) {
+        if rec.partition < 0 {
+            match topics.partition_ids(rec.topic) {
+                Some(ps) if !ps.is_empty() => {
+
+                    // XXX dispatch to partition by the hash of the key - if that is available, otherwise continue just like below
+
+                    // ~ get a partition
+                    rec.partition = ps[self.cntr as usize % ps.len()];
+                    // ~ update internal state so that the next time we choose
+                    // a different partition
+                    self.cntr = self.cntr.wrapping_add(1);
+                }
+                _ => {}
+            }
         }
     }
 }
