@@ -796,6 +796,9 @@ impl KafkaClient {
     /// message to.  It will strictly try to send the message to the
     /// specified partition.
     ///
+    /// Note: Trying to send messages to non-existing topics or
+    /// non-existing partitions will result in an error.
+    ///
     /// # Example
     ///
     /// ```no_run
@@ -807,8 +810,9 @@ impl KafkaClient {
     ///                ProduceMessage::new("my-topic-2", 0, None, Some("b".as_bytes()))];
     /// println!("{:?}", client.produce_messages(1, 100, req));
     /// ```
-    /// The return value will contain a vector of topic, partition, offset and error if any
-    /// OR error:Error
+    ///
+    /// The return value will contain a vector of topic, partition,
+    /// offset and error if any OR error:Error.
 
     // XXX rework signaling an error; note that we need to either return the
     // messages which kafka failed to accept or otherwise tell the client about them
