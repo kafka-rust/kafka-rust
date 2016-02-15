@@ -211,6 +211,33 @@ impl FetchOffset {
 
 // --------------------------------------------------------------------
 
+/// Data point identifying a particular topic partition offset to be
+/// commited.
+/// See `KafkaClient::commit_offsets`.
+#[derive(Debug)]
+pub struct CommitOffset<'a> {
+    /// The offset to be committed
+    pub offset: i64,
+    /// The topic to commit the offset for
+    pub topic: &'a str,
+    /// The partition to commit the offset for
+    pub partition: i32,
+}
+
+impl<'a> CommitOffset<'a> {
+    pub fn new(topic: &'a str, partition: i32, offset: i64) -> Self {
+        CommitOffset { topic: topic, partition: partition, offset: offset }
+    }
+}
+
+impl<'a> AsRef<CommitOffset<'a>> for CommitOffset<'a> {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+// --------------------------------------------------------------------
+
 /// Message data to be sent/produced to a particular topic partition.
 /// See `KafkaClient::produce_messages` and `Producer::send`.
 #[derive(Debug)]
@@ -842,23 +869,29 @@ impl KafkaClient {
         __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
     }
 
-    /// Commit offset to topic, partition of a consumer group
-    ///
-    /// It takes a group name and list of `utils::TopicPartitionOffset` and returns `()`
-    /// or `error::Error`
+    /// Commit offset to topic, partition of a consumer group.
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use kafka::utils;
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let resp = client.commit_offsets("my-group", vec!(
-    ///                 utils::TopicPartitionOffset{topic: "my-topic", partition: 0, offset: 100},
-    ///                 utils::TopicPartitionOffset{topic: "my-topic", partition: 1, offset: 100}));
+    /// use kafka::client::{KafkaClient, CommitOffset};
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.load_metadata_all().unwrap();
+    /// client.commit_offsets("my-group",
+    ///     &[CommitOffset::new("my-topic", 0, 100),
+    ///       CommitOffset::new("my-topic", 1, 99)])
+    ///    .unwrap();
     /// ```
+    ///
+    /// In this example, we commit the offset 100 for the topic
+    /// partition "my-topic:0" and 99 for the topic partition
+    /// "my-topic:1".  Once successfully committed, these can then be
+    /// retrieved using `fetch_group_offsets` even from another
+    /// process or at much later point in time to resume comusing the
+    /// topic partitions as of these offsets.
     pub fn commit_offsets<'a, J, I>(&mut self, group: &str, offsets: I) -> Result<()>
-        where J: AsRef<utils::TopicPartitionOffset<'a>>, I: IntoIterator<Item=J>
+        where J: AsRef<CommitOffset<'a>>, I: IntoIterator<Item=J>
     {
         let state = &mut self.state;
         let correlation = state.next_correlation_id();
@@ -890,12 +923,10 @@ impl KafkaClient {
     /// let res = client.load_metadata_all();
     /// let resp = client.commit_offset("my-group", "my-topic", 0, 100);
     /// ```
-    pub fn commit_offset(&mut self, group: &str, topic: &str, partition: i32, offset: i64) -> Result<()> {
-        self.commit_offsets(group, &[utils::TopicPartitionOffset{
-            topic: topic,
-            partition: partition,
-            offset: offset
-        }])
+    pub fn commit_offset(&mut self, group: &str, topic: &str, partition: i32, offset: i64)
+                         -> Result<()>
+    {
+        self.commit_offsets(group, &[CommitOffset::new(topic, partition, offset)])
     }
 
     /// Fetch offset for vector of topic, partition of a consumer group

@@ -46,10 +46,10 @@ use std::collections::hash_map::{HashMap, Entry};
 use std::collections::VecDeque;
 use std::slice;
 
-use client::{self, KafkaClient, FetchPartition};
+use client::{self, KafkaClient, FetchPartition, CommitOffset};
 use client::metadata::Topics;
 use error::{Error, KafkaCode, Result};
-use utils::{TopicPartition, TopicPartitionOffset};
+use utils::TopicPartition;
 use client::fetch;
 
 // public re-exports
@@ -343,12 +343,7 @@ impl Consumer {
                topic, group, offsets);
         try!(client.commit_offsets(
             group,
-            offsets.iter()
-                .map(|(&p, &o)| TopicPartitionOffset {
-                    topic: topic,
-                    partition: p,
-                    offset: o,
-                })));
+            offsets.iter().map(|(&p, &o)| CommitOffset::new(topic, p, o))));
         self.state.consumed_offsets_dirty = false;
         Ok(())
     }
