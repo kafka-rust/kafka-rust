@@ -46,10 +46,9 @@ use std::collections::hash_map::{HashMap, Entry};
 use std::collections::VecDeque;
 use std::slice;
 
-use client::{self, KafkaClient, FetchPartition, CommitOffset};
+use client::{self, KafkaClient, FetchPartition, CommitOffset, FetchGroupOffset};
 use client::metadata::Topics;
 use error::{Error, KafkaCode, Result};
-use utils::TopicPartition;
 use client::fetch;
 
 // public re-exports
@@ -412,9 +411,9 @@ fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: 
     assert!(!partitions.is_empty());
 
     let topic = &config.topic;
-    let tpos = try!(client.fetch_group_offsets_multi(
+    let tpos = try!(client.fetch_group_offsets(
         &config.group,
-        partitions.iter().map(|&p_id | TopicPartition::new(topic, p_id))));
+        partitions.iter().map(|&p_id | FetchGroupOffset::new(topic, p_id))));
 
     let mut offs = HashMap::with_capacity(partitions.len());
     for tpo in tpos {

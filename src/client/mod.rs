@@ -211,6 +211,32 @@ impl FetchOffset {
 
 // --------------------------------------------------------------------
 
+/// Data point identifying a partitioner topic partition to fetch a
+/// (previously committed) group offset for.
+/// See `KafkaClient::fetch_group_offsets`.
+#[derive(Debug)]
+pub struct FetchGroupOffset<'a> {
+    /// The topic to fetch the group offset for
+    pub topic: &'a str,
+    /// The partition to fetch the group offset for
+    pub partition: i32,
+}
+
+impl<'a> FetchGroupOffset<'a> {
+    #[inline]
+    pub fn new(topic: &'a str, partition: i32) -> Self {
+        FetchGroupOffset { topic: topic, partition: partition }
+    }
+}
+
+impl<'a> AsRef<FetchGroupOffset<'a>> for FetchGroupOffset<'a> {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+// --------------------------------------------------------------------
+
 /// Data point identifying a particular topic partition offset to be
 /// commited.
 /// See `KafkaClient::commit_offsets`.
@@ -930,24 +956,27 @@ impl KafkaClient {
         self.commit_offsets(group, &[CommitOffset::new(topic, partition, offset)])
     }
 
-    /// Fetch offset for vector of topic, partition of a consumer group
-    ///
-    /// It takes a group name and list of `utils::TopicPartition` and returns `utils::TopicPartitionOffsetError`
-    /// or `error::Error`
+    /// Fetch offset for a specified list of topic partitions of a consumer group
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use kafka::utils;
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let resp = client.fetch_group_offsets_multi("my-group", vec!(
-    ///                 utils::TopicPartition{topic: "my-topic", partition: 0},
-    ///                 utils::TopicPartition{topic: "my-topic", partition: 1}));
+    /// use kafka::client::{KafkaClient, FetchGroupOffset};
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.load_metadata_all().unwrap();
+    ///
+    /// let offsets =
+    ///      client.fetch_group_offsets("my-group",
+    ///             &[FetchGroupOffset::new("my-topic", 0),
+    ///               FetchGroupOffset::new("my-topic", 1)])
+    ///             .unwrap();
     /// ```
-    pub fn fetch_group_offsets_multi<'a, J, I>(&mut self, group: &str, partitions: I)
-                                               -> Result<Vec<utils::TopicPartitionOffsetError>>
-        where J: AsRef<utils::TopicPartition<'a>>, I: IntoIterator<Item=J>
+    ///
+    /// See also `KafkaClient::fetch_group_topic_offsets`.
+    pub fn fetch_group_offsets<'a, J, I>(&mut self, group: &str, partitions: I)
+                                         -> Result<Vec<utils::TopicPartitionOffsetError>>
+        where J: AsRef<FetchGroupOffset<'a>>, I: IntoIterator<Item=J>
     {
         let correlation = self.state.next_correlation_id();
 
@@ -961,24 +990,22 @@ impl KafkaClient {
                     .add(tp.topic, tp.partition);
             }
         }
-        __fetch_group_offsets_multi(&mut self.conn_pool, reqs)
+        __fetch_group_offsets(&mut self.conn_pool, reqs)
     }
 
-    /// Fetch offset for all partitions of a topic of a consumer group
-    ///
-    /// It takes a group name and a topic and returns `utils::TopicPartitionOffsetError`
-    /// or `error::Error`
+    /// Fetch offset for all partitions of a particular topic of a consumer group
     ///
     /// # Examples
-
+    ///
     ///
     /// ```no_run
-    /// use kafka::utils;
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let resp = client.fetch_group_offsets("my-group", "my-topic");
+    /// use kafka::client::KafkaClient;
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.load_metadata_all().unwrap();
+    /// let offsets = client.fetch_group_topic_offsets("my-group", "my-topic").unwrap();
     /// ```
-    pub fn fetch_group_offsets(&mut self, group: &str, topic: &str)
+    pub fn fetch_group_topic_offsets(&mut self, group: &str, topic: &str)
                                -> Result<Vec<utils::TopicPartitionOffsetError>>
     {
         let tps: Vec<_> =
@@ -986,10 +1013,10 @@ impl KafkaClient {
                 None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
                 Some(tp) => tp.partitions
                     .iter()
-                    .map(|p| utils::TopicPartition{ topic: topic, partition: p.partition_id })
+                    .map(|p| FetchGroupOffset::new(topic, p.partition_id))
                     .collect(),
             };
-        self.fetch_group_offsets_multi(group, tps)
+        self.fetch_group_offsets(group, tps)
     }
 }
 
@@ -1003,7 +1030,7 @@ fn __commit_offsets(conn_pool: &mut ConnectionPool,
     Ok(())
 }
 
-fn __fetch_group_offsets_multi(conn_pool: &mut ConnectionPool,
+fn __fetch_group_offsets(conn_pool: &mut ConnectionPool,
                                reqs: HashMap<&str, protocol::OffsetFetchRequest>)
                                -> Result<Vec<utils::TopicPartitionOffsetError>> {
     // Call each broker with the request formed earlier
