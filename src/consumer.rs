@@ -435,7 +435,7 @@ fn load_fetch_states(config: &Config,
     fn load_partition_offsets(client: &mut KafkaClient, topic: &str, offset: FetchOffset)
                               -> Result<HashMap<i32, i64>>
     {
-        let offs = try!(client.fetch_topic_offset(topic, offset));
+        let offs = try!(client.fetch_topic_offsets(topic, offset));
         let mut m = HashMap::with_capacity(offs.len());
         for off in offs {
             m.insert(off.partition, off.offset.unwrap_or(-1));

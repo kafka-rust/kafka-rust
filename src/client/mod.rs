@@ -641,18 +641,21 @@ impl KafkaClient {
         Err(Error::NoHostReachable)
     }
 
-    /// Fetch offsets for a list of topics.
+    /// Fetch offsets for a list of topics
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// use kafka::client::KafkaClient;
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
     /// let topics: Vec<String> = client.topics().names().map(ToOwned::to_owned).collect();
     /// let offsets = client.fetch_offsets(&topics, kafka::client::FetchOffset::Latest).unwrap();
     /// ```
-    /// Returns a hashmap of (topic, PartitionOffset data).
-    /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
+    ///
+    /// Returns a mapping of topic name to `PartitionOffset`s for each
+    /// currently available partition of the corresponding topic.
     pub fn fetch_offsets<T: AsRef<str>>(&mut self, topics: &[T], offset: FetchOffset)
                                         -> Result<HashMap<String, Vec<utils::PartitionOffset>>>
     {
@@ -696,14 +699,16 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let offsets = client.fetch_topic_offset("my-topic", kafka::client::FetchOffset::Latest);
+    /// use kafka::client::{KafkaClient, FetchOffset};
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.load_metadata_all().unwrap();
+    /// let offsets = client.fetch_topic_offsets("my-topic", FetchOffset::Latest).unwrap();
     /// ```
-    /// Returns a vector of offset data for each available partition.
-    /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
-    // XXX rename to fetch_topic_offsets (plural)
-    pub fn fetch_topic_offset<T: AsRef<str>>(&mut self, topic: T, offset: FetchOffset)
+    ///
+    /// Returns a vector of the offset data for each available partition.
+    /// See also `KafkaClient::fetch_offsets`.
+    pub fn fetch_topic_offsets<T: AsRef<str>>(&mut self, topic: T, offset: FetchOffset)
                                               -> Result<Vec<utils::PartitionOffset>>
     {
         let topic = topic.as_ref();
