@@ -213,7 +213,7 @@ impl FetchOffset {
 
 /// Data point identifying a partitioner topic partition to fetch a
 /// (previously committed) group offset for.
-/// See `KafkaClient::fetch_group_offsets_multi`.
+/// See `KafkaClient::fetch_group_offsets`.
 #[derive(Debug)]
 pub struct FetchGroupOffset<'a> {
     /// The topic to fetch the group offset for
@@ -972,6 +972,8 @@ impl KafkaClient {
     ///               FetchGroupOffset::new("my-topic", 1)])
     ///             .unwrap();
     /// ```
+    ///
+    /// See also `KafkaClient::fetch_group_topic_offsets`.
     pub fn fetch_group_offsets<'a, J, I>(&mut self, group: &str, partitions: I)
                                          -> Result<Vec<utils::TopicPartitionOffsetError>>
         where J: AsRef<FetchGroupOffset<'a>>, I: IntoIterator<Item=J>
