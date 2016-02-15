@@ -56,7 +56,7 @@ use client::fetch;
 pub use client::fetch::Message;
 pub use client::FetchOffset;
 
-/// The default value for `Consumer::with_retry_max_bytes_limit`.
+/// The default value for `Builder::with_retry_max_bytes_limit`.
 pub const DEFAULT_RETRY_MAX_BYTES_LIMIT: i32 = 0;
 
 /// The Kafka Consumer
@@ -210,6 +210,7 @@ impl Consumer {
                             .expect("non-requested partition");
                     // ~ make sure we skip messages we have not asked
                     // for in further processing
+                    // XXX move functionality directly into the code which parses the protocol data
                     unsafe {
                         data.forget_before_offset(fetch_state.offset);
                     }
@@ -724,7 +725,7 @@ impl Builder {
     }
 
     /// Finally creates/builds a new consumer based on the so far
-    /// supplied confirmation settings.
+    /// supplied settings.
     pub fn create(self) -> Result<Consumer> {
         let mut client = match self.client {
             Some(client) => client,

@@ -6,7 +6,7 @@ use kafka::error::Error as KafkaError;
 /// This program demonstrates consuming messages through a `Consumer`.
 /// This is a convenient client that will fit most use cases.  Note
 /// that messages must be marked and commited as consumed to ensure
-/// once once delivery.
+/// only once delivery.
 fn main() {
     let broker = "localhost:9092".to_owned();
     let topic = "my-topic".to_owned();

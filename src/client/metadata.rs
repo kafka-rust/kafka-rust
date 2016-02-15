@@ -20,6 +20,12 @@ impl<'a> Topics<'a> {
         Topics { state: &client.state }
     }
 
+    /// Retrieves the number of the underlying topics.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.state.topic_partitions.len()
+    }
+
     /// Provides an iterator over the known topics.
     #[inline]
     pub fn iter(&'a self) -> TopicIter<'a> {
@@ -46,6 +52,16 @@ impl<'a> Topics<'a> {
             state: self.state,
             tp: tp,
         })
+    }
+
+    /// Retrieves a snapshot/copy of the partition ids available for
+    /// the specified topic.  Note that the returned copy may get out
+    /// of date if the underlying client's metadata gets refreshed.
+    #[inline]
+    pub fn partition_ids(&'a self, topic: &str) -> Option<Vec<i32>> {
+        self.state.topic_partitions.get(topic)
+            .map(|tp| &tp.partitions)
+            .map(|ps| ps.iter().map(|p| p.partition_id).collect())
     }
 }
 
@@ -146,6 +162,14 @@ impl<'a> Topic<'a> {
             tp: self.tp,
         }
     }
+
+    /// Retrieves a snapshot/copy of the partition ids available for
+    /// this topic.  Note that the returned copy may get out of date
+    /// if the underlying client's metadata gets refreshed.
+    #[inline]
+    pub fn partition_ids(&'a self) -> Vec<i32> {
+        self.tp.partitions.iter().map(|p| p.partition_id).collect()
+    }
 }
 
 impl<'a> fmt::Debug for Topic<'a> {
@@ -162,7 +186,7 @@ pub struct Partitions<'a> {
 }
 
 impl<'a> Partitions<'a> {
-    /// Retrieves the number of the underlygin partitions.
+    /// Retrieves the number of the underlying partitions.
     #[inline]
     pub fn len(&self) -> usize {
         self.tp.partitions.len()

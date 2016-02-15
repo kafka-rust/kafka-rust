@@ -56,15 +56,17 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
         }
     }
 
-    pub fn add(&mut self, topic: &'b str, partition: i32, message: &'b [u8]) {
+    pub fn add(&mut self, topic: &'b str, partition: i32,
+               key: Option<&'b [u8]>, value: Option<&'b [u8]>)
+    {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
-                tp.add(partition, message);
+                tp.add(partition, key, value);
                 return;
             }
         }
         let mut tp = TopicPartitionProduceRequest::new(topic, self.compression);
-        tp.add(partition, message);
+        tp.add(partition, key, value);
         self.topic_partitions.push(tp);
     }
 }
@@ -78,36 +80,26 @@ impl<'a> TopicPartitionProduceRequest<'a> {
         }
     }
 
-    pub fn add(&mut self, partition: i32, message: &'a[u8]) {
+    pub fn add(&mut self, partition: i32, key: Option<&'a [u8]>, value: Option<&'a[u8]>) {
         for pp in &mut self.partitions {
             if pp.partition == partition {
-                pp.add(message);
+                pp.add(key, value);
                 return;
             }
         }
-        self.partitions.push(PartitionProduceRequest::new(partition, message))
+        self.partitions.push(PartitionProduceRequest::new(partition, key, value));
     }
 }
 
 impl<'a> PartitionProduceRequest<'a> {
-    pub fn new(partition: i32, message: &[u8]) -> PartitionProduceRequest {
-        PartitionProduceRequest {
-            partition: partition,
-            messages: vec![MessageProduceRequest::from_value(message)],
-        }
+    pub fn new<'b>(partition: i32, key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> PartitionProduceRequest<'b> {
+        let mut r = PartitionProduceRequest { partition: partition, messages: Vec::new() };
+        r.add(key, value);
+        r
     }
 
-    pub fn add(&mut self, message: &'a [u8]) {
-        self.messages.push(MessageProduceRequest::from_value(message))
-    }
-}
-
-impl<'a> MessageProduceRequest<'a> {
-    fn from_value(value: &[u8]) -> MessageProduceRequest {
-        MessageProduceRequest {
-            key: None,
-            value: Some(value),
-        }
+    pub fn add(&mut self, key: Option<&'a [u8]>, value: Option<&'a [u8]>) {
+        self.messages.push(MessageProduceRequest::new(key, value));
     }
 }
 
@@ -166,6 +158,14 @@ impl<'a> PartitionProduceRequest<'a> {
 }
 
 impl<'a> MessageProduceRequest<'a> {
+    fn new<'b>(key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> MessageProduceRequest<'b> {
+        MessageProduceRequest { key: key, value: value }
+    }
+
+    fn from_value<'b>(value: &'b [u8]) -> MessageProduceRequest<'b> {
+        MessageProduceRequest::new(None, Some(value))
+    }
+
     // render a single message as: Offset MessageSize Message
     //
     // Offset => int64 (always encoded as zero here)

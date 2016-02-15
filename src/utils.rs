@@ -2,20 +2,6 @@
 
 use error::{Result,Error};
 
-// XXX move to kafka::client module
-#[derive(Debug)]
-pub struct ProduceMessage<'a, 'b> {
-    pub topic: &'a str,
-    pub message: &'b [u8],
-}
-
-impl<'a, 'b> AsRef<ProduceMessage<'a, 'b>> for ProduceMessage<'a, 'b> {
-    fn as_ref(&self) -> &Self {
-        &self
-    }
-}
-
-
 #[derive(Debug)]
 pub struct PartitionOffset {
     pub offset: Result<i64>,
@@ -41,10 +27,11 @@ impl<'a> TopicPartitionOffset<'a> {
 
 impl<'a> AsRef<TopicPartitionOffset<'a>> for TopicPartitionOffset<'a> {
     fn as_ref(&self) -> &Self {
-        &self
+        self
     }
 }
 
+// XXX rework to `offset: Result<i64>`, similar to `PartitionOffset`
 #[derive(Debug)]
 pub struct TopicPartitionOffsetError {
     pub topic: String,
@@ -68,6 +55,6 @@ impl<'a> TopicPartition<'a> {
 
 impl<'a> AsRef<TopicPartition<'a>> for TopicPartition<'a> {
     fn as_ref(&self) -> &Self {
-        &self
+        self
     }
 }
