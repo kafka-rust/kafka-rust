@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use codecs::{ToByte, FromByte};
 use error::{Error, Result};
-use utils::TopicPartitionOffsetError;
+use utils::TopicPartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET_FETCH, API_KEY_OFFSET_COMMIT, API_VERSION};
@@ -158,7 +158,7 @@ pub struct PartitionOffsetFetchResponse {
 }
 
 impl OffsetFetchResponse {
-    pub fn get_offsets(&self) -> Vec<TopicPartitionOffsetError> {
+    pub fn get_offsets(&self) -> Vec<TopicPartitionOffset> {
         self.topic_partitions
             .iter()
             .flat_map(|ref tp| tp.get_offsets(tp.topic.clone()))
@@ -167,7 +167,7 @@ impl OffsetFetchResponse {
 }
 
 impl TopicPartitionOffsetFetchResponse {
-    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffsetError>{
+    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffset> {
         self.partitions
             .iter()
             .map(|ref p| p.get_offsets(topic.clone()))
@@ -176,12 +176,14 @@ impl TopicPartitionOffsetFetchResponse {
 }
 
 impl PartitionOffsetFetchResponse {
-    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffsetError{
-        TopicPartitionOffsetError{
+    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffset {
+        TopicPartitionOffset {
             topic: topic,
             partition: self.partition,
-            offset: self.offset,
-            error: Error::from_protocol_error(self.error)
+            offset: match Error::from_protocol_error(self.error) {
+                None => Ok(self.offset),
+                Some(e) => Err(e),
+            }
         }
     }
 }

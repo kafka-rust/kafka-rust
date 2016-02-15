@@ -417,8 +417,11 @@ fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: 
 
     let mut offs = HashMap::with_capacity(partitions.len());
     for tpo in tpos {
-        if tpo.error.is_none() && tpo.offset != -1 {
-            offs.insert(tpo.partition, tpo.offset);
+        match tpo.offset {
+            Ok(o) if o != -1 => {
+                offs.insert(tpo.partition, o);
+            }
+            _ => {}
         }
     }
     Ok(offs)

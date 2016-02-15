@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use codecs::{ToByte, FromByte};
 use compression::{Compression, gzip, snappy};
 use error::{Error, Result};
-use utils::TopicPartitionOffsetError;
+use utils::TopicPartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
@@ -237,7 +237,7 @@ pub struct PartitionProduceResponse {
 }
 
 impl ProduceResponse {
-    pub fn get_response(&self) -> Vec<TopicPartitionOffsetError> {
+    pub fn get_response(&self) -> Vec<TopicPartitionOffset> {
         self.topic_partitions
             .iter()
             .flat_map(|ref tp| tp.get_response(tp.topic.clone()))
@@ -246,7 +246,7 @@ impl ProduceResponse {
 }
 
 impl TopicPartitionProduceResponse {
-    pub fn get_response(&self, topic: String) -> Vec<TopicPartitionOffsetError> {
+    pub fn get_response(&self, topic: String) -> Vec<TopicPartitionOffset> {
         self.partitions
             .iter()
             .map(|ref p| p.get_response(topic.clone()))
@@ -255,12 +255,14 @@ impl TopicPartitionProduceResponse {
 }
 
 impl PartitionProduceResponse {
-    pub fn get_response(&self, topic: String) -> TopicPartitionOffsetError {
-        TopicPartitionOffsetError{
+    pub fn get_response(&self, topic: String) -> TopicPartitionOffset {
+        TopicPartitionOffset {
             topic: topic,
             partition: self.partition,
-            offset:self.offset,
-            error: Error::from_protocol_error(self.error)
+            offset: match Error::from_protocol_error(self.error) {
+                None => Ok(self.offset),
+                Some(e) => Err(e),
+            }
         }
     }
 }

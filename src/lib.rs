@@ -13,10 +13,10 @@ extern crate log;
 extern crate test;
 
 pub mod error;
-pub mod utils;
 pub mod client;
 pub mod consumer;
 pub mod producer;
+mod utils;
 mod codecs;
 mod connection;
 mod protocol;

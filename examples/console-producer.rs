@@ -129,7 +129,7 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
 fn send_batch(producer: &mut Producer, batch: &[Record<(), String>]) -> Result<(), Error> {
     let rs = try!(producer.send_all(batch));
     for r in rs {
-        if let Some(e) = r.error {
+        if let Err(e) = r.offset {
             return Err(From::from(e));
         }
     }
