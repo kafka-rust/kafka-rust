@@ -869,7 +869,7 @@ impl KafkaClient {
         __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
     }
 
-    /// Commit offset to topic, partition of a consumer group.
+    /// Commit offset for a topic partitions on behalf of a consumer group.
     ///
     /// # Examples
     ///
@@ -910,19 +910,20 @@ impl KafkaClient {
         __commit_offsets(&mut self.conn_pool, reqs)
     }
 
-    /// Commit offset to topic, partition of a consumer group
-    ///
-    /// It takes a group name, topic, partition and offset and returns `()`
-    /// or `error::Error`
+    /// Commit offset of a particular topic partition on behalf of a
+    /// consumer group.
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use kafka::utils;
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let resp = client.commit_offset("my-group", "my-topic", 0, 100);
+    /// use kafka::client::KafkaClient;
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.load_metadata_all().unwrap();
+    /// client.commit_offset("my-group", "my-topic", 0, 100).unwrap();
     /// ```
+    ///
+    /// See also `KafkaClient::commit_offsets`.
     pub fn commit_offset(&mut self, group: &str, topic: &str, partition: i32, offset: i64)
                          -> Result<()>
     {
