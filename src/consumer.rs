@@ -1,4 +1,4 @@
-//! Kafka Consumer
+//! Kafka Consumer - A higher-level API for consuming a kafka topic.
 //!
 //! A consumer for a single Kafka topic on behalf of a specified group
 //! providing help in offset management.  The consumer can be

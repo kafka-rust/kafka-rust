@@ -19,10 +19,11 @@ under heavy movement although we do follow semantic versioning.
 kafka = "0.2"
 ```
 
-To build kafka-rust you'll need `libsnappy-dev` on your local
-machine. If that library is not installed in the usual path, you can
-export the `LD_LIBRARY_PATH` and `LD_RUN_PATH` environment variables
-before issueing `cargo build`.
+To build kafka-rust you'll need `libsnappy-dev` on your local machine.
+If that library is not installed in the usual path, you can export the
+`LD_LIBRARY_PATH` and `LD_RUN_PATH` environment variables before
+issueing `cargo build`.
+
 
 ### Examples
 
