@@ -1,35 +1,42 @@
 extern crate kafka;
-use kafka::client::KafkaClient;
 
-/// This program demonstrates consuming messages through `KafkaClient`. This is the top level
-/// client that will fit most use cases. Note that consumed messages are tracked by Kafka so you
-/// can only consume them once. This is what you want for most use cases, you can look at
-/// examples/fetch.rs for a lower level API.
+use kafka::consumer::{Consumer, FetchOffset};
+use kafka::error::Error as KafkaError;
+
+/// This program demonstrates consuming messages through a `Consumer`.
+/// This is a convenient client that will fit most use cases.  Note
+/// that messages must be marked and commited as consumed to ensure
+/// only once delivery.
 fn main() {
-    let broker = "localhost:9092";
-    let topic = "my-topic";
+    let broker = "localhost:9092".to_owned();
+    let topic = "my-topic".to_owned();
+    let group = "my-group".to_owned();
 
-    println!("About to consume messages at {} from: {}", broker, topic);
-
-
-    let mut client = KafkaClient::new(vec!(broker.to_owned()));
-    if let Err(e) = client.load_metadata_all() {
-        println!("Failed to load meta data from {}: {}", broker, e);
-        return;
+    if let Err(e) = consume_messages(group, topic, vec![broker]) {
+        println!("Failed consuming messages: {}", e);
     }
+}
 
-    // ~ make sure to print out a warning message when the target
-    // topic does not yet exist
-    if !client.topic_partitions.contains_key(topic) {
-        println!("No such topic at {}: {}", broker, topic);
-        return;
+fn consume_messages(group: String, topic: String, brokers: Vec<String>)
+                    -> Result<(), KafkaError>
+{
+    let mut con = try!(Consumer::from_hosts(brokers, group, topic)
+                       .with_fallback_offset(FetchOffset::Earliest)
+                       .create());
+
+    loop {
+        let mss = try!(con.poll());
+        if mss.is_empty() {
+            println!("No messages available right now.");
+            return Ok(());
+        }
+
+        for ms in mss.iter() {
+            for m in ms.messages() {
+                println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
+            }
+            con.consume_messageset(ms);
+        }
+        try!(con.commit_consumed());
     }
-
-    let con = kafka::consumer::Consumer::new(client, "test-group".to_owned(), topic.to_owned())
-        .fallback_offset(-2);
-
-    for msg in con {
-        println!("{:?}", msg);
-    }
-    println!("No more messages.")
 }

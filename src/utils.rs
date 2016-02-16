@@ -1,58 +1,21 @@
 //! Some utility structures
+//!
+//! This module is _not_ exposed to the public directly.
 
-use error::Error;
+use error::Result;
 
-#[derive(Clone, Debug)]
-pub struct OffsetMessage {
-    pub offset: i64,
-    pub message: Vec<u8>
-}
-
-#[derive(Clone, Debug)]
-pub struct TopicMessage {
-    pub topic: String,
-    pub partition: i32,
-    pub offset: i64,
-    pub error: Option<Error>,
-    pub message: Vec<u8>
-}
-
-#[derive(Clone, Debug)]
-pub struct ProduceMessage {
-    pub topic: String,
-    pub message: Vec<u8>
-}
-
-
+/// A retrieved offset for a particular partition in the context of an
+/// already known topic.
 #[derive(Debug)]
 pub struct PartitionOffset {
+    pub offset: Result<i64>,
     pub partition: i32,
-    pub offset: i64
 }
 
+/// A retrieved offset of a particular topic partition.
 #[derive(Debug)]
 pub struct TopicPartitionOffset {
+    pub offset: Result<i64>,
     pub topic: String,
     pub partition: i32,
-    pub offset: i64
-}
-
-#[derive(Debug)]
-pub struct TopicPartitionOffsetError {
-    pub topic: String,
-    pub partition: i32,
-    pub offset: i64,
-    pub error: Option<Error>
-}
-
-#[derive(Debug)]
-pub struct TopicPartitions {
-    pub topic: String,
-    pub partitions: Vec<i32>
-}
-
-#[derive(Debug)]
-pub struct TopicPartition {
-    pub topic: String,
-    pub partition: i32
 }

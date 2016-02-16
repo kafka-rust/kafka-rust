@@ -1,6 +1,6 @@
 extern crate kafka;
 
-use kafka::client::KafkaClient;
+use kafka::client::{KafkaClient, FetchPartition};
 
 /// This program demonstrates the low level api for fetching messages.
 /// Please look at examles/consume.rs for an easier to use API.
@@ -16,26 +16,41 @@ fn main() {
 
     let mut client = KafkaClient::new(vec!(broker.to_owned()));
     if let Err(e) = client.load_metadata_all() {
-        println!("Failed to load meta data from {}: {}", broker, e);
+        println!("Failed to load metadata from {}: {}", broker, e);
         return;
     }
 
     // ~ make sure to print out a warning message when the target
     // topic does not yet exist
-    if !client.topic_partitions.contains_key(topic) {
+    if !client.topics().contains(topic) {
         println!("No such topic at {}: {}", broker, topic);
         return;
     }
 
-    match client.fetch_messages(topic.to_owned(), partition, offset) {
+    match client.fetch_messages(&[FetchPartition::new(topic, partition, offset)]) {
         Err(e) => {
             println!("Failed to fetch messages: {}", e);
         }
-        Ok(msgs) => {
-            for msg in msgs {
-                println!("{:?}", msg);
+        Ok(resps) => {
+            for resp in resps {
+                for t in resp.topics() {
+                    for p in t.partitions() {
+                        match p.data() {
+                            &Err(ref e) => {
+                                println!("partition error: {}:{}: {}", t.topic(), p.partition(), e)
+                            }
+                            &Ok(ref data) => {
+                                println!("topic: {} / partition: {} / latest available message offset: {}",
+                                         t.topic(), p.partition(), data.highwatermark_offset());
+                                for msg in data.messages() {
+                                    println!("topic: {} / partition: {} / message.offset: {} / message.len: {}",
+                                             t.topic(), p.partition(), msg.offset, msg.value.len());
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            println!("No more messages.");
         }
     }
 }

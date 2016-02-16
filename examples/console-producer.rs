@@ -3,9 +3,10 @@ extern crate getopts;
 
 use std::{env, fmt, process};
 use std::fs::File;
-use std::io::{self, stdin, Write, BufRead, BufReader};
+use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
 
 use kafka::client::{KafkaClient, Compression};
+use kafka::producer::{Producer, Record};
 
 // how many brokers do we require to acknowledge the send messages
 const REQUIRED_ACKS: i16 = 1;
@@ -38,49 +39,99 @@ fn produce(cfg: &Config) -> Result<(), Error> {
     try!(client.load_metadata_all());
 
     // ~ verify that the remote brokers do know about the target topic
-    if !client.topic_partitions.contains_key(&cfg.topic) {
+    if !client.topics().contains(&cfg.topic) {
         return Err(Error::Literal(format!("No such topic at {:?}: {}", cfg.brokers, cfg.topic)));
     }
     match cfg.input_file {
         None => {
             let stdin = stdin();
             let mut stdin = stdin.lock();
-            produce_impl(&mut stdin, &mut client, &cfg)
+            produce_impl(&mut stdin, client, &cfg)
         }
         Some(ref file) => {
             let mut r = BufReader::new(try!(File::open(file)));
-            produce_impl(&mut r, &mut client, &cfg)
+            produce_impl(&mut r, client, &cfg)
         }
     }
 }
 
-fn produce_impl(src: &mut BufRead, client: &mut KafkaClient, cfg: &Config) -> Result<(), Error> {
-    let mut msg_buf = Vec::with_capacity(cfg.batch_size);
-    let mut line_buf = String::new();
+fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<(), Error> {
+    let mut producer = try!(Producer::from_client(client)
+                            .with_ack_timeout(ACK_TIMEOUT)
+                            .with_required_acks(REQUIRED_ACKS)
+                            .create());
+    if cfg.batch_size < 2 {
+        produce_impl_nobatch(&mut producer, src, cfg)
+    } else {
+        produce_impl_inbatches(&mut producer, src, cfg)
+    }
+}
+
+fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config) -> Result<(), Error> {
+    let mut stderr = stderr();
+    let mut rec = Record::from_value(&cfg.topic, String::new());
     loop {
-        line_buf.clear();
-        if try!(src.read_line(&mut line_buf)) == 0 {
+        rec.value.clear();
+        if try!(src.read_line(&mut rec.value)) == 0 {
             break; // ~ EOF reached
         }
-        let s = line_buf.trim();
-        if s.is_empty() {
+        if rec.value.trim().is_empty() {
             continue; // ~ skip empty lines
         }
-        // ~ buffer the line for later sending it as part of a bigger
-        // batch
-        msg_buf.push(kafka::utils::ProduceMessage {
-            topic: cfg.topic.clone(),
-            message: s.as_bytes().into(),
-        });
-        // ~ if we filled our batch send it out to kafka
-        if msg_buf.len() >= cfg.batch_size {
-            try!(client.send_messages(REQUIRED_ACKS, ACK_TIMEOUT, msg_buf));
-            msg_buf = Vec::with_capacity(cfg.batch_size);
-        }
+        // ~ directly send to kafka
+        let r = try!(producer.send(&rec));
+        let _ = write!(stderr, "debug: {:?}\n", r);
     }
-    // ~ flush pending messages
-    if msg_buf.len() > 0 {
-        try!(client.send_messages(REQUIRED_ACKS, ACK_TIMEOUT, msg_buf));
+    Ok(())
+}
+
+// This implementation wants to be efficient.  It buffers N lines from
+// the source and sends these in batches to Kafka.  Line buffers
+// across batches are re-used for the sake of avoiding allocations.
+fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Config)
+                          -> Result<(), Error>
+{
+    assert!(cfg.batch_size > 1);
+
+    // ~ a buffer of prepared records to be send in a batch to Kafka
+    // ~ in the loop following, we'll only modify the 'value' of the
+    // cached records
+    let mut rec_stash: Vec<Record<(), String>> =
+        (0 .. cfg.batch_size)
+        .map(|_| Record::from_value(&cfg.topic, String::new()))
+        .collect();
+    // ~ points to the next free slot in `rec_stash`.  if it reaches
+    // `rec_stash.len()` we'll send `rec_stash` to kafka
+    let mut next_rec = 0;
+    loop {
+        // ~ send out a batch if it's ready
+        if next_rec == rec_stash.len() {
+            try!(send_batch(producer, &rec_stash));
+            next_rec = 0;
+        }
+        let mut rec = &mut rec_stash[next_rec];
+        if try!(src.read_line(&mut rec.value)) == 0 {
+            break; // ~ EOF reached
+        }
+        if rec.value.trim().is_empty() {
+            continue; // ~ skip empty lines
+        }
+        // ~ ok, we got a line. read the next one in a new buffer
+        next_rec += 1;
+    }
+    // ~ flush pending messages - if any
+    if next_rec > 0 {
+        try!(send_batch(producer, &rec_stash[..next_rec]));
+    }
+    Ok(())
+}
+
+fn send_batch(producer: &mut Producer, batch: &[Record<(), String>]) -> Result<(), Error> {
+    let rs = try!(producer.send_all(batch));
+    for r in rs {
+        if let Err(e) = r.offset {
+            return Err(From::from(e));
+        }
     }
     Ok(())
 }

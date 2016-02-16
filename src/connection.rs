@@ -1,12 +1,12 @@
-use std::io::prelude::*;
-use std::net::TcpStream;
 use std::fmt;
+use std::io::{Read,Write};
+use std::net::TcpStream;
+use std::time::Duration;
 
 use error::{Error, Result};
 
 pub struct KafkaConnection {
     host: String,
-    timeout: i32,
     stream: TcpStream
 }
 
@@ -18,7 +18,7 @@ impl fmt::Debug for KafkaConnection {
 
 impl KafkaConnection {
 
-    pub fn send(&mut self, msg: &Vec<u8>) -> Result<usize> {
+    pub fn send(&mut self, msg: &[u8]) -> Result<usize> {
         self.stream.write(&msg[..]).map_err(From::from)
     }
 
@@ -33,8 +33,13 @@ impl KafkaConnection {
         }
     }
 
-    pub fn new(host: &str, timeout: i32) -> Result<KafkaConnection> {
+    pub fn new(host: &str, timeout_secs: i32) -> Result<KafkaConnection> {
         let stream = try!(TcpStream::connect(host));
-        Ok(KafkaConnection{host: host.to_owned(), timeout: timeout, stream: stream})
+        if timeout_secs > 0 {
+            let t = Some(Duration::from_secs(timeout_secs as u64));
+            stream.set_read_timeout(t).expect("Set connection read-timeout");
+            stream.set_write_timeout(t).expect("Set connection write-timeout");
+        }
+        Ok(KafkaConnection{host: host.to_owned(), stream: stream})
     }
 }
