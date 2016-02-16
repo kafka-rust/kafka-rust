@@ -21,3 +21,5 @@ mod codecs;
 mod connection;
 mod protocol;
 mod compression;
+
+pub use self::error::{Error, Result};
