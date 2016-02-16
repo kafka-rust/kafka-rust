@@ -4,29 +4,34 @@
 
 ### Documentation
 
-The [documentation](https://spicavigo.github.io/kafka-rust/) include
-some examples, too.
+* This library is primarily documented through examples in its [API
+documentation](https://spicavigo.github.io/kafka-rust/).
+* Documentation about Kafka itself can be found at the [its project
+home page](http://kafka.apache.org/).
 
 
 ### Installation
 
 This crate works with Cargo and is on
 [crates.io](https://crates.io/crates/kafka).  The API is currently
-under heavy movement although we do follow semantic versioning.
+under heavy movement although we do follow semantic versioning (but
+expect the version number to grow quickly.)
 
 ```toml
 [dependencies]
 kafka = "0.2"
 ```
 
-To build kafka-rust you'll need `libsnappy-dev` on your local
-machine. If that library is not installed in the usual path, you can
-export the `LD_LIBRARY_PATH` and `LD_RUN_PATH` environment variables
-before issueing `cargo build`.
+To build kafka-rust you'll need `libsnappy-dev` on your local machine.
+If that library is not installed in the usual path, you can export the
+`LD_LIBRARY_PATH` and `LD_RUN_PATH` environment variables before
+issueing `cargo build`.
+
 
 ### Examples
 
-As mentioned, the cargo generated documentation constains some
+As mentioned, the [cargo generated
+documentation](https://spicavigo.github.io/kafka-rust/) constains some
 examples.  Further, standalone, compilable example programs are
 provided in the [examples directory of the
 repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
@@ -62,6 +67,19 @@ and `Producer`s.  Nevertheless, `KafkaClient`'s main methods are:
 * [Fetching messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_messages)
 * [Committing a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.commit_offsets)
 * [Fetching a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_offsets)
+
+
+### [Bugs / Features / Contributing]
+
+There's still a lot of room for improvements on `kafka-rust`.  Not
+everything works right at the moment.  Have a look into the [issue
+tracker](https://github.com/spicavigo/kafka-rust/issues) and feel free
+to contribute by reporting new problems or contributing to existing
+ones.  Any constructive constribution is warmly wellcome!
+
+As usually with open source, don't hesitate to fork the repo and
+submit a pull requests if you see something to be changed.  We'll be
+happy see the `kafka-rust` improving over time.
 
 
 ### [Creating a topic] (https://kafka.apache.org/08/quickstart.html)

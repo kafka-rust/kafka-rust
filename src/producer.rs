@@ -1,4 +1,4 @@
-//! Kafka Producer
+//! Kafka Producer - A higher-level API for sending messages to kafka topics.
 //!
 //! A multi-topic capable producer for a Kafka cluster providing a
 //! convenient API for sending messages.  So far the producer has only

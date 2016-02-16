@@ -1,6 +1,5 @@
-//! The primary module of this library providing only a mid-level
-//! abstraction for a kafka server while supposed to allow building
-//! higher level constructs.
+//! Kafka Client - A mid-level abstraction for a kafka cluster
+//! allowing building higher level constructs.
 //!
 //! The entry point into this module is `KafkaClient` obtained by a
 //! call to `KafkaClient::new`.

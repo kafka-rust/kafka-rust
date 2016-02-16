@@ -1,3 +1,14 @@
+//! Clients for comunicating with a [Kafka](http://kafka.apache.org/)
+//! cluster.
+//!
+//! The primary clients are:
+//!
+//! - `kafka::producer::Producer` - for sending message to Kafka
+//! - `kafka::consumer::Consumer` - for retrieving/consuming messages from Kafka
+//! - `kafka::client::KafkaClient` - a lower-level, general purpose client leaving you with more power but also more resposibility
+//!
+//! See module level documentation corresponding of each client.
+
 #![cfg_attr(feature = "nightly", feature(test))]
 
 extern crate byteorder;
@@ -21,3 +32,5 @@ mod codecs;
 mod connection;
 mod protocol;
 mod compression;
+
+pub use self::error::{Error, Result};
