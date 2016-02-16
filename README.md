@@ -28,6 +28,13 @@ If that library is not installed in the usual path, you can export the
 issueing `cargo build`.
 
 
+### Supported Kafka version
+
+`kafka-rust` is tested against Kafka 0.8.2.x and regularly used
+against Kafka 0.9 servers.  However, efforts to implement support for
+new features from the Kafka 0.9 release are just in their beginnings.
+
+
 ### Examples
 
 As mentioned, the [cargo generated
