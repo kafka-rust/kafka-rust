@@ -45,7 +45,7 @@ use client::{self, KafkaClient};
 // public re-exports
 pub use client::{Compression};
 use error::Result;
-use utils::TopicPartitionOffsetError;
+use utils::TopicPartitionOffset;
 
 use ref_slice::ref_slice;
 
@@ -200,16 +200,12 @@ impl<P: Partitioner> Producer<P> {
     {
         let mut rs = try!(self.send_all(ref_slice(rec)));
         assert_eq!(1, rs.len());
-        if let Some(e) = rs.pop().unwrap().error {
-            Err(e)
-        } else {
-            Ok(())
-        }
+        rs.pop().unwrap().offset.map(|_| ())
     }
 
     /// Synchronously send all of the specified messages to Kafka.
     pub fn send_all<'a, K, V>(&mut self, recs: &[Record<'a, K, V>])
-                              -> Result<Vec<TopicPartitionOffsetError>>
+                              -> Result<Vec<TopicPartitionOffset>>
         where K: AsBytes, V: AsBytes
     {
         let partitioner = &mut self.state.partitioner;

@@ -417,8 +417,11 @@ fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: 
 
     let mut offs = HashMap::with_capacity(partitions.len());
     for tpo in tpos {
-        if tpo.error.is_none() && tpo.offset != -1 {
-            offs.insert(tpo.partition, tpo.offset);
+        match tpo.offset {
+            Ok(o) if o != -1 => {
+                offs.insert(tpo.partition, o);
+            }
+            _ => {}
         }
     }
     Ok(offs)
@@ -435,7 +438,7 @@ fn load_fetch_states(config: &Config,
     fn load_partition_offsets(client: &mut KafkaClient, topic: &str, offset: FetchOffset)
                               -> Result<HashMap<i32, i64>>
     {
-        let offs = try!(client.fetch_topic_offset(topic, offset));
+        let offs = try!(client.fetch_topic_offsets(topic, offset));
         let mut m = HashMap::with_capacity(offs.len());
         for off in offs {
             m.insert(off.partition, off.offset.unwrap_or(-1));

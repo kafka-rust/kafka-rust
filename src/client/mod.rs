@@ -14,12 +14,13 @@ use std::mem;
 // pub re-export
 pub use compression::Compression;
 pub use protocol::fetch;
+pub use utils::PartitionOffset;
+pub use utils::TopicPartitionOffset;
 
 use codecs::{ToByte, FromByte};
 use connection::KafkaConnection;
 use error::{Result, Error, KafkaCode};
 use protocol::{self, FromResponse};
-use utils;
 
 pub mod metadata;
 
@@ -211,9 +212,8 @@ impl FetchOffset {
 
 // --------------------------------------------------------------------
 
-/// Data point identifying a partitioner topic partition to fetch a
-/// (previously committed) group offset for.
-/// See `KafkaClient::fetch_group_offsets`.
+/// Data point identifying a topic partition to fetch a group's offset
+/// for.  See `KafkaClient::fetch_group_offsets`.
 #[derive(Debug)]
 pub struct FetchGroupOffset<'a> {
     /// The topic to fetch the group offset for
@@ -641,20 +641,23 @@ impl KafkaClient {
         Err(Error::NoHostReachable)
     }
 
-    /// Fetch offsets for a list of topics.
+    /// Fetch offsets for a list of topics
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// use kafka::client::KafkaClient;
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
     /// let topics: Vec<String> = client.topics().names().map(ToOwned::to_owned).collect();
     /// let offsets = client.fetch_offsets(&topics, kafka::client::FetchOffset::Latest).unwrap();
     /// ```
-    /// Returns a hashmap of (topic, PartitionOffset data).
-    /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
+    ///
+    /// Returns a mapping of topic name to `PartitionOffset`s for each
+    /// currently available partition of the corresponding topic.
     pub fn fetch_offsets<T: AsRef<str>>(&mut self, topics: &[T], offset: FetchOffset)
-                                        -> Result<HashMap<String, Vec<utils::PartitionOffset>>>
+                                        -> Result<HashMap<String, Vec<PartitionOffset>>>
     {
         let time = offset.to_kafka_value();
         let n_topics = topics.len();
@@ -678,7 +681,7 @@ impl KafkaClient {
         }
 
         // Call each broker with the request formed earlier
-        let mut res: HashMap<String, Vec<utils::PartitionOffset>> = HashMap::with_capacity(n_topics);
+        let mut res: HashMap<String, Vec<PartitionOffset>> = HashMap::with_capacity(n_topics);
         for (host, req) in reqs {
             let resp = try!(__send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&mut self.conn_pool, &host, req));
             for tp in resp.topic_partitions {
@@ -696,15 +699,17 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
-    /// let res = client.load_metadata_all();
-    /// let offsets = client.fetch_topic_offset("my-topic", kafka::client::FetchOffset::Latest);
+    /// use kafka::client::{KafkaClient, FetchOffset};
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.load_metadata_all().unwrap();
+    /// let offsets = client.fetch_topic_offsets("my-topic", FetchOffset::Latest).unwrap();
     /// ```
-    /// Returns a vector of offset data for each available partition.
-    /// PartitionOffset will contain parition and offset info Or Error code as returned by Kafka.
-    // XXX rename to fetch_topic_offsets (plural)
-    pub fn fetch_topic_offset<T: AsRef<str>>(&mut self, topic: T, offset: FetchOffset)
-                                              -> Result<Vec<utils::PartitionOffset>>
+    ///
+    /// Returns a vector of the offset data for each available partition.
+    /// See also `KafkaClient::fetch_offsets`.
+    pub fn fetch_topic_offsets<T: AsRef<str>>(&mut self, topic: T, offset: FetchOffset)
+                                              -> Result<Vec<PartitionOffset>>
     {
         let topic = topic.as_ref();
 
@@ -871,7 +876,7 @@ impl KafkaClient {
     // messages which kafka failed to accept or otherwise tell the client about them
 
     pub fn produce_messages<'a, 'b, I, J>(&mut self, required_acks: i16, ack_timeout: i32, messages: I)
-                                       -> Result<Vec<utils::TopicPartitionOffsetError>>
+                                       -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
         let state = &mut self.state;
@@ -975,7 +980,7 @@ impl KafkaClient {
     ///
     /// See also `KafkaClient::fetch_group_topic_offsets`.
     pub fn fetch_group_offsets<'a, J, I>(&mut self, group: &str, partitions: I)
-                                         -> Result<Vec<utils::TopicPartitionOffsetError>>
+                                         -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<FetchGroupOffset<'a>>, I: IntoIterator<Item=J>
     {
         let correlation = self.state.next_correlation_id();
@@ -1006,7 +1011,7 @@ impl KafkaClient {
     /// let offsets = client.fetch_group_topic_offsets("my-group", "my-topic").unwrap();
     /// ```
     pub fn fetch_group_topic_offsets(&mut self, group: &str, topic: &str)
-                               -> Result<Vec<utils::TopicPartitionOffsetError>>
+                               -> Result<Vec<TopicPartitionOffset>>
     {
         let tps: Vec<_> =
             match self.state.topic_partitions.get(topic) {
@@ -1032,7 +1037,7 @@ fn __commit_offsets(conn_pool: &mut ConnectionPool,
 
 fn __fetch_group_offsets(conn_pool: &mut ConnectionPool,
                                reqs: HashMap<&str, protocol::OffsetFetchRequest>)
-                               -> Result<Vec<utils::TopicPartitionOffsetError>> {
+                               -> Result<Vec<TopicPartitionOffset>> {
     // Call each broker with the request formed earlier
     let mut res = vec!();
     for (host, req) in reqs {
@@ -1062,7 +1067,7 @@ fn __fetch_messages(conn_pool: &mut ConnectionPool, reqs: HashMap<&str, protocol
 fn __produce_messages(conn_pool: &mut ConnectionPool,
                       reqs: HashMap<&str, protocol::ProduceRequest>,
                       no_acks: bool)
-                      -> Result<Vec<utils::TopicPartitionOffsetError>>
+                      -> Result<Vec<TopicPartitionOffset>>
 {
     // Call each broker with the request formed earlier
     if no_acks {
@@ -1071,7 +1076,7 @@ fn __produce_messages(conn_pool: &mut ConnectionPool,
         }
         Ok(vec!())
     } else {
-        let mut res: Vec<utils::TopicPartitionOffsetError> = vec!();
+        let mut res: Vec<TopicPartitionOffset> = vec![];
         for (host, req) in reqs {
             let resp = try!(__send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(conn_pool, &host, req));
             for tpo in resp.get_response() {
