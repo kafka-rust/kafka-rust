@@ -1,13 +1,11 @@
 //! Clients for comunicating with a [Kafka](http://kafka.apache.org/)
-//! cluster.
-//!
-//! The primary clients are:
+//! cluster.  These are:
 //!
 //! - `kafka::producer::Producer` - for sending message to Kafka
 //! - `kafka::consumer::Consumer` - for retrieving/consuming messages from Kafka
 //! - `kafka::client::KafkaClient` - a lower-level, general purpose client leaving you with more power but also more resposibility
 //!
-//! See module level documentation corresponding of each client.
+//! See module level documentation corresponding to each client individually.
 
 #![cfg_attr(feature = "nightly", feature(test))]
 
