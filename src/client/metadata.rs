@@ -2,10 +2,13 @@
 //! Example: `KafkaClient::topics()`.
 
 use std::collections::hash_map;
-use std::slice;
 use std::fmt;
 
-use super::{KafkaClient, ClientState, TopicPartitions, TopicPartition};
+use super::KafkaClient;
+use super::state::{ClientState, TopicPartitions, TopicPartitionIter, TopicPartition};
+
+// public re-export
+pub use super::state::Broker;
 
 /// A view on the loaded metadata about topics and their partitions.
 pub struct Topics<'a> {
@@ -23,10 +26,10 @@ impl<'a> Topics<'a> {
     /// Retrieves the number of the underlying topics.
     #[inline]
     pub fn len(&self) -> usize {
-        self.state.topic_partitions.len()
+        self.state.num_topics()
     }
 
-    /// Provides an iterator over the known topics.
+    /// Provides an iterator over the underlying topics.
     #[inline]
     pub fn iter(&'a self) -> TopicIter<'a> {
         TopicIter::new(self.state)
@@ -35,33 +38,23 @@ impl<'a> Topics<'a> {
     /// A conveniece method to return an iterator the topics' names.
     #[inline]
     pub fn names(&'a self) -> TopicNames<'a> {
-        TopicNames { iter: self.state.topic_partitions.keys() }
+        TopicNames { iter: self.state.topic_partitions().keys() }
     }
 
     /// A convenience method to determine whether the specified topic
     /// is known.
     #[inline]
     pub fn contains(&'a self, topic: &str) -> bool {
-        self.state.topic_partitions.contains_key(topic)
+        self.state.contains_topic(topic)
     }
 
-    /// Retrieves the partitions of a known topic.
+    /// Retrieves the partitions of a specified topic.
     #[inline]
     pub fn partitions(&'a self, topic: &str) -> Option<Partitions<'a>> {
-        self.state.topic_partitions.get(topic).map(|tp| Partitions {
+        self.state.partitions_for(topic).map(|tp| Partitions {
             state: self.state,
             tp: tp,
         })
-    }
-
-    /// Retrieves a snapshot/copy of the partition ids available for
-    /// the specified topic.  Note that the returned copy may get out
-    /// of date if the underlying client's metadata gets refreshed.
-    #[inline]
-    pub fn partition_ids(&'a self, topic: &str) -> Option<Vec<i32>> {
-        self.state.topic_partitions.get(topic)
-            .map(|tp| &tp.partitions)
-            .map(|ps| ps.iter().map(|p| p.partition_id).collect())
     }
 }
 
@@ -107,7 +100,7 @@ impl<'a> TopicIter<'a> {
     fn new(state: &'a ClientState) -> TopicIter<'a> {
         TopicIter {
             state: state,
-            iter: state.topic_partitions.iter()
+            iter: state.topic_partitions().iter()
         }
     }
 }
@@ -125,8 +118,7 @@ impl<'a> Iterator for TopicIter<'a> {
     }
 }
 
-/// An iterator over the names of topics known to the originating
-/// kafka client.
+/// An iterator over the topic names.
 pub struct TopicNames<'a> {
     iter: hash_map::Keys<'a, String, TopicPartitions>,
 }
@@ -154,21 +146,13 @@ impl<'a> Topic<'a> {
         self.name
     }
 
-    /// Retrieves the list of known partitions for this topic.
+    /// Retrieves the list of all partitions for this topic.
     #[inline]
     pub fn partitions(&self) -> Partitions<'a> {
         Partitions {
             state: self.state,
             tp: self.tp,
         }
-    }
-
-    /// Retrieves a snapshot/copy of the partition ids available for
-    /// this topic.  Note that the returned copy may get out of date
-    /// if the underlying client's metadata gets refreshed.
-    #[inline]
-    pub fn partition_ids(&'a self) -> Vec<i32> {
-        self.tp.partitions.iter().map(|p| p.partition_id).collect()
     }
 }
 
@@ -186,28 +170,38 @@ pub struct Partitions<'a> {
 }
 
 impl<'a> Partitions<'a> {
-    /// Retrieves the number of the underlying partitions.
+    /// Retrieves the number of the topic's partitions.
     #[inline]
     pub fn len(&self) -> usize {
-        self.tp.partitions.len()
+        self.tp.len()
     }
 
     /// Tests for `.len() > 0`.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.tp.partitions.is_empty()
+        self.tp.is_empty()
     }
 
-    /// Retrieves an iterator of the partitions for the underlying topic.
+    /// Retrieves an iterator of the partitions of the underlying topic.
     #[inline]
     pub fn iter(&self) -> PartitionIter<'a> {
-        PartitionIter::new(self.state, self.tp.partitions.iter())
+        PartitionIter::new(self.state, self.tp)
     }
 
     /// Finds a specified partition identified by its id.
     #[inline]
     pub fn partition(&self, partition_id: i32) -> Option<Partition<'a>> {
-        self.tp.partition(partition_id).map(|p| Partition::new(self.state, p))
+        self.tp.partition(partition_id).map(|p| Partition::new(self.state, p, partition_id))
+    }
+
+    /// Convenience method to retrieve the identifiers of all
+    /// currently "available" partitions.  Such partitions are known
+    /// to have a leader broker and can be sent messages to.
+    #[inline]
+    pub fn available_ids(&self) -> Vec<i32> {
+        self.tp.iter()
+            .filter_map(|(id, p)| p.broker(self.state).map(|_| id))
+            .collect()
     }
 }
 
@@ -239,19 +233,19 @@ impl<'a> IntoIterator for Partitions<'a> {
     type IntoIter=PartitionIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        PartitionIter::new(self.state, self.tp.partitions.iter())
+        PartitionIter::new(self.state, self.tp)
     }
 }
 
 /// An interator over a topic's partitions.
 pub struct PartitionIter<'a> {
     state: &'a ClientState,
-    iter: slice::Iter<'a, TopicPartition>
+    iter: TopicPartitionIter<'a>,
 }
 
 impl<'a> PartitionIter<'a> {
-    fn new(state: &'a ClientState, iter: slice::Iter<'a, TopicPartition>) -> Self {
-        PartitionIter { state: state, iter: iter }
+    fn new(state: &'a ClientState, tp: &'a TopicPartitions) -> Self {
+        PartitionIter { state: state, iter: tp.iter() }
     }
 }
 
@@ -260,43 +254,52 @@ impl<'a> Iterator for PartitionIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|tp| Partition::new(self.state, tp))
+        self.iter.next().map(|(id, p)| Partition::new(self.state, p, id))
     }
 }
 
 /// Metadata about a particular topic partition.
+///
+/// A partition can be seen as either available or not by
+/// `kafka-rust`.  "Available" partitions are partitions with an
+/// assigned leader broker and can be send messages to or fetched
+/// messages from.  Non-available partitions are ignored by
+/// `kafka-rust`.  Whether or not a partition is currently "available"
+/// can be determined by testing for `partition.leader().is_some()` or
+/// more directly through `partition.available()`.
 pub struct Partition<'a> {
     state: &'a ClientState,
     partition: &'a TopicPartition,
+    id: i32,
 }
 
 impl<'a> Partition<'a> {
-    fn new(state: &'a ClientState, partition: &'a TopicPartition) -> Partition<'a> {
-        Partition { state: state, partition: partition }
+    fn new(state: &'a ClientState, partition: &'a TopicPartition, id: i32) -> Partition<'a> {
+        Partition { state: state, partition: partition, id: id }
     }
 
     /// Retrieves the identifier of this topic partition.
     #[inline]
     pub fn id(&self) -> i32 {
-        self.partition.partition_id
+        self.id
     }
 
-    /// Retrives the node_id of the current leader of this partition.
+    /// Retrieves the current leader broker of this partition - if
+    /// any.  A partition with a leader is said to be "available".
     #[inline]
-    pub fn leader_id(&self) -> i32 {
-        self.state.broker_by_partition(self.partition).node_id
+    pub fn leader(&self) -> Option<&Broker> {
+        self.partition.broker(self.state)
     }
 
-    /// Retrieves the host of the current leader of this partition.
-    #[inline]
-    pub fn leader_host(&self) -> &'a str {
-        &self.state.broker_by_partition(self.partition).host
+    /// Determines whether this partition is currently "available".
+    /// See `Partition::leader()`.
+    pub fn available(&self) -> bool {
+        self.leader().is_some()
     }
 }
 
 impl<'a> fmt::Debug for Partition<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Partition {{ id: {}, leader_id: {}, leader_host: {} }}",
-               self.id(), self.leader_id(), self.leader_host())
+        write!(f, "Partition {{ id: {}, leader: {:?} }}", self.id(), self.leader())
     }
 }

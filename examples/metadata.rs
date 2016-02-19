@@ -20,7 +20,12 @@ fn main() {
 
     for t in client.topics() {
         for p in t.partitions() {
-            println!("{}\t{}\t{}\t{}", t.name(), p.id(), p.leader_id(), p.leader_host());
+            match p.leader() {
+                Some(leader) =>
+                    println!("{}\t{}\t{}\t{}", t.name(), p.id(), leader.id(), leader.host()),
+                None =>
+                    println!("{}\t{} => no leader!", t.name(), p.id()),
+            }
         }
     }
 }

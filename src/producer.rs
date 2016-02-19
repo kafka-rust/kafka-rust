@@ -243,7 +243,7 @@ impl<P> State<P> {
         let ts = client.topics();
         let mut ids = HashMap::with_capacity(ts.len());
         for t in ts {
-            ids.insert(t.name().to_owned(), t.partition_ids());
+            ids.insert(t.name().to_owned(), t.partitions().available_ids());
         }
         Ok(State{partition_ids: ids, partitioner: partitioner})
     }
