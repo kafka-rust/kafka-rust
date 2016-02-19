@@ -158,7 +158,7 @@ pub struct Producer<P = DefaultPartitioner> {
 
 struct State<P> {
     /// A list of available partition IDs for each topic.
-    partition_ids: HashMap<String, Vec<i32>>,
+    partition_ids: HashMap<String, (Vec<i32>, u32)>,
     /// The partitioner to decide how to distribute messages
     partitioner: P,
 }
@@ -243,7 +243,8 @@ impl<P> State<P> {
         let ts = client.topics();
         let mut ids = HashMap::with_capacity(ts.len());
         for t in ts {
-            ids.insert(t.name().to_owned(), t.partitions().available_ids());
+            let ps = t.partitions();
+            ids.insert(t.name().to_owned(), (ps.available_ids(), ps.len() as u32));
         }
         Ok(State{partition_ids: ids, partitioner: partitioner})
     }
@@ -359,18 +360,22 @@ impl<P> Builder<P> {
 ///
 /// Indented for use by `Partitioner`s.
 pub struct Topics<'a> {
-    partition_ids: &'a HashMap<String, Vec<i32>>,
+    partition_ids: &'a HashMap<String, (Vec<i32>, u32)>,
 }
 
 impl<'a> Topics<'a> {
-    fn new(partition_ids: &'a HashMap<String, Vec<i32>>) -> Topics<'a> {
+    fn new(partition_ids: &'a HashMap<String, (Vec<i32>, u32)>) -> Topics<'a> {
         Topics { partition_ids: partition_ids }
     }
 
-    /// Retrieves a list of the identifiers of available partitions
-    /// for the given topic.
-    pub fn partition_ids(&self, topic: &'a str) -> Option<&[i32]> {
-        self.partition_ids.get(topic).map(|ps| &ps[..])
+    /// Retrieves a the number of all partitions of the specified
+    /// topic and a list of the identifiers of currently "available"
+    /// partitions for the given topic.  This list excludes partitions
+    /// which do not have a leader broker assigned.  The number of all
+    /// partitions is never greater than the length of the "available"
+    /// partitions, of course.
+    pub fn partition_ids(&self, topic: &'a str) -> Option<(&[i32], u32)> {
+        self.partition_ids.get(topic).map(|ps| (&ps.0[..], ps.1))
     }
 }
 
@@ -419,7 +424,7 @@ impl Partitioner for DefaultPartitioner {
     fn partition(&mut self, topics: Topics, rec: &mut client::ProduceMessage) {
         if rec.partition < 0 {
             match topics.partition_ids(rec.topic) {
-                Some(ps) if !ps.is_empty() => {
+                Some((ps, _)) if !ps.is_empty() => {
 
                     // ~ XXX dispatch to partition by the hash of the
                     // key - if that is available, otherwise continue
