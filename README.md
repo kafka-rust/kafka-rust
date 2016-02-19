@@ -6,7 +6,7 @@
 
 * This library is primarily documented through examples in its [API
 documentation](https://spicavigo.github.io/kafka-rust/).
-* Documentation about Kafka itself can be found at the [its project
+* Documentation about Kafka itself can be found at [its project
 home page](http://kafka.apache.org/).
 
 
