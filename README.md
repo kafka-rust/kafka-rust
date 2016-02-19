@@ -76,7 +76,7 @@ and `Producer`s.  Nevertheless, `KafkaClient`'s main methods are:
 * [Fetching a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_offsets)
 
 
-### [Bugs / Features / Contributing]
+### Bugs / Features / Contributing
 
 There's still a lot of room for improvements on `kafka-rust`.  Not
 everything works right at the moment.  Have a look into the [issue
@@ -86,7 +86,7 @@ ones.  Any constructive constribution is warmly wellcome!
 
 As usually with open source, don't hesitate to fork the repo and
 submit a pull requests if you see something to be changed.  We'll be
-happy see the `kafka-rust` improving over time.
+happy see `kafka-rust` improving over time.
 
 
 ### [Creating a topic] (https://kafka.apache.org/08/quickstart.html)
