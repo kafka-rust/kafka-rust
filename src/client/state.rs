@@ -77,6 +77,16 @@ impl BrokerRef {
     fn new(index: u32) -> Self {
         BrokerRef { _index: index }
     }
+
+    fn set(&mut self, other: BrokerRef) {
+        if self._index != other._index {
+            self._index = other._index;
+        }
+    }
+
+    fn set_unknown(&mut self) {
+        self.set(BrokerRef::new(UNKNOWN_BROKER_INDEX))
+    }
 }
 
 // --------------------------------------------------------------------
@@ -93,8 +103,9 @@ pub struct TopicPartitions {
 }
 
 impl TopicPartitions {
-    fn new(partitions: Vec<TopicPartition>) -> TopicPartitions {
-        TopicPartitions { partitions: partitions }
+    /// Creates a new partitions vector with all partitions leaderless
+    fn new_with_partitions(n: usize) -> TopicPartitions {
+        TopicPartitions { partitions: (0..n).map(|_| TopicPartition::new()).collect() }
     }
 
     pub fn len(&self) -> usize {
@@ -119,7 +130,10 @@ impl<'a> IntoIterator for &'a TopicPartitions {
     type IntoIter = TopicPartitionIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        TopicPartitionIter { partition_id: 0, iter: self.partitions.iter() }
+        TopicPartitionIter {
+            partition_id: 0,
+            iter: self.partitions.iter(),
+        }
     }
 }
 
@@ -130,8 +144,8 @@ pub struct TopicPartition {
 }
 
 impl TopicPartition {
-    fn new(broker: BrokerRef) -> TopicPartition {
-        TopicPartition { broker: broker }
+    fn new() -> TopicPartition {
+        TopicPartition { broker: BrokerRef::new(UNKNOWN_BROKER_INDEX) }
     }
 
     pub fn broker<'a>(&self, state: &'a ClientState) -> Option<&'a Broker> {
@@ -230,16 +244,59 @@ impl ClientState {
     pub fn update_metadata(&mut self, md: protocol::MetadataResponse) -> Result<()> {
         debug!("updating metadata from: {:?}", md);
 
+        // ~ register new brokers with self.brokers and obtain an
+        // index over them by broker-node-id
+        let brokers = self.update_brokers(&md);
+
+        // ~ now update partitions
+        for t in md.topics {
+            // ~ get a mutable reference to the partitions vector
+            // (maintained in self.topic_partitions) for the topic
+            let tps = match self.topic_partitions.entry(t.topic) {
+                Entry::Occupied(e) => {
+                    let ps = &mut e.into_mut().partitions;
+                    match (ps.len(), t.partitions.len()) {
+                        (n, m) if n > m => ps.truncate(m),
+                        (n, m) if n < m => {
+                            ps.reserve(m);
+                            for _ in 0..(m - n) {
+                                ps.push(TopicPartition::new());
+                            }
+                        }
+                        _ => {}
+                    }
+                    ps
+                }
+                Entry::Vacant(e) => {
+                    &mut e.insert(TopicPartitions::new_with_partitions(t.partitions.len()))
+                          .partitions
+                }
+            };
+            // ~ sync the partitions vector with the new information
+            for partition in t.partitions {
+                let tp = &mut tps[partition.id as usize];
+                if let Some(bref) = brokers.get(&partition.leader) {
+                    tp.broker.set(*bref)
+                } else {
+                    tp.broker.set_unknown()
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Updates self.brokers from the given metadata returning an
+    /// index `NodeId -> BrokerRef`
+    fn update_brokers(&mut self, md: &protocol::MetadataResponse) -> HashMap<i32, BrokerRef> {
         // ~ build an index of the already loaded brokers -- if any
-        let mut brokers = HashMap::<i32, BrokerRef>::with_capacity(md.brokers.len() +
-                                                                   self.brokers.len());
+        let mut brokers = HashMap::with_capacity(self.brokers.len() + md.brokers.len());
         for (i, broker) in (0u32..).zip(self.brokers.iter()) {
             brokers.insert(broker.node_id, BrokerRef::new(i));
         }
 
         // ~ now add new brokers or updated existing ones while
         // keeping the above 'broker' index up-to-date
-        for broker in md.brokers {
+        for broker in &md.brokers {
             let broker_host = format!("{}:{}", broker.host, broker.port);
             match brokers.entry(broker.node_id) {
                 Entry::Occupied(e) => {
@@ -263,40 +320,7 @@ impl ClientState {
                 }
             }
         }
-
-        // ~ at this point all known brokers are registered with
-        // self.brokers and in the local 'brokers' index
-
-        for t in md.topics {
-            // ~ create an ordered vector of partition information
-            // where the index in the vector corresponds to the id of
-            // the partition.id; see `TopicPartitions::partitions`
-            let mut nparts: Vec<_> =
-                (0 .. t.partitions.len())
-                // ~ negative BrokerRef specifies "no broker" for
-                // the corresponding partition
-                .map(|_| TopicPartition::new(BrokerRef::new(UNKNOWN_BROKER_INDEX)))
-                .collect();
-            // ~ XXX can be more efficient here to re-use the already
-            // existing vector in `self.topic_partitions` if the
-            // lengths of them are the same
-            for partition in t.partitions {
-                match brokers.get(&partition.leader) {
-                    Some(bref) => {
-                        nparts[partition.id as usize].broker = *bref;
-                    }
-                    None => {
-                        debug!("unknown leader {} for topic-partition: {}:{}",
-                               partition.leader,
-                               t.topic,
-                               partition.id);
-                    }
-                }
-            }
-            // XXX see comment above
-            self.topic_partitions.insert(t.topic, TopicPartitions::new(nparts));
-        }
-        Ok(())
+        brokers
     }
 }
 
