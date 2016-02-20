@@ -9,6 +9,7 @@ use super::state::{ClientState, TopicPartitions, TopicPartitionIter, TopicPartit
 
 // public re-export
 pub use super::state::Broker;
+pub use super::state::TopicNames;
 
 /// A view on the loaded metadata about topics and their partitions.
 pub struct Topics<'a> {
@@ -38,7 +39,7 @@ impl<'a> Topics<'a> {
     /// A conveniece method to return an iterator the topics' names.
     #[inline]
     pub fn names(&'a self) -> TopicNames<'a> {
-        TopicNames { iter: self.state.topic_partitions().keys() }
+        self.state.topic_names()
     }
 
     /// A convenience method to determine whether the specified topic
@@ -119,20 +120,6 @@ impl<'a> Iterator for TopicIter<'a> {
                 tp: tps,
             }
         })
-    }
-}
-
-/// An iterator over the topic names.
-pub struct TopicNames<'a> {
-    iter: hash_map::Keys<'a, String, TopicPartitions>,
-}
-
-impl<'a> Iterator for TopicNames<'a> {
-    type Item=&'a str;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|s| &s[..])
     }
 }
 

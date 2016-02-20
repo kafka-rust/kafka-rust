@@ -1,6 +1,7 @@
-use std::u32;
-use std::collections::hash_map::{HashMap, Entry};
+use std::collections::hash_map::{HashMap, Entry, Keys};
+use std::convert::AsRef;
 use std::slice;
+use std::u32;
 
 use error::Result;
 use protocol;
@@ -26,7 +27,8 @@ pub struct ClientState {
 
 // --------------------------------------------------------------------
 
-// ~ note: this type is re-exported to the crates public api through client::metadata
+// ~ note: this type is re-exported to the crate's public api through
+// client::metadata
 /// Describes a Kafka broker node `kafka-rust` is communicating with.
 #[derive(Debug)]
 pub struct Broker {
@@ -156,6 +158,22 @@ impl<'a> Iterator for TopicPartitionIter<'a> {
 
 // --------------------------------------------------------------------
 
+// ~ note: this type is re-exported to the crate's public api through
+// client::metadata
+/// An iterator over the topic names.
+pub struct TopicNames<'a> {
+    iter: Keys<'a, String, TopicPartitions>,
+}
+
+impl<'a> Iterator for TopicNames<'a> {
+    type Item=&'a str;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(AsRef::as_ref)
+    }
+}
+
 impl ClientState {
     pub fn new() -> Self {
         ClientState {
@@ -171,6 +189,10 @@ impl ClientState {
 
     pub fn contains_topic(&self, topic: &str) -> bool {
         self.topic_partitions.contains_key(topic)
+    }
+
+    pub fn topic_names(&self) -> TopicNames {
+        TopicNames { iter: self.topic_partitions.keys() }
     }
 
     // exposed for the sake of the metadata module
@@ -202,9 +224,6 @@ impl ClientState {
         self.topic_partitions.clear();
         self.brokers.clear();
     }
-
-    // XXX unit test loading metadata into a clear ClientState
-    // XXX unit test loading metadata into a ClientState containing already some data
 
     /// Loads new and updates existing metadata from the given
     /// metadata response.
@@ -278,5 +297,204 @@ impl ClientState {
             self.topic_partitions.insert(t.topic, TopicPartitions::new(nparts));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClientState;
+    use protocol;
+    use protocol::metadata_int as md;
+
+    fn new_partition(id: i32, leader: i32) -> md::PartitionMetadata {
+        md::PartitionMetadata {
+            error: 0,
+            id: id,
+            leader: leader,
+            replicas: vec![],
+            isr: vec![],
+        }
+    }
+
+    /// Utility to sort the given vector and return it.
+    fn sorted<O: Ord>(mut xs: Vec<O>) -> Vec<O> {
+        xs.sort();
+        xs
+    }
+
+    // mock data for an initial kafka metadata response
+    fn metadata_response_initial() -> protocol::MetadataResponse {
+        protocol::MetadataResponse {
+            header: protocol::HeaderResponse { correlation: 1 },
+            brokers: vec![md::BrokerMetadata {
+                              node_id: 10,
+                              host: "gin1.dev".to_owned(),
+                              port: 1234,
+                          },
+                          md::BrokerMetadata {
+                              node_id: 50,
+                              host: "gin2.dev".to_owned(),
+                              port: 9876,
+                          },
+                          md::BrokerMetadata {
+                              node_id: 30,
+                              host: "gin3.dev".to_owned(),
+                              port: 9092,
+                          }],
+            topics: vec![md::TopicMetadata {
+                             error: 0,
+                             topic: "tee-one".to_owned(),
+                             partitions: vec![new_partition(0, 50),
+                                              new_partition(1, 10),
+                                              new_partition(2, 30),
+                                              new_partition(3, -1),
+                                              new_partition(4, 50)],
+                         },
+                         md::TopicMetadata {
+                             error: 0,
+                             topic: "tee-two".to_owned(),
+                             partitions: vec![new_partition(0, 30),
+                                              new_partition(1, -1),
+                                              new_partition(2, -1),
+                                              new_partition(3, 10)],
+                         },
+                         md::TopicMetadata {
+                             error: 0,
+                             topic: "tee-three".to_owned(),
+                             partitions: vec![],
+                         }],
+        }
+    }
+
+
+    fn assert_partitions(state: &ClientState,
+                         topic: &str,
+                         expected: &[(i32, Option<(i32, &str)>)]) {
+        let partitions = state.partitions_for(topic).unwrap();
+        assert_eq!(expected.len(), partitions.len());
+        assert_eq!(expected.len() == 0, partitions.is_empty());
+        assert_eq!(expected,
+                   &partitions.iter()
+                              .map(|(id, tp)| {
+                                  let broker = tp.broker(&state).map(|b| (b.id(), b.host()));
+                                  // ~ verify that find_broker delivers the same information
+                                  assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
+                                  (id, broker)
+                              })
+                              .collect::<Vec<_>>()[..]);
+    }
+
+    fn assert_initial_metadata_load(state: &ClientState) {
+        assert_eq!(vec!["tee-one", "tee-three", "tee-two"],
+                   sorted(state.topic_names().collect::<Vec<_>>()));
+        assert_eq!(3, state.num_topics());
+
+        assert_eq!(true, state.contains_topic("tee-one"));
+        assert!(state.partitions_for("tee-one").is_some());
+
+        assert_eq!(true, state.contains_topic("tee-two"));
+        assert!(state.partitions_for("tee-two").is_some());
+
+        assert_eq!(true, state.contains_topic("tee-three"));
+        assert!(state.partitions_for("tee-three").is_some());
+
+        assert_eq!(false, state.contains_topic("foobar"));
+        assert!(state.partitions_for("foobar").is_none());
+
+        assert_partitions(&state,
+                          "tee-one",
+                          &[(0, Some((50, "gin2.dev:9876"))),
+                            (1, Some((10, "gin1.dev:1234"))),
+                            (2, Some((30, "gin3.dev:9092"))),
+                            (3, None),
+                            (4, Some((50, "gin2.dev:9876")))]);
+        assert_partitions(&state,
+                          "tee-two",
+                          &[(0, Some((30, "gin3.dev:9092"))),
+                            (1, None),
+                            (2, None),
+                            (3, Some((10, "gin1.dev:1234")))]);
+        assert_partitions(&state, "tee-three", &[]);
+    }
+
+    fn metadata_response_update() -> protocol::MetadataResponse {
+        protocol::MetadataResponse {
+            header: protocol::HeaderResponse { correlation: 2 },
+            brokers: vec![md::BrokerMetadata {
+                              node_id: 10,
+                              host: "gin1.dev".to_owned(),
+                              port: 1234,
+                          },
+                          // note: compared to the initial metadata
+                          // response this broker moved to a different
+                          // machine
+                          md::BrokerMetadata {
+                              node_id: 50,
+                              host: "aladin1.dev".to_owned(),
+                              port: 9091,
+                          },
+                          md::BrokerMetadata {
+                              node_id: 30,
+                              host: "gin3.dev".to_owned(),
+                              port: 9092,
+                          }],
+            // metadata for topic "tee-two" only
+            topics: vec![md::TopicMetadata {
+                             error: 0,
+                             topic: "tee-two".to_owned(),
+                             partitions: vec![new_partition(0, 10),
+                                              new_partition(1, 10),
+                                              new_partition(2, 50),
+                                              new_partition(3, -1),
+                                              new_partition(4, 30)],
+                         }],
+        }
+    }
+
+    fn assert_updated_metadata_load(state: &ClientState) {
+        assert_eq!(vec!["tee-one", "tee-three", "tee-two"],
+                   sorted(state.topic_names().collect::<Vec<_>>()));
+        assert_eq!(3, state.num_topics());
+
+        assert_eq!(true, state.contains_topic("tee-one"));
+        assert!(state.partitions_for("tee-one").is_some());
+
+        assert_eq!(true, state.contains_topic("tee-two"));
+        assert!(state.partitions_for("tee-two").is_some());
+
+        assert_eq!(true, state.contains_topic("tee-three"));
+        assert!(state.partitions_for("tee-three").is_some());
+
+        assert_eq!(false, state.contains_topic("foobar"));
+        assert!(state.partitions_for("foobar").is_none());
+
+        assert_partitions(&state,
+                          "tee-one",
+                          &[(0, Some((50, "aladin1.dev:9091"))),
+                            (1, Some((10, "gin1.dev:1234"))),
+                            (2, Some((30, "gin3.dev:9092"))),
+                            (3, None),
+                            (4, Some((50, "aladin1.dev:9091")))]);
+        assert_partitions(&state,
+                          "tee-two",
+                          &[(0, Some((10, "gin1.dev:1234"))),
+                            (1, Some((10, "gin1.dev:1234"))),
+                            (2, Some((50, "aladin1.dev:9091"))),
+                            (3, None),
+                            (4, Some((30, "gin3.dev:9092")))]);
+        assert_partitions(&state, "tee-three", &[]);
+    }
+
+    #[test]
+    fn test_loading_metadata() {
+        let mut state = ClientState::new();
+        // Test loading metadata into a new, empty client state.
+        state.update_metadata(metadata_response_initial()).unwrap();
+        assert_initial_metadata_load(&state);
+
+        // Test loading a metadata update into a client state with
+        // already some initial metadata loaded.
+        state.update_metadata(metadata_response_update()).unwrap();
+        assert_updated_metadata_load(&state);
     }
 }
