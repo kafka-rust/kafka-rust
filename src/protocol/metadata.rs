@@ -43,7 +43,7 @@ pub struct MetadataResponse {
 
 #[derive(Default, Debug)]
 pub struct BrokerMetadata {
-    pub nodeid: i32,
+    pub node_id: i32,
     pub host: String,
     pub port: i32
 }
@@ -83,7 +83,7 @@ impl FromByte for BrokerMetadata {
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         try_multi!(
-            self.nodeid.decode(buffer),
+            self.node_id.decode(buffer),
             self.host.decode(buffer),
             self.port.decode(buffer)
         )

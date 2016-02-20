@@ -137,6 +137,7 @@ impl TopicPartition {
     }
 }
 
+/// An iterator over a topic's partitions.
 pub struct TopicPartitionIter<'a> {
     iter: slice::Iter<'a, TopicPartition>,
     partition_id: i32,
@@ -221,7 +222,7 @@ impl ClientState {
         // keeping the above 'broker' index up-to-date
         for broker in md.brokers {
             let broker_host = format!("{}:{}", broker.host, broker.port);
-            match brokers.entry(broker.nodeid) {
+            match brokers.entry(broker.node_id) {
                 Entry::Occupied(e) => {
                     // ~ verify our information of the already tracked
                     // broker is up-to-date
@@ -235,7 +236,7 @@ impl ClientState {
                     // ~ insert the new broker
                     let new_index = self.brokers.len();
                     self.brokers.push(Broker {
-                        node_id: broker.nodeid,
+                        node_id: broker.node_id,
                         host: broker_host,
                     });
                     // ~ track the pushed broker's index
