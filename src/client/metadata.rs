@@ -12,7 +12,7 @@ pub use super::state::Broker;
 
 /// A view on the loaded metadata about topics and their partitions.
 pub struct Topics<'a> {
-    state: &'a ClientState
+    state: &'a ClientState,
 }
 
 impl<'a> Topics<'a> {
@@ -51,9 +51,11 @@ impl<'a> Topics<'a> {
     /// Retrieves the partitions of a specified topic.
     #[inline]
     pub fn partitions(&'a self, topic: &str) -> Option<Partitions<'a>> {
-        self.state.partitions_for(topic).map(|tp| Partitions {
-            state: self.state,
-            tp: tp,
+        self.state.partitions_for(topic).map(|tp| {
+            Partitions {
+                state: self.state,
+                tp: tp,
+            }
         })
     }
 }
@@ -100,7 +102,7 @@ impl<'a> TopicIter<'a> {
     fn new(state: &'a ClientState) -> TopicIter<'a> {
         TopicIter {
             state: state,
-            iter: state.topic_partitions().iter()
+            iter: state.topic_partitions().iter(),
         }
     }
 }
@@ -110,10 +112,12 @@ impl<'a> Iterator for TopicIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(name, tps) | Topic {
-            state: self.state,
-            name: &name[..],
-            tp: tps,
+        self.iter.next().map(|(name, tps)| {
+            Topic {
+                state: self.state,
+                name: &name[..],
+                tp: tps,
+            }
         })
     }
 }
@@ -158,8 +162,10 @@ impl<'a> Topic<'a> {
 
 impl<'a> fmt::Debug for Topic<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Topic {{ name: {}, partitions: {:?} }}",
-               self.name, self.partitions())
+        write!(f,
+               "Topic {{ name: {}, partitions: {:?} }}",
+               self.name,
+               self.partitions())
     }
 }
 
@@ -199,7 +205,8 @@ impl<'a> Partitions<'a> {
     /// to have a leader broker and can be sent messages to.
     #[inline]
     pub fn available_ids(&self) -> Vec<i32> {
-        self.tp.iter()
+        self.tp
+            .iter()
             .filter_map(|(id, p)| p.broker(self.state).map(|_| id))
             .collect()
     }
@@ -245,7 +252,10 @@ pub struct PartitionIter<'a> {
 
 impl<'a> PartitionIter<'a> {
     fn new(state: &'a ClientState, tp: &'a TopicPartitions) -> Self {
-        PartitionIter { state: state, iter: tp.iter() }
+        PartitionIter {
+            state: state,
+            iter: tp.iter(),
+        }
     }
 }
 
@@ -275,7 +285,11 @@ pub struct Partition<'a> {
 
 impl<'a> Partition<'a> {
     fn new(state: &'a ClientState, partition: &'a TopicPartition, id: i32) -> Partition<'a> {
-        Partition { state: state, partition: partition, id: id }
+        Partition {
+            state: state,
+            partition: partition,
+            id: id,
+        }
     }
 
     /// Retrieves the identifier of this topic partition.
@@ -300,6 +314,9 @@ impl<'a> Partition<'a> {
 
 impl<'a> fmt::Debug for Partition<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Partition {{ id: {}, leader: {:?} }}", self.id(), self.leader())
+        write!(f,
+               "Partition {{ id: {}, leader: {:?} }}",
+               self.id(),
+               self.leader())
     }
 }
