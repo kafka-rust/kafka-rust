@@ -56,12 +56,12 @@
 //! strategy to find a partition.
 
 // XXX 1) rethink return values for the send_all() method
-// XXX 2) extend DefaultPartitioner to dispatch based on message key (#78)
-// XXX 3) Handle recoverable errors behind the scenes through retry attempts
-// XXX 4) maintain a background thread to provide an async version of the send* methods
+// XXX 2) Handle recoverable errors behind the scenes through retry attempts
 
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::{self, Hasher, SipHasher};
+use std::marker;
 
 use client::{self, KafkaClient};
 // public re-exports
@@ -269,7 +269,7 @@ impl<P> State<P> {
             ids.insert(t.name().to_owned(),
                        Partitions {
                            available_ids: ps.available_ids(),
-                           num_all_partitions: ps.len()
+                           num_all_partitions: ps.len() as u32,
                        });
         }
         Ok(State{partitions: ids, partitioner: partitioner})
@@ -394,7 +394,7 @@ pub struct Topics<'a> {
 /// Indented for use by `Partition`s.
 pub struct Partitions {
     available_ids: Vec<i32>,
-    num_all_partitions: usize,
+    num_all_partitions: u32,
 }
 
 impl Partitions {
@@ -409,15 +409,15 @@ impl Partitions {
     /// Retrieves the number of "available" partitions. This is a
     /// merely a convenience method. See `Partitions::available_ids`.
     #[inline]
-    pub fn num_available(&self) -> usize {
-        self.available_ids.len()
+    pub fn num_available(&self) -> u32 {
+        self.available_ids.len() as u32
     }
 
     /// The total number of partitions of the underlygin topic.  This
     /// number includes also partitions without a current leader
     /// assignment.
     #[inline]
-    pub fn num_all(&self) -> usize {
+    pub fn num_all(&self) -> u32 {
         self.num_all_partitions
     }
 }
@@ -468,31 +468,72 @@ pub trait Partitioner {
 /// initialization time.
 ///
 /// See `Builder::with_partitioner`.
-pub struct DefaultPartitioner {
+#[derive(Default)]
+pub struct DefaultPartitioner<H = BuildHasherDefault<SipHasher>> {
+    // ~ a hasher builder; used to consistently hash keys
+    hash_builder: H,
     // ~ a counter incremented with each partitioned message to
     // achieve a different partition assignment for each message
-    cntr: u32
+    cntr: u32,
 }
 
-impl Partitioner for DefaultPartitioner {
+impl DefaultPartitioner {
+    /// Creates a new partitioner which will use the given hash
+    /// builder to hash message keys.
+    pub fn with_hasher<B: BuildHasher>(hash_builder: B) -> DefaultPartitioner<B> {
+        DefaultPartitioner {
+            hash_builder: hash_builder.into(),
+            cntr: 0,
+        }
+    }
+
+    pub fn with_default_hasher<B: Hasher + Default>() -> DefaultPartitioner<BuildHasherDefault<B>> {
+        DefaultPartitioner {
+            hash_builder: BuildHasherDefault::<B>::default(),
+            cntr: 0,
+        }
+    }
+}
+
+impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
     #[allow(unused_variables)]
     fn partition(&mut self, topics: Topics, rec: &mut client::ProduceMessage) {
-        if rec.partition < 0 {
-            if let Some(p) = topics.partitions(rec.topic) {
-
-                // ~ XXX dispatch to partition by the hash of the
-                // key - if that is available, otherwise continue
-                // just like below
-                // ~ XXX dispatching by key will require that we
-                // take '% "all-partitions"' (not just the
-                // "currently available" ones) to guard agaist
-                // sending the same key to a different partition
-                // due to a temporal unavailability of a
-                // particular partition.
-
-                let avail = p.available_ids();
+        if rec.partition >= 0 {
+            // ~ partition explicitely defined, trust the user
+            return;
+        }
+        let partitions = match topics.partitions(rec.topic) {
+            None => return, // ~ unknown topic, this is not the place to deal with it.
+            Some(partitions) => partitions,
+        };
+        match rec.key {
+            Some(key) => {
+                let num_partitions = partitions.num_all();
+                if num_partitions == 0 {
+                    // ~ no partitions at all ... a rather strange
+                    // topic. again, this is not the right place to
+                    // deal with it.
+                    return;
+                }
+                let mut h = self.hash_builder.build_hasher();
+                h.write(key);
+                // ~ unconditionally dispatch to partitions no matter
+                // whether they are currently available or not.  this
+                // guarantees consistency which is the point of
+                // partitioning by key.  other behaviour - if desired
+                // - can be implemented in custom, user provided
+                // partitioners.
+                let hash = h.finish() as u32;
+                // if `num_partitions == u32::MAX` this can lead to a
+                // negative partition ... such a partition count is very
+                // unlikely though
+                rec.partition = (hash % num_partitions) as i32;
+            }
+            None => {
+                // ~ no key available, determine a partition from the
+                // available ones.
+                let avail = partitions.available_ids();
                 if avail.len() > 0 {
-                    // ~ get a partition
                     rec.partition = avail[self.cntr as usize % avail.len()];
                     // ~ update internal state so that the next time we choose
                     // a different partition
@@ -503,8 +544,144 @@ impl Partitioner for DefaultPartitioner {
     }
 }
 
-impl Default for DefaultPartitioner {
-    fn default() -> Self {
-        DefaultPartitioner { cntr: 0 }
+// --------------------------------------------------------------------
+
+// XXX delete the BuildHasher and BuildHasherDefault code once this is in stable
+
+/// A `BuildHasher` is a factory for instances of `Hasher`.
+///
+/// Note: this trait will be deleted and replaced with
+/// `std::hash::BuildHasher` once that lands in Rust stable.
+pub trait BuildHasher {
+    type Hasher: hash::Hasher;
+    fn build_hasher(&self) -> Self::Hasher;
+}
+
+/// A structure which implements BuildHasher for all Hasher types
+/// which also implement Default.
+///
+/// This struct is 0-sized and does not need construction.
+///
+/// Note: this trait will be deleted and replaced with
+/// `std::hash::BuildHasherDefault` once that lands in Rust stable.
+pub struct BuildHasherDefault<H>(marker::PhantomData<H>);
+
+impl<H: Default + hash::Hasher> BuildHasher for BuildHasherDefault<H> {
+    type Hasher = H;
+
+    fn build_hasher(&self) -> H {
+        H::default()
+    }
+}
+
+impl<H> Clone for BuildHasherDefault<H> {
+    fn clone(&self) -> BuildHasherDefault<H> {
+        BuildHasherDefault(marker::PhantomData)
+    }
+}
+
+impl<H> Default for BuildHasherDefault<H> {
+    fn default() -> BuildHasherDefault<H> {
+        BuildHasherDefault(marker::PhantomData)
+    }
+}
+
+// --------------------------------------------------------------------
+
+#[cfg(test)]
+mod default_partitioner_tests {
+    use std::hash::{Hasher, SipHasher};
+    use std::collections::HashMap;
+
+    use client;
+    use super::{DefaultPartitioner, BuildHasherDefault, Partitioner, Partitions, Topics};
+
+    fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {
+        let mut h = HashMap::new();
+        for topic in topics {
+            h.insert(topic.0.into(), topic.1);
+        }
+        h
+    }
+
+    fn assert_partitioning<P: Partitioner>(topics: &HashMap<String, Partitions>,
+                                           p: &mut P, topic: &str, key: &str)
+                                           -> i32
+    {
+        let mut msg = client::ProduceMessage {
+            key: Some(key.as_bytes()),
+            value: None,
+            topic: topic,
+            partition: -1,
+        };
+        p.partition(Topics::new(topics), &mut msg);
+        let num_partitions = topics.get(topic).unwrap().num_all_partitions as i32;
+        assert!(msg.partition >= 0 && msg.partition < num_partitions);
+        msg.partition
+    }
+
+    /// Validate consistent partitioning on a message's key
+    #[test]
+    fn test_key_partitioning() {
+        let h = topics_map(vec![
+            ("foo", Partitions {
+                available_ids: vec![0, 1, 4],
+                num_all_partitions: 5,
+            }),
+            ("bar", Partitions {
+                available_ids: vec![0, 1],
+                num_all_partitions: 2,
+            })]);
+
+        let mut p: DefaultPartitioner<BuildHasherDefault<SipHasher>> = Default::default();
+
+        // ~ validate that partitioning by the same key leads to the same
+        // partition
+        let h1 = assert_partitioning(&h, &mut p, "foo", "foo-key");
+        let h2 = assert_partitioning(&h, &mut p, "foo", "foo-key");
+        assert_eq!(h1, h2);
+
+        // ~ validate that partitioning by different keys leads to
+        // different partitions (the keys are chosen such that they lead
+        // to different partitions)
+        let h3 = assert_partitioning(&h, &mut p, "foo", "foo-key");
+        let h4 = assert_partitioning(&h, &mut p, "foo", "bar-key");
+        assert!(h3 != h4);
+    }
+
+    #[derive(Default)]
+    struct MyCustomHasher(u64);
+
+    impl Hasher for MyCustomHasher {
+        fn finish(&self) -> u64 { self.0 }
+        fn write(&mut self, bytes: &[u8]) { self.0 = bytes[0] as u64; }
+    }
+
+    /// Validate it is possible to register a custom hasher with the
+    /// default partitioner
+    #[test]
+    fn default_partitioner_with_custom_hasher_default() {
+        // this must compile
+        let mut p = DefaultPartitioner::with_default_hasher::<MyCustomHasher>();
+
+        let h = topics_map(vec![
+            ("confirms", Partitions {
+                available_ids: vec![0, 1],
+                num_all_partitions: 2,
+            }),
+            ("contents", Partitions {
+                available_ids: vec![0, 1, 9],
+                num_all_partitions: 10,
+            })]);
+
+        // verify also the partitioner derives the correct partition
+        // ... this is hash modulo num_all_partitions. here it is a
+        // topic with a total of 2 partitions.
+        let p1 = assert_partitioning(&h, &mut p, "confirms", "A" /* ascii: 65 */);
+        assert_eq!(1, p1);
+
+        // here it is a topic with a total of 10 partitions
+        let p2 = assert_partitioning(&h, &mut p, "contents", "B" /* ascii: 66 */);
+        assert_eq!(6, p2);
     }
 }

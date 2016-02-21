@@ -3,7 +3,7 @@ extern crate kafka;
 use kafka::producer::{Producer, Record};
 use kafka::error::Error as KafkaError;
 
-/// This program demonstrates sending single messagess through a
+/// This program demonstrates sending single message through a
 /// `Producer`.  This is a convenient higher-level client that will
 /// fit most use cases.
 fn main() {
