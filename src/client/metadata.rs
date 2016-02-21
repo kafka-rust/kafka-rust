@@ -263,7 +263,7 @@ impl<'a> Iterator for PartitionIter<'a> {
 /// messages from.  Non-available partitions are ignored by
 /// `kafka-rust`.  Whether or not a partition is currently "available"
 /// can be determined by testing for `partition.leader().is_some()` or
-/// more directly through `partition.available()`.
+/// more directly through `partition.is_available()`.
 pub struct Partition<'a> {
     state: &'a ClientState,
     partition: &'a TopicPartition,
@@ -294,7 +294,7 @@ impl<'a> Partition<'a> {
 
     /// Determines whether this partition is currently "available".
     /// See `Partition::leader()`.
-    pub fn available(&self) -> bool {
+    pub fn is_available(&self) -> bool {
         self.leader().is_some()
     }
 }

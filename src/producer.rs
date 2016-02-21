@@ -1,11 +1,15 @@
-//! Kafka Producer - A higher-level API for sending messages to kafka topics.
+//! Kafka Producer - A higher-level API for sending messages to Kafka topics.
 //!
-//! A multi-topic capable producer for a Kafka cluster providing a
-//! convenient API for sending messages.  So far the producer has only
-//! synchronous capabilities.
+//! This module hosts a multi-topic capable producer for a Kafka
+//! cluster providing a convenient API for sending messages
+//! synchronously.
 //!
-//! In Kafka, each message is basically a key/value pair.  A `Record`
-//! is all the data necessary to produce such a message to Kafka.
+//! In Kafka, each message is basically a key/value pair where one or
+//! the other are optional.  A `Record` is all the data necessary to
+//! produce such a message to Kafka using the `Producer` of this
+//! module.  It specifies the target topic and the target partition
+//! the message is supposed to be delivered to as well as the key and
+//! the value.
 //!
 //! # Example
 //! ```no_run
@@ -32,9 +36,27 @@
 //! and persisted by at least one Kafka broker.  However, when sending
 //! multiple messages just like this example, it is more efficient to
 //! send them in batches using `Producer::send_all`.
+//!
+//! Since some of the `Record`s attributes are optional, convenience
+//! methods exist to ease their creation.  In this example, the call
+//! to `Record::from_value` creates a key-less, value-only record with
+//! an unspecified partition.  The `Record` struct, however, is
+//! intended to provide full control over its lifecycle to client
+//! code, and hence is fully open.  Its current constructor methods
+//! are a convience only.
+//!
+//! Beside the target topic, key, and the value of a `Record`, client
+//! code is allowed to specify the topic partition the message is
+//! supposed to be delivered to.  If the partition of a `Record` is
+//! not specified - more precisely speaking if it's negative -
+//! `Producer` will relies on its underlying `Partitioner` to find a
+//! suitable one.  A `Partitioner` implementation can be supplied by
+//! client code at the `Producer`'s construction time and defaults to
+//! `DefaultPartitioner`.  See that for more information for its
+//! strategy to find a partition.
 
 // XXX 1) rethink return values for the send_all() method
-// XXX 2) extend DefaultPartitioner to dispatch based on message key
+// XXX 2) extend DefaultPartitioner to dispatch based on message key (#78)
 // XXX 3) Handle recoverable errors behind the scenes through retry attempts
 // XXX 4) maintain a background thread to provide an async version of the send* methods
 
@@ -158,7 +180,7 @@ pub struct Producer<P = DefaultPartitioner> {
 
 struct State<P> {
     /// A list of available partition IDs for each topic.
-    partition_ids: HashMap<String, (Vec<i32>, u32)>,
+    partitions: HashMap<String, Partitions>,
     /// The partitioner to decide how to distribute messages
     partitioner: P,
 }
@@ -209,7 +231,7 @@ impl<P: Partitioner> Producer<P> {
         where K: AsBytes, V: AsBytes
     {
         let partitioner = &mut self.state.partitioner;
-        let partition_ids = &self.state.partition_ids;
+        let partitions = &self.state.partitions;
         let client = &mut self.client;
         let config = &self.config;
 
@@ -222,7 +244,7 @@ impl<P: Partitioner> Producer<P> {
                     topic: r.topic,
                     partition: r.partition,
                 };
-                partitioner.partition(Topics::new(partition_ids), &mut m);
+                partitioner.partition(Topics::new(partitions), &mut m);
                 m
             }))
     }
@@ -244,9 +266,13 @@ impl<P> State<P> {
         let mut ids = HashMap::with_capacity(ts.len());
         for t in ts {
             let ps = t.partitions();
-            ids.insert(t.name().to_owned(), (ps.available_ids(), ps.len() as u32));
+            ids.insert(t.name().to_owned(),
+                       Partitions {
+                           available_ids: ps.available_ids(),
+                           num_all_partitions: ps.len()
+                       });
         }
-        Ok(State{partition_ids: ids, partitioner: partitioner})
+        Ok(State{partitions: ids, partitioner: partitioner})
     }
 }
 
@@ -360,22 +386,51 @@ impl<P> Builder<P> {
 ///
 /// Indented for use by `Partitioner`s.
 pub struct Topics<'a> {
-    partition_ids: &'a HashMap<String, (Vec<i32>, u32)>,
+    partitions: &'a HashMap<String, Partitions>,
+}
+
+/// Producer relevant partition information of a particular topic.
+///
+/// Indented for use by `Partition`s.
+pub struct Partitions {
+    available_ids: Vec<i32>,
+    num_all_partitions: usize,
+}
+
+impl Partitions {
+    /// Retrieves the list of the identifiers of currently "available"
+    /// partitions for the given topic.  This list excludes partitions
+    /// which do not have a leader broker assigned.
+    #[inline]
+    pub fn available_ids(&self) -> &[i32] {
+        &self.available_ids
+    }
+
+    /// Retrieves the number of "available" partitions. This is a
+    /// merely a convenience method. See `Partitions::available_ids`.
+    #[inline]
+    pub fn num_available(&self) -> usize {
+        self.available_ids.len()
+    }
+
+    /// The total number of partitions of the underlygin topic.  This
+    /// number includes also partitions without a current leader
+    /// assignment.
+    #[inline]
+    pub fn num_all(&self) -> usize {
+        self.num_all_partitions
+    }
 }
 
 impl<'a> Topics<'a> {
-    fn new(partition_ids: &'a HashMap<String, (Vec<i32>, u32)>) -> Topics<'a> {
-        Topics { partition_ids: partition_ids }
+    fn new(partitions: &'a HashMap<String, Partitions>) -> Topics<'a> {
+        Topics { partitions: partitions }
     }
 
-    /// Retrieves a the number of all partitions of the specified
-    /// topic and a list of the identifiers of currently "available"
-    /// partitions for the given topic.  This list excludes partitions
-    /// which do not have a leader broker assigned.  The number of all
-    /// partitions is never greater than the length of the "available"
-    /// partitions, of course.
-    pub fn partition_ids(&self, topic: &'a str) -> Option<(&[i32], u32)> {
-        self.partition_ids.get(topic).map(|ps| (&ps.0[..], ps.1))
+    /// Retrieves informationa about a topic's partitions.
+    #[inline]
+    pub fn partitions(&'a self, topic: &str) -> Option<&'a Partitions> {
+        self.partitions.get(topic)
     }
 }
 
@@ -423,27 +478,26 @@ impl Partitioner for DefaultPartitioner {
     #[allow(unused_variables)]
     fn partition(&mut self, topics: Topics, rec: &mut client::ProduceMessage) {
         if rec.partition < 0 {
-            match topics.partition_ids(rec.topic) {
-                Some((ps, _)) if !ps.is_empty() => {
+            if let Some(p) = topics.partitions(rec.topic) {
 
-                    // ~ XXX dispatch to partition by the hash of the
-                    // key - if that is available, otherwise continue
-                    // just like below
-                    //
-                    // ~ XXX dispatching by key will require that we
-                    // take '% "all-partitions"' (not just the
-                    // "currently available" ones) to guard agaist
-                    // sending the same key to a different partition
-                    // due to a temporal unavailability of a
-                    // particular partition.
+                // ~ XXX dispatch to partition by the hash of the
+                // key - if that is available, otherwise continue
+                // just like below
+                // ~ XXX dispatching by key will require that we
+                // take '% "all-partitions"' (not just the
+                // "currently available" ones) to guard agaist
+                // sending the same key to a different partition
+                // due to a temporal unavailability of a
+                // particular partition.
 
+                let avail = p.available_ids();
+                if avail.len() > 0 {
                     // ~ get a partition
-                    rec.partition = ps[self.cntr as usize % ps.len()];
+                    rec.partition = avail[self.cntr as usize % avail.len()];
                     // ~ update internal state so that the next time we choose
                     // a different partition
                     self.cntr = self.cntr.wrapping_add(1);
                 }
-                _ => {}
             }
         }
     }
