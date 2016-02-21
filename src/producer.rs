@@ -1,15 +1,15 @@
-//! Kafka Producer - A higher-level API for sending messages to Kafka topics.
+//! Kafka Producer - A higher-level API for sending messages to Kafka
+//! topics.
 //!
 //! This module hosts a multi-topic capable producer for a Kafka
 //! cluster providing a convenient API for sending messages
 //! synchronously.
 //!
-//! In Kafka, each message is basically a key/value pair where one or
-//! the other are optional.  A `Record` is all the data necessary to
-//! produce such a message to Kafka using the `Producer` of this
-//! module.  It specifies the target topic and the target partition
-//! the message is supposed to be delivered to as well as the key and
-//! the value.
+//! In Kafka, each message is a key/value pair where one or the other
+//! is optional.  A `Record` represents all the data necessary to
+//! produce such a message to Kafka using the `Producer`.  It
+//! specifies the target topic and the target partition the message is
+//! supposed to be delivered to as well as the key and the value.
 //!
 //! # Example
 //! ```no_run
@@ -31,25 +31,25 @@
 //! }
 //! ```
 //!
-//! In this example, when the method call to `producer.send` returns
+//! In this example, when the `producer.send(..)` returns
 //! successfully, we are guaranteed the message is delivered to Kafka
 //! and persisted by at least one Kafka broker.  However, when sending
-//! multiple messages just like this example, it is more efficient to
-//! send them in batches using `Producer::send_all`.
+//! multiple messages just like in this example, it is more efficient
+//! to send them in batches using `Producer::send_all`.
 //!
 //! Since some of the `Record`s attributes are optional, convenience
 //! methods exist to ease their creation.  In this example, the call
 //! to `Record::from_value` creates a key-less, value-only record with
 //! an unspecified partition.  The `Record` struct, however, is
 //! intended to provide full control over its lifecycle to client
-//! code, and hence is fully open.  Its current constructor methods
-//! are a convience only.
+//! code, and, hence, is fully open.  Its current constructor methods
+//! are provided for convience only.
 //!
 //! Beside the target topic, key, and the value of a `Record`, client
 //! code is allowed to specify the topic partition the message is
 //! supposed to be delivered to.  If the partition of a `Record` is
 //! not specified - more precisely speaking if it's negative -
-//! `Producer` will relies on its underlying `Partitioner` to find a
+//! `Producer` will rely on its underlying `Partitioner` to find a
 //! suitable one.  A `Partitioner` implementation can be supplied by
 //! client code at the `Producer`'s construction time and defaults to
 //! `DefaultPartitioner`.  See that for more information for its
@@ -454,18 +454,31 @@ pub trait Partitioner {
 /// As its name implies `DefaultPartitioner` is the default
 /// partitioner for `Producer`.
 ///
-/// Every received message with a non-negative value will not be
-/// changed by this partitioner and will be passed through as is.
+/// For every message it proceedes as follows:
 ///
-/// For every message with an "unspecified" `partition` - this is a
-/// negative partition - it will try to find one.  In a very simple
-/// manner, it tries to distribute such messsages across available
-/// partitions in a round robin fashion.
+/// - If the messages contains a non-negative partition value it
+/// leaves the message untouched.  This will cause `Producer` to try
+/// to send the message to exactly that partition to.
 ///
-/// This behavior may not suffice every workload.  If you're
-/// application is dependent on a particular distribution scheme, you
-/// want to provide your own partioner to the `Producer` at
-/// initialization time.
+/// - Otherwise, if the message has an "unspecified" `partition` -
+/// this is, it has a negative partition value - and a specified key,
+/// `DefaultPartitioner` will compute a hash from the key using the
+/// underlying hasher and take `hash % num_all_partitions` to derive
+/// the partition to send the message to.  This will consistently
+/// cause messages with the same key to be sent to the same partition.
+///
+/// - Otherwise - a message with an "unspecified" `partition` and no
+/// key - `DefaultPartitioner` will "randomly" pick one from the
+/// "available" partitions trying to distribute the messages across
+/// the multiple partitions.  In particular, it tries to distribute
+/// such messsages across the "available" partitions in a round robin
+/// fashion.  "Available" it this context means partitions with a
+/// known leader.
+///
+/// This behavior may not suffice every workload.  If your application
+/// is dependent on a particular distribution scheme different from
+/// the one outlined above, you want to provide your own partioner to
+/// the `Producer` at its initialization time.
 ///
 /// See `Builder::with_partitioner`.
 #[derive(Default)]
