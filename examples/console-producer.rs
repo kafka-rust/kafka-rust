@@ -110,6 +110,7 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
             next_rec = 0;
         }
         let mut rec = &mut rec_stash[next_rec];
+        rec.value.clear();
         if try!(src.read_line(&mut rec.value)) == 0 {
             break; // ~ EOF reached
         }
