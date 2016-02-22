@@ -82,7 +82,7 @@ There's still a lot of room for improvements on `kafka-rust`.  Not
 everything works right at the moment.  Have a look into the [issue
 tracker](https://github.com/spicavigo/kafka-rust/issues) and feel free
 to contribute by reporting new problems or contributing to existing
-ones.  Any constructive constribution is warmly wellcome!
+ones.  Any constructive contribution is warmly wellcome!
 
 As usually with open source, don't hesitate to fork the repo and
 submit a pull requests if you see something to be changed.  We'll be
