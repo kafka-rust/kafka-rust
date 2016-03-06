@@ -60,8 +60,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::hash::{self, Hasher, SipHasher};
-use std::marker;
+use std::hash::{Hasher, SipHasher, BuildHasher, BuildHasherDefault};
 
 use client::{self, KafkaClient};
 // public re-exports
@@ -585,55 +584,13 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
 
 // --------------------------------------------------------------------
 
-// XXX delete the BuildHasher and BuildHasherDefault code once this is in stable
-
-/// A `BuildHasher` is a factory for instances of `Hasher`.
-///
-/// Note: this trait will be deleted and replaced with
-/// `std::hash::BuildHasher` once that lands in Rust stable.
-pub trait BuildHasher {
-    type Hasher: hash::Hasher;
-    fn build_hasher(&self) -> Self::Hasher;
-}
-
-/// A structure which implements BuildHasher for all Hasher types
-/// which also implement Default.
-///
-/// This struct is 0-sized and does not need construction.
-///
-/// Note: this trait will be deleted and replaced with
-/// `std::hash::BuildHasherDefault` once that lands in Rust stable.
-pub struct BuildHasherDefault<H>(marker::PhantomData<H>);
-
-impl<H: Default + hash::Hasher> BuildHasher for BuildHasherDefault<H> {
-    type Hasher = H;
-
-    fn build_hasher(&self) -> H {
-        H::default()
-    }
-}
-
-impl<H> Clone for BuildHasherDefault<H> {
-    fn clone(&self) -> BuildHasherDefault<H> {
-        BuildHasherDefault(marker::PhantomData)
-    }
-}
-
-impl<H> Default for BuildHasherDefault<H> {
-    fn default() -> BuildHasherDefault<H> {
-        BuildHasherDefault(marker::PhantomData)
-    }
-}
-
-// --------------------------------------------------------------------
-
 #[cfg(test)]
 mod default_partitioner_tests {
-    use std::hash::{Hasher, SipHasher};
+    use std::hash::{Hasher, SipHasher, BuildHasherDefault};
     use std::collections::HashMap;
 
     use client;
-    use super::{DefaultPartitioner, BuildHasherDefault, Partitioner, Partitions, Topics};
+    use super::{DefaultPartitioner, Partitioner, Partitions, Topics};
 
     fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {
         let mut h = HashMap::new();
