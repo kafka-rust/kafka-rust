@@ -309,8 +309,6 @@ impl<'a> MessageSet<'a> {
 
 /// Represents a messages exactly as defined in the protocol.
 struct ProtocolMessage<'a> {
-    crc: i32,
-    magic: i8,
     attr: i8,
     key: &'a [u8],
     value: &'a [u8],
@@ -325,7 +323,11 @@ impl<'a> ProtocolMessage<'a> {
         let msg_crc = try!(r.read_i32());
         // XXX later validate the checksum
         let msg_magic = try!(r.read_i8());
-        // XXX validate that `msg_magic == 0`
+        // ~ we support parsing only messages with the "zero"
+        // magic_byte; this covers kafka 0.8 and 0.9.
+        if msg_magic != 0 {
+            return Err(Error::UnsupportedProtocol);
+        }
         let msg_attr = try!(r.read_i8());
         let msg_key = try!(r.read_bytes());
         let msg_val = try!(r.read_bytes());
@@ -333,8 +335,6 @@ impl<'a> ProtocolMessage<'a> {
         debug_assert!(r.is_empty());
 
         Ok(ProtocolMessage {
-            crc: msg_crc,
-            magic: msg_magic,
             attr: msg_attr,
             key: msg_key,
             value: msg_val,

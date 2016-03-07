@@ -23,6 +23,10 @@ pub enum Error {
     /// An error as reported by a remote Kafka server
     Kafka(KafkaCode),
 
+    /// Failure to correctly parse the server response due to the
+    /// server speaking a newer protocol version (than the one this
+    /// library supports)
+    UnsupportedProtocol,
     /// Failure to decode a snappy compressed response from Kafka
     InvalidInputSnappy,
     /// Failure to decode a response due to an insufficient number of bytes available
@@ -161,6 +165,7 @@ impl Clone for Error {
         match self {
             &Error::Io(ref err) => Error::Io(io::Error::new(err.kind(), "Io Error")),
             &Error::Kafka(x) => Error::Kafka(x),
+            &Error::UnsupportedProtocol => Error::UnsupportedProtocol,
             &Error::InvalidInputSnappy => Error::InvalidInputSnappy,
             &Error::UnexpectedEOF => Error::UnexpectedEOF,
             &Error::CodecError => Error::CodecError,
@@ -175,6 +180,7 @@ impl error::Error for Error {
         match *self {
             Error::Io(ref err) => error::Error::description(err),
             Error::Kafka(_) => "Kafka Error",
+            Error::UnsupportedProtocol => "Unsupported protocol version",
             Error::InvalidInputSnappy => "Snappy decode error",
             Error::UnexpectedEOF => "Unexpected EOF",
             Error::CodecError => "Encoding/Decoding error",
@@ -196,10 +202,10 @@ impl fmt::Display for Error {
         match *self {
             Error::Io(ref err) => err.fmt(f),
             Error::Kafka(ref c) => write!(f, "Kafka Error ({:?})", c),
-            Error::InvalidInputSnappy => write!(f, "{}", "Snappy decoding error"),
+            Error::UnsupportedProtocol => write!(f, "Unsupported protocol version"),
+            Error::InvalidInputSnappy => write!(f, "Snappy decode error"),
             Error::UnexpectedEOF => write!(f, "Unexpected EOF"),
             Error::CodecError => write!(f, "Encoding/Decoding Error"),
-            // XXX might want to provide some context about the parsed string and the error position within it
             Error::StringDecodeError => write!(f, "String decoding error"),
             Error::NoHostReachable => write!(f, "No Host Reachable"),
         }
