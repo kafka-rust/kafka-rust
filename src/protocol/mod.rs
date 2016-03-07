@@ -62,7 +62,7 @@ impl Error {
     fn from_protocol_error(n: i16) -> Option<Error> {
         match n {
             1 => Some(Error::Kafka(KafkaCode::OffsetOutOfRange)),
-            2 => Some(Error::Kafka(KafkaCode::InvalidMessage)),
+            2 => Some(Error::Kafka(KafkaCode::CorruptMessage)),
             3 => Some(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
             4 => Some(Error::Kafka(KafkaCode::InvalidMessageSize)),
             5 => Some(Error::Kafka(KafkaCode::LeaderNotAvailable)),

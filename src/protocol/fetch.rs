@@ -1,7 +1,5 @@
 //! A representation of fetched messages from Kafka.
 
-// Note: you'll find the request related code in `fetch_req.rs`.
-
 use std::borrow::Cow;
 use std::io::Read;
 use std::mem;

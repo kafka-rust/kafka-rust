@@ -45,7 +45,7 @@ pub enum KafkaCode {
     /// maintained by the server for the given topic/partition
     OffsetOutOfRange,
     /// This indicates that a message contents does not match its CRC
-    InvalidMessage,
+    CorruptMessage,
     /// This request is for a topic or partition that does not exist
     /// on this broker.
     UnknownTopicOrPartition,
