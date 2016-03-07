@@ -5,12 +5,13 @@ use std::io::Read;
 use std::mem;
 use std::cell::Cell;
 
-use error::{Error, Result};
+use error::{Error, KafkaCode, Result};
 use compression::{gzip, Compression};
 use compression::snappy::SnappyReader;
 
 use super::FromResponse;
 use super::zreader::ZReader;
+use super::tocrc;
 
 // ~ helper macro to aid parsing arrays of values (as defined by the
 // Kafka protocol.)
@@ -45,18 +46,19 @@ pub struct Response {
 
 impl FromResponse for Response {
     fn from_response(response: Vec<u8>) -> Result<Self> {
-        Response::from_vec(response)
+        // XXX
+        Response::from_vec(response, false)
     }
 }
 
 impl Response {
     /// Parses a Response from binary data as defined by the
     /// Kafka Protocol.
-    fn from_vec(response: Vec<u8>) -> Result<Response> {
+    fn from_vec(response: Vec<u8>, validate_crc: bool) -> Result<Response> {
         let slice = unsafe { mem::transmute(&response[..]) };
         let mut r = ZReader::new(slice);
         let correlation_id = try!(r.read_i32());
-        let topics = array_of!(r, Topic::read(&mut r));
+        let topics = array_of!(r, Topic::read(&mut r, validate_crc));
         Ok(Response {
             raw_data: response,
             correlation_id: correlation_id,
@@ -89,9 +91,9 @@ pub struct Topic<'a> {
 }
 
 impl<'a> Topic<'a> {
-    fn read(r: &mut ZReader<'a>) -> Result<Topic<'a>> {
+    fn read(r: &mut ZReader<'a>, validate_crc: bool) -> Result<Topic<'a>> {
         let name = try!(r.read_str());
-        let partitions = array_of!(r, Partition::read(r));
+        let partitions = array_of!(r, Partition::read(r, validate_crc));
         Ok(Topic {
             topic: name,
             partitions: partitions,
@@ -128,13 +130,13 @@ pub struct Partition<'a> {
 }
 
 impl<'a> Partition<'a> {
-    fn read(r: &mut ZReader<'a>) -> Result<Partition<'a>> {
+    fn read(r: &mut ZReader<'a>, validate_crc: bool) -> Result<Partition<'a>> {
         let partition = try!(r.read_i32());
         let error = Error::from_protocol_error(try!(r.read_i16()));
         // we need to parse the rest even if there was an error to
         // consume the input stream (zreader)
         let highwatermark = try!(r.read_i64());
-        let msgset = try!(MessageSet::from_slice(try!(r.read_bytes())));
+        let msgset = try!(MessageSet::from_slice(try!(r.read_bytes()), validate_crc));
         Ok(Partition {
             partition: partition,
             data: match error {
@@ -239,7 +241,7 @@ pub struct Message<'a> {
 }
 
 impl<'a> MessageSet<'a> {
-    fn from_vec(data: Vec<u8>) -> Result<MessageSet<'a>> {
+    fn from_vec(data: Vec<u8>, validate_crc: bool) -> Result<MessageSet<'a>> {
         // since we're going to keep the original
         // uncompressed vector around without
         // further modifying it and providing
@@ -247,18 +249,18 @@ impl<'a> MessageSet<'a> {
         // this is safe
         let ms = try!(MessageSet::from_slice(unsafe {
             mem::transmute(&data[..])
-        }));
+        }, validate_crc));
         return Ok(MessageSet {
             raw_data: Cow::Owned(data),
             messages: ms.messages,
         });
     }
 
-    fn from_slice<'b>(raw_data: &'b [u8]) -> Result<MessageSet<'b>> {
+    fn from_slice<'b>(raw_data: &'b [u8], validate_crc: bool) -> Result<MessageSet<'b>> {
         let mut r = ZReader::new(raw_data);
         let mut msgs = Vec::new();
         while !r.is_empty() {
-            match MessageSet::next_message(&mut r) {
+            match MessageSet::next_message(&mut r, validate_crc) {
                 // this is the last messages which might be
                 // incomplete; a valid case to be handled by
                 // consumers
@@ -282,12 +284,12 @@ impl<'a> MessageSet<'a> {
                         // XXX handle recursive compression in future
                         c if c == Compression::GZIP as i8 => {
                             let v = try!(gzip::uncompress(pmsg.value));
-                            return Ok(try!(MessageSet::from_vec(v)));
+                            return Ok(try!(MessageSet::from_vec(v, validate_crc)));
                         }
                         c if c == Compression::SNAPPY as i8 => {
                             let mut v = Vec::new();
                             try!(try!(SnappyReader::new(pmsg.value)).read_to_end(&mut v));
-                            return Ok(try!(MessageSet::from_vec(v)));
+                            return Ok(try!(MessageSet::from_vec(v, validate_crc)));
                         }
                         _ => panic!("Unknown compression type!"),
                     }
@@ -300,10 +302,10 @@ impl<'a> MessageSet<'a> {
         })
     }
 
-    fn next_message<'b>(r: &mut ZReader<'b>) -> Result<(i64, ProtocolMessage<'b>)> {
+    fn next_message<'b>(r: &mut ZReader<'b>, validate_crc: bool) -> Result<(i64, ProtocolMessage<'b>)> {
         let offset = try!(r.read_i64());
         let msg_data = try!(r.read_bytes());
-        Ok((offset, try!(ProtocolMessage::from_slice(msg_data))))
+        Ok((offset, try!(ProtocolMessage::from_slice(msg_data, validate_crc))))
     }
 }
 
@@ -317,14 +319,17 @@ struct ProtocolMessage<'a> {
 impl<'a> ProtocolMessage<'a> {
     /// Parses a raw message from the given byte slice.  Does _not_
     /// handle any compression.
-    fn from_slice<'b>(raw_data: &'b [u8]) -> Result<ProtocolMessage<'b>> {
+    fn from_slice<'b>(raw_data: &'b [u8], validate_crc: bool) -> Result<ProtocolMessage<'b>> {
         let mut r = ZReader::new(raw_data);
 
+        // ~ optionally validate the crc checksum
         let msg_crc = try!(r.read_i32());
-        // XXX later validate the checksum
-        let msg_magic = try!(r.read_i8());
+        if validate_crc && tocrc(r.rest()) as i32 != msg_crc {
+            return Err(Error::Kafka(KafkaCode::CorruptMessage));
+        }
         // ~ we support parsing only messages with the "zero"
         // magic_byte; this covers kafka 0.8 and 0.9.
+        let msg_magic = try!(r.read_i8());
         if msg_magic != 0 {
             return Err(Error::UnsupportedProtocol);
         }
@@ -378,8 +383,8 @@ mod tests {
         all_msgs
     }
 
-    fn test_decode_new_fetch_response(msg_per_line: &str, response: Vec<u8>) {
-        let resp = Response::from_vec(response);
+    fn test_decode_new_fetch_response(msg_per_line: &str, response: Vec<u8>, validate_crc: bool) {
+        let resp = Response::from_vec(response, validate_crc);
         let resp = resp.unwrap();
 
         let original: Vec<_> = msg_per_line.lines().collect();
@@ -404,7 +409,8 @@ mod tests {
 
     #[test]
     fn test_forget_before_offset() {
-        let r = Response::from_vec(FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned()).unwrap();
+        let r = Response::from_vec(FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), false)
+            .unwrap();
         let t = &r.topics()[0];
         let p = &t.partitions()[0];
         let data = p.data().as_ref().unwrap();
@@ -447,23 +453,25 @@ mod tests {
 
     #[test]
     fn test_from_slice_nocompression_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned());
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), false);
     }
 
     #[test]
     fn test_from_slice_snappy_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned());
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), false);
     }
 
     #[test]
     fn test_from_slice_snappy_k0822() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned());
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), false);
     }
 
     #[test]
     fn test_from_slice_gzip_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned());
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), false);
     }
+
+    // XXX test that validating_crc does and doesn't fail on request
 
     #[cfg(feature = "nightly")]
     mod benches {
@@ -472,11 +480,11 @@ mod tests {
         use super::super::Response;
         use super::into_messages;
 
-        fn bench_decode_new_fetch_response(b: &mut Bencher, data: Vec<u8>) {
+        fn bench_decode_new_fetch_response(b: &mut Bencher, data: Vec<u8>, validate_crc: bool) {
             b.bytes = data.len() as u64;
             b.iter(|| {
                 let data = data.clone();
-                let r = black_box(Response::from_vec(data).unwrap());
+                let r = black_box(Response::from_vec(data, validate_crc).unwrap());
                 let v = black_box(into_messages(&r));
                 v.len()
             });
@@ -484,22 +492,42 @@ mod tests {
 
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned())
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), false)
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned())
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), false)
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned())
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), false)
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned())
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), false)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_nocompression_k0821_validate_crc(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), true)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_snappy_k0821_validate_crc(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), true)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_snappy_k0822_validate_crc(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), true)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_gzip_k0821_validate_crc(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), true)
         }
     }
 }
