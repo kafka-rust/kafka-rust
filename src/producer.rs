@@ -1,11 +1,15 @@
-//! Kafka Producer - A higher-level API for sending messages to kafka topics.
+//! Kafka Producer - A higher-level API for sending messages to Kafka
+//! topics.
 //!
-//! A multi-topic capable producer for a Kafka cluster providing a
-//! convenient API for sending messages.  So far the producer has only
-//! synchronous capabilities.
+//! This module hosts a multi-topic capable producer for a Kafka
+//! cluster providing a convenient API for sending messages
+//! synchronously.
 //!
-//! In Kafka, each message is basically a key/value pair.  A `Record`
-//! is all the data necessary to produce such a message to Kafka.
+//! In Kafka, each message is a key/value pair where one or the other
+//! is optional.  A `Record` represents all the data necessary to
+//! produce such a message to Kafka using the `Producer`.  It
+//! specifies the target topic and the target partition the message is
+//! supposed to be delivered to as well as the key and the value.
 //!
 //! # Example
 //! ```no_run
@@ -27,23 +31,40 @@
 //! }
 //! ```
 //!
-//! In this example, when the method call to `producer.send` returns
+//! In this example, when the `producer.send(..)` returns
 //! successfully, we are guaranteed the message is delivered to Kafka
 //! and persisted by at least one Kafka broker.  However, when sending
-//! multiple messages just like this example, it is more efficient to
-//! send them in batches using `Producer::send_all`.
+//! multiple messages just like in this example, it is more efficient
+//! to send them in batches using `Producer::send_all`.
+//!
+//! Since some of the `Record`s attributes are optional, convenience
+//! methods exist to ease their creation.  In this example, the call
+//! to `Record::from_value` creates a key-less, value-only record with
+//! an unspecified partition.  The `Record` struct, however, is
+//! intended to provide full control over its lifecycle to client
+//! code, and, hence, is fully open.  Its current constructor methods
+//! are provided for convience only.
+//!
+//! Beside the target topic, key, and the value of a `Record`, client
+//! code is allowed to specify the topic partition the message is
+//! supposed to be delivered to.  If the partition of a `Record` is
+//! not specified - more precisely speaking if it's negative -
+//! `Producer` will rely on its underlying `Partitioner` to find a
+//! suitable one.  A `Partitioner` implementation can be supplied by
+//! client code at the `Producer`'s construction time and defaults to
+//! `DefaultPartitioner`.  See that for more information for its
+//! strategy to find a partition.
 
 // XXX 1) rethink return values for the send_all() method
-// XXX 2) extend DefaultPartitioner to dispatch based on message key
-// XXX 3) Handle recoverable errors behind the scenes through retry attempts
-// XXX 4) maintain a background thread to provide an async version of the send* methods
+// XXX 2) Handle recoverable errors behind the scenes through retry attempts
 
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::{Hasher, SipHasher, BuildHasher, BuildHasherDefault};
 
 use client::{self, KafkaClient};
 // public re-exports
-pub use client::{Compression};
+pub use client::Compression;
 use error::Result;
 use utils::TopicPartitionOffset;
 
@@ -65,7 +86,9 @@ pub trait AsBytes {
 }
 
 impl AsBytes for () {
-    fn as_bytes(&self) -> &[u8] { &[] }
+    fn as_bytes(&self) -> &[u8] {
+        &[]
+    }
 }
 
 // There seems to be some compiler issue with this:
@@ -75,19 +98,27 @@ impl AsBytes for () {
 
 // for now we provide the impl for some standard library types
 impl AsBytes for String {
-    fn as_bytes(&self) -> &[u8] { self.as_ref() }
+    fn as_bytes(&self) -> &[u8] {
+        self.as_ref()
+    }
 }
 impl AsBytes for Vec<u8> {
-    fn as_bytes(&self) -> &[u8] { self.as_ref() }
+    fn as_bytes(&self) -> &[u8] {
+        self.as_ref()
+    }
 }
 
 impl<'a> AsBytes for &'a [u8] {
-    fn as_bytes(&self) -> &[u8] { self }
+    fn as_bytes(&self) -> &[u8] {
+        self
+    }
 }
 impl<'a> AsBytes for &'a str {
-    fn as_bytes(&self) -> &[u8] { str::as_bytes(self) }
+    fn as_bytes(&self) -> &[u8] {
+        str::as_bytes(self)
+    }
 }
- 
+
 // --------------------------------------------------------------------
 
 /// A structure representing a message to be sent to Kafka through the
@@ -111,13 +142,17 @@ pub struct Record<'a, K, V> {
 }
 
 impl<'a, K, V> Record<'a, K, V> {
-
     /// Convenience function to create a new key/value record with an
     /// "unspecified" partition - this is, a partition set to a negative
     /// value.
     #[inline]
     pub fn from_key_value(topic: &'a str, key: K, value: V) -> Record<'a, K, V> {
-        Record { key: key, value: value, topic: topic, partition: -1 }
+        Record {
+            key: key,
+            value: value,
+            topic: topic,
+            partition: -1,
+        }
     }
 
     /// Convenience method to set the partition.
@@ -134,14 +169,23 @@ impl<'a, V> Record<'a, (), V> {
     /// value.
     #[inline]
     pub fn from_value(topic: &'a str, value: V) -> Record<'a, (), V> {
-        Record { key: (), value: value, topic: topic, partition: -1 }
+        Record {
+            key: (),
+            value: value,
+            topic: topic,
+            partition: -1,
+        }
     }
 }
 
 impl<'a, K: fmt::Debug, V: fmt::Debug> fmt::Debug for Record<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
-               self.topic, self.partition, self.key, self.value)
+        write!(f,
+               "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
+               self.topic,
+               self.partition,
+               self.key,
+               self.value)
     }
 }
 
@@ -158,7 +202,7 @@ pub struct Producer<P = DefaultPartitioner> {
 
 struct State<P> {
     /// A list of available partition IDs for each topic.
-    partition_ids: HashMap<String, Vec<i32>>,
+    partitions: HashMap<String, Partitions>,
     /// The partitioner to decide how to distribute messages
     partitioner: P,
 }
@@ -192,11 +236,10 @@ impl Producer {
 
 
 impl<P: Partitioner> Producer<P> {
-
     /// Synchronously send the specified message to Kafka.
-    pub fn send<'a, K, V>(&mut self, rec: &Record<'a, K, V>)
-                          -> Result<()>
-        where K: AsBytes, V: AsBytes
+    pub fn send<'a, K, V>(&mut self, rec: &Record<'a, K, V>) -> Result<()>
+        where K: AsBytes,
+              V: AsBytes
     {
         let mut rs = try!(self.send_all(ref_slice(rec)));
         assert_eq!(1, rs.len());
@@ -204,27 +247,29 @@ impl<P: Partitioner> Producer<P> {
     }
 
     /// Synchronously send all of the specified messages to Kafka.
-    pub fn send_all<'a, K, V>(&mut self, recs: &[Record<'a, K, V>])
+    pub fn send_all<'a, K, V>(&mut self,
+                              recs: &[Record<'a, K, V>])
                               -> Result<Vec<TopicPartitionOffset>>
-        where K: AsBytes, V: AsBytes
+        where K: AsBytes,
+              V: AsBytes
     {
         let partitioner = &mut self.state.partitioner;
-        let partition_ids = &self.state.partition_ids;
+        let partitions = &self.state.partitions;
         let client = &mut self.client;
         let config = &self.config;
 
-        client.produce_messages(
-            config.required_acks, config.ack_timeout,
-            recs.into_iter().map(|r| {
-                let mut m = client::ProduceMessage {
-                    key: to_option(r.key.as_bytes()),
-                    value: to_option(r.value.as_bytes()),
-                    topic: r.topic,
-                    partition: r.partition,
-                };
-                partitioner.partition(Topics::new(partition_ids), &mut m);
-                m
-            }))
+        client.produce_messages(config.required_acks,
+                                config.ack_timeout,
+                                recs.into_iter().map(|r| {
+                                    let mut m = client::ProduceMessage {
+                                        key: to_option(r.key.as_bytes()),
+                                        value: to_option(r.value.as_bytes()),
+                                        topic: r.topic,
+                                        partition: r.partition,
+                                    };
+                                    partitioner.partition(Topics::new(partitions), &mut m);
+                                    m
+                                }))
     }
 }
 
@@ -243,9 +288,17 @@ impl<P> State<P> {
         let ts = client.topics();
         let mut ids = HashMap::with_capacity(ts.len());
         for t in ts {
-            ids.insert(t.name().to_owned(), t.partition_ids());
+            let ps = t.partitions();
+            ids.insert(t.name().to_owned(),
+                       Partitions {
+                           available_ids: ps.available_ids(),
+                           num_all_partitions: ps.len() as u32,
+                       });
         }
-        Ok(State{partition_ids: ids, partitioner: partitioner})
+        Ok(State {
+            partitions: ids,
+            partitioner: partitioner,
+        })
     }
 }
 
@@ -263,9 +316,7 @@ pub struct Builder<P = DefaultPartitioner> {
 }
 
 impl Builder {
-    fn new(client: Option<KafkaClient>, hosts: Vec<String>)
-           -> Builder<DefaultPartitioner>
-    {
+    fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder<DefaultPartitioner> {
         let mut b = Builder {
             client: client,
             hosts: hosts,
@@ -314,7 +365,6 @@ impl Builder {
 }
 
 impl<P> Builder<P> {
-
     /// Sets the partitioner to dispatch when sending messages without
     /// an explicit partition assignment.
     pub fn with_partitioner<Q: Partitioner>(self, partitioner: Q) -> Builder<Q> {
@@ -345,7 +395,7 @@ impl<P> Builder<P> {
             ack_timeout: self.ack_timeout,
             required_acks: self.required_acks,
         };
-        Ok(Producer{
+        Ok(Producer {
             client: client,
             state: state,
             config: config,
@@ -359,18 +409,51 @@ impl<P> Builder<P> {
 ///
 /// Indented for use by `Partitioner`s.
 pub struct Topics<'a> {
-    partition_ids: &'a HashMap<String, Vec<i32>>,
+    partitions: &'a HashMap<String, Partitions>,
+}
+
+/// Producer relevant partition information of a particular topic.
+///
+/// Indented for use by `Partition`s.
+pub struct Partitions {
+    available_ids: Vec<i32>,
+    num_all_partitions: u32,
+}
+
+impl Partitions {
+    /// Retrieves the list of the identifiers of currently "available"
+    /// partitions for the given topic.  This list excludes partitions
+    /// which do not have a leader broker assigned.
+    #[inline]
+    pub fn available_ids(&self) -> &[i32] {
+        &self.available_ids
+    }
+
+    /// Retrieves the number of "available" partitions. This is a
+    /// merely a convenience method. See `Partitions::available_ids`.
+    #[inline]
+    pub fn num_available(&self) -> u32 {
+        self.available_ids.len() as u32
+    }
+
+    /// The total number of partitions of the underlygin topic.  This
+    /// number includes also partitions without a current leader
+    /// assignment.
+    #[inline]
+    pub fn num_all(&self) -> u32 {
+        self.num_all_partitions
+    }
 }
 
 impl<'a> Topics<'a> {
-    fn new(partition_ids: &'a HashMap<String, Vec<i32>>) -> Topics<'a> {
-        Topics { partition_ids: partition_ids }
+    fn new(partitions: &'a HashMap<String, Partitions>) -> Topics<'a> {
+        Topics { partitions: partitions }
     }
 
-    /// Retrieves a list of the identifiers of available partitions
-    /// for the given topic.
-    pub fn partition_ids(&self, topic: &'a str) -> Option<&[i32]> {
-        self.partition_ids.get(topic).map(|ps| &ps[..])
+    /// Retrieves informationa about a topic's partitions.
+    #[inline]
+    pub fn partitions(&'a self, topic: &str) -> Option<&'a Partitions> {
+        self.partitions.get(topic)
     }
 }
 
@@ -394,58 +477,214 @@ pub trait Partitioner {
 /// As its name implies `DefaultPartitioner` is the default
 /// partitioner for `Producer`.
 ///
-/// Every received message with a non-negative value will not be
-/// changed by this partitioner and will be passed through as is.
+/// For every message it proceedes as follows:
 ///
-/// For every message with an "unspecified" `partition` - this is a
-/// negative partition - it will try to find one.  In a very simple
-/// manner, it tries to distribute such messsages across available
-/// partitions in a round robin fashion.
+/// - If the messages contains a non-negative partition value it
+/// leaves the message untouched.  This will cause `Producer` to try
+/// to send the message to exactly that partition to.
 ///
-/// This behavior may not suffice every workload.  If you're
-/// application is dependent on a particular distribution scheme, you
-/// want to provide your own partioner to the `Producer` at
-/// initialization time.
+/// - Otherwise, if the message has an "unspecified" `partition` -
+/// this is, it has a negative partition value - and a specified key,
+/// `DefaultPartitioner` will compute a hash from the key using the
+/// underlying hasher and take `hash % num_all_partitions` to derive
+/// the partition to send the message to.  This will consistently
+/// cause messages with the same key to be sent to the same partition.
+///
+/// - Otherwise - a message with an "unspecified" `partition` and no
+/// key - `DefaultPartitioner` will "randomly" pick one from the
+/// "available" partitions trying to distribute the messages across
+/// the multiple partitions.  In particular, it tries to distribute
+/// such messsages across the "available" partitions in a round robin
+/// fashion.  "Available" it this context means partitions with a
+/// known leader.
+///
+/// This behavior may not suffice every workload.  If your application
+/// is dependent on a particular distribution scheme different from
+/// the one outlined above, you want to provide your own partioner to
+/// the `Producer` at its initialization time.
 ///
 /// See `Builder::with_partitioner`.
-pub struct DefaultPartitioner {
+#[derive(Default)]
+pub struct DefaultPartitioner<H = BuildHasherDefault<SipHasher>> {
+    // ~ a hasher builder; used to consistently hash keys
+    hash_builder: H,
     // ~ a counter incremented with each partitioned message to
     // achieve a different partition assignment for each message
-    cntr: u32
+    cntr: u32,
 }
 
-impl Partitioner for DefaultPartitioner {
+impl DefaultPartitioner {
+    /// Creates a new partitioner which will use the given hash
+    /// builder to hash message keys.
+    pub fn with_hasher<B: BuildHasher>(hash_builder: B) -> DefaultPartitioner<B> {
+        DefaultPartitioner {
+            hash_builder: hash_builder.into(),
+            cntr: 0,
+        }
+    }
+
+    pub fn with_default_hasher<B>() -> DefaultPartitioner<BuildHasherDefault<B>>
+        where B: Hasher + Default
+    {
+        DefaultPartitioner {
+            hash_builder: BuildHasherDefault::<B>::default(),
+            cntr: 0,
+        }
+    }
+}
+
+impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
     #[allow(unused_variables)]
     fn partition(&mut self, topics: Topics, rec: &mut client::ProduceMessage) {
-        if rec.partition < 0 {
-            match topics.partition_ids(rec.topic) {
-                Some(ps) if !ps.is_empty() => {
-
-                    // ~ XXX dispatch to partition by the hash of the
-                    // key - if that is available, otherwise continue
-                    // just like below
-                    //
-                    // ~ XXX dispatching by key will require that we
-                    // take '% "all-partitions"' (not just the
-                    // "currently available" ones) to guard agaist
-                    // sending the same key to a different partition
-                    // due to a temporal unavailability of a
-                    // particular partition.
-
-                    // ~ get a partition
-                    rec.partition = ps[self.cntr as usize % ps.len()];
+        if rec.partition >= 0 {
+            // ~ partition explicitely defined, trust the user
+            return;
+        }
+        let partitions = match topics.partitions(rec.topic) {
+            None => return, // ~ unknown topic, this is not the place to deal with it.
+            Some(partitions) => partitions,
+        };
+        match rec.key {
+            Some(key) => {
+                let num_partitions = partitions.num_all();
+                if num_partitions == 0 {
+                    // ~ no partitions at all ... a rather strange
+                    // topic. again, this is not the right place to
+                    // deal with it.
+                    return;
+                }
+                let mut h = self.hash_builder.build_hasher();
+                h.write(key);
+                // ~ unconditionally dispatch to partitions no matter
+                // whether they are currently available or not.  this
+                // guarantees consistency which is the point of
+                // partitioning by key.  other behaviour - if desired
+                // - can be implemented in custom, user provided
+                // partitioners.
+                let hash = h.finish() as u32;
+                // if `num_partitions == u32::MAX` this can lead to a
+                // negative partition ... such a partition count is very
+                // unlikely though
+                rec.partition = (hash % num_partitions) as i32;
+            }
+            None => {
+                // ~ no key available, determine a partition from the
+                // available ones.
+                let avail = partitions.available_ids();
+                if avail.len() > 0 {
+                    rec.partition = avail[self.cntr as usize % avail.len()];
                     // ~ update internal state so that the next time we choose
                     // a different partition
                     self.cntr = self.cntr.wrapping_add(1);
                 }
-                _ => {}
             }
         }
     }
 }
 
-impl Default for DefaultPartitioner {
-    fn default() -> Self {
-        DefaultPartitioner { cntr: 0 }
+// --------------------------------------------------------------------
+
+#[cfg(test)]
+mod default_partitioner_tests {
+    use std::hash::{Hasher, SipHasher, BuildHasherDefault};
+    use std::collections::HashMap;
+
+    use client;
+    use super::{DefaultPartitioner, Partitioner, Partitions, Topics};
+
+    fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {
+        let mut h = HashMap::new();
+        for topic in topics {
+            h.insert(topic.0.into(), topic.1);
+        }
+        h
+    }
+
+    fn assert_partitioning<P: Partitioner>(topics: &HashMap<String, Partitions>,
+                                           p: &mut P,
+                                           topic: &str,
+                                           key: &str)
+                                           -> i32 {
+        let mut msg = client::ProduceMessage {
+            key: Some(key.as_bytes()),
+            value: None,
+            topic: topic,
+            partition: -1,
+        };
+        p.partition(Topics::new(topics), &mut msg);
+        let num_partitions = topics.get(topic).unwrap().num_all_partitions as i32;
+        assert!(msg.partition >= 0 && msg.partition < num_partitions);
+        msg.partition
+    }
+
+    /// Validate consistent partitioning on a message's key
+    #[test]
+    fn test_key_partitioning() {
+        let h = topics_map(vec![("foo",
+                                 Partitions {
+                                    available_ids: vec![0, 1, 4],
+                                    num_all_partitions: 5,
+                                }),
+                                ("bar",
+                                 Partitions {
+                                    available_ids: vec![0, 1],
+                                    num_all_partitions: 2,
+                                })]);
+
+        let mut p: DefaultPartitioner<BuildHasherDefault<SipHasher>> = Default::default();
+
+        // ~ validate that partitioning by the same key leads to the same
+        // partition
+        let h1 = assert_partitioning(&h, &mut p, "foo", "foo-key");
+        let h2 = assert_partitioning(&h, &mut p, "foo", "foo-key");
+        assert_eq!(h1, h2);
+
+        // ~ validate that partitioning by different keys leads to
+        // different partitions (the keys are chosen such that they lead
+        // to different partitions)
+        let h3 = assert_partitioning(&h, &mut p, "foo", "foo-key");
+        let h4 = assert_partitioning(&h, &mut p, "foo", "bar-key");
+        assert!(h3 != h4);
+    }
+
+    #[derive(Default)]
+    struct MyCustomHasher(u64);
+
+    impl Hasher for MyCustomHasher {
+        fn finish(&self) -> u64 {
+            self.0
+        }
+        fn write(&mut self, bytes: &[u8]) {
+            self.0 = bytes[0] as u64;
+        }
+    }
+
+    /// Validate it is possible to register a custom hasher with the
+    /// default partitioner
+    #[test]
+    fn default_partitioner_with_custom_hasher_default() {
+        // this must compile
+        let mut p = DefaultPartitioner::with_default_hasher::<MyCustomHasher>();
+
+        let h = topics_map(vec![("confirms",
+                                 Partitions {
+                                    available_ids: vec![0, 1],
+                                    num_all_partitions: 2,
+                                }),
+                                ("contents",
+                                 Partitions {
+                                    available_ids: vec![0, 1, 9],
+                                    num_all_partitions: 10,
+                                })]);
+
+        // verify also the partitioner derives the correct partition
+        // ... this is hash modulo num_all_partitions. here it is a
+        // topic with a total of 2 partitions.
+        let p1 = assert_partitioning(&h, &mut p, "confirms", "A" /* ascii: 65 */);
+        assert_eq!(1, p1);
+
+        // here it is a topic with a total of 10 partitions
+        let p2 = assert_partitioning(&h, &mut p, "contents", "B" /* ascii: 66 */);
+        assert_eq!(6, p2);
     }
 }

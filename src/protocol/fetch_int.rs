@@ -1,6 +1,7 @@
-//! A representation of the requests for fetching messages. This code
+//! A representation of the requests for fetching messages.  This code
 //! is kept apart from the corresponding "responses" module, since the
-//! latter is publicly exported by this crate.
+//! latter is publicly exported by this crate but we don't want to
+//! expose the "request" structures.
 
 use error::Result;
 use std::io::Write;
