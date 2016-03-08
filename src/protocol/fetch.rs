@@ -1,18 +1,134 @@
 //! A representation of fetched messages from Kafka.
 
-// Note: you'll find the request related code in `fetch_req.rs`.
-
 use std::borrow::Cow;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::mem;
 use std::cell::Cell;
 
-use error::{Error, Result};
+use codecs::ToByte;
+use error::{Error, KafkaCode, Result};
 use compression::{gzip, Compression};
 use compression::snappy::SnappyReader;
 
-use super::FromResponse;
+use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
 use super::zreader::ZReader;
+use super::tocrc;
+
+#[derive(Debug)]
+pub struct FetchRequest<'a, 'b> {
+    pub header: HeaderRequest<'a>,
+    pub replica: i32,
+    pub max_wait_time: i32,
+    pub min_bytes: i32,
+    pub topic_partitions: Vec<TopicPartitionFetchRequest<'b>>
+}
+
+#[derive(Debug)]
+pub struct TopicPartitionFetchRequest<'a> {
+    pub topic: &'a str,
+    pub partitions: Vec<PartitionFetchRequest>
+}
+
+#[derive(Debug)]
+pub struct PartitionFetchRequest {
+    pub offset: i64,
+    pub partition: i32,
+    pub max_bytes: i32
+}
+
+impl<'a, 'b> FetchRequest<'a, 'b> {
+
+    pub fn new(correlation_id: i32, client_id: &'a str, max_wait_time: i32, min_bytes: i32)
+               -> FetchRequest<'a, 'b> {
+        FetchRequest {
+            header: HeaderRequest::new(
+                API_KEY_FETCH, API_VERSION, correlation_id, client_id),
+            replica: -1,
+            max_wait_time: max_wait_time,
+            min_bytes: min_bytes,
+            topic_partitions: vec!()
+        }
+    }
+
+    pub fn add(&mut self, topic: &'b str, partition: i32, offset: i64, max_bytes: i32) {
+        for tp in &mut self.topic_partitions {
+            if tp.topic == topic {
+                tp.add(partition, offset, max_bytes);
+                return;
+            }
+        }
+        let mut tp = TopicPartitionFetchRequest::new(topic);
+        tp.add(partition, offset, max_bytes);
+        self.topic_partitions.push(tp);
+    }
+}
+
+impl<'a> TopicPartitionFetchRequest<'a> {
+    pub fn new(topic: &'a str) -> TopicPartitionFetchRequest<'a> {
+        TopicPartitionFetchRequest {
+            topic: topic,
+            partitions: vec!()
+        }
+    }
+
+    pub fn add(&mut self, partition: i32, offset: i64, max_bytes: i32) {
+        self.partitions.push(PartitionFetchRequest:: new(partition, offset, max_bytes))
+    }
+}
+
+impl PartitionFetchRequest {
+    pub fn new(partition: i32, offset: i64, max_bytes: i32) -> PartitionFetchRequest {
+        PartitionFetchRequest {
+            partition: partition,
+            offset: offset,
+            max_bytes: max_bytes,
+        }
+    }
+}
+
+impl<'a, 'b> ToByte for FetchRequest<'a, 'b> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        try_multi!(
+            self.header.encode(buffer),
+            self.replica.encode(buffer),
+            self.max_wait_time.encode(buffer),
+            self.min_bytes.encode(buffer),
+            self.topic_partitions.encode(buffer)
+        )
+    }
+}
+
+impl<'a> ToByte for TopicPartitionFetchRequest<'a> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        try_multi!(
+            self.topic.encode(buffer),
+            self.partitions.encode(buffer)
+        )
+    }
+}
+
+impl ToByte for PartitionFetchRequest {
+    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.partition.encode(buffer),
+            self.offset.encode(buffer),
+            self.max_bytes.encode(buffer)
+        )
+    }
+}
+
+// ~ response related -------------------------------------------------
+
+pub struct ResponseParser {
+    pub validate_crc: bool,
+}
+
+impl super::ResponseParser for ResponseParser {
+    type T = Response;
+    fn parse(&self, response: Vec<u8>) -> Result<Self::T> {
+        Response::from_vec(response, self.validate_crc)
+    }
+}
 
 // ~ helper macro to aid parsing arrays of values (as defined by the
 // Kafka protocol.)
@@ -45,20 +161,14 @@ pub struct Response {
     topics: Vec<Topic<'static>>,
 }
 
-impl FromResponse for Response {
-    fn from_response(response: Vec<u8>) -> Result<Self> {
-        Response::from_vec(response)
-    }
-}
-
 impl Response {
     /// Parses a Response from binary data as defined by the
     /// Kafka Protocol.
-    fn from_vec(response: Vec<u8>) -> Result<Response> {
+    fn from_vec(response: Vec<u8>, validate_crc: bool) -> Result<Response> {
         let slice = unsafe { mem::transmute(&response[..]) };
         let mut r = ZReader::new(slice);
         let correlation_id = try!(r.read_i32());
-        let topics = array_of!(r, Topic::read(&mut r));
+        let topics = array_of!(r, Topic::read(&mut r, validate_crc));
         Ok(Response {
             raw_data: response,
             correlation_id: correlation_id,
@@ -91,9 +201,9 @@ pub struct Topic<'a> {
 }
 
 impl<'a> Topic<'a> {
-    fn read(r: &mut ZReader<'a>) -> Result<Topic<'a>> {
+    fn read(r: &mut ZReader<'a>, validate_crc: bool) -> Result<Topic<'a>> {
         let name = try!(r.read_str());
-        let partitions = array_of!(r, Partition::read(r));
+        let partitions = array_of!(r, Partition::read(r, validate_crc));
         Ok(Topic {
             topic: name,
             partitions: partitions,
@@ -130,13 +240,13 @@ pub struct Partition<'a> {
 }
 
 impl<'a> Partition<'a> {
-    fn read(r: &mut ZReader<'a>) -> Result<Partition<'a>> {
+    fn read(r: &mut ZReader<'a>, validate_crc: bool) -> Result<Partition<'a>> {
         let partition = try!(r.read_i32());
         let error = Error::from_protocol_error(try!(r.read_i16()));
         // we need to parse the rest even if there was an error to
         // consume the input stream (zreader)
         let highwatermark = try!(r.read_i64());
-        let msgset = try!(MessageSet::from_slice(try!(r.read_bytes())));
+        let msgset = try!(MessageSet::from_slice(try!(r.read_bytes()), validate_crc));
         Ok(Partition {
             partition: partition,
             data: match error {
@@ -241,7 +351,7 @@ pub struct Message<'a> {
 }
 
 impl<'a> MessageSet<'a> {
-    fn from_vec(data: Vec<u8>) -> Result<MessageSet<'a>> {
+    fn from_vec(data: Vec<u8>, validate_crc: bool) -> Result<MessageSet<'a>> {
         // since we're going to keep the original
         // uncompressed vector around without
         // further modifying it and providing
@@ -249,18 +359,18 @@ impl<'a> MessageSet<'a> {
         // this is safe
         let ms = try!(MessageSet::from_slice(unsafe {
             mem::transmute(&data[..])
-        }));
+        }, validate_crc));
         return Ok(MessageSet {
             raw_data: Cow::Owned(data),
             messages: ms.messages,
         });
     }
 
-    fn from_slice<'b>(raw_data: &'b [u8]) -> Result<MessageSet<'b>> {
+    fn from_slice<'b>(raw_data: &'b [u8], validate_crc: bool) -> Result<MessageSet<'b>> {
         let mut r = ZReader::new(raw_data);
         let mut msgs = Vec::new();
         while !r.is_empty() {
-            match MessageSet::next_message(&mut r) {
+            match MessageSet::next_message(&mut r, validate_crc) {
                 // this is the last messages which might be
                 // incomplete; a valid case to be handled by
                 // consumers
@@ -284,12 +394,12 @@ impl<'a> MessageSet<'a> {
                         // XXX handle recursive compression in future
                         c if c == Compression::GZIP as i8 => {
                             let v = try!(gzip::uncompress(pmsg.value));
-                            return Ok(try!(MessageSet::from_vec(v)));
+                            return Ok(try!(MessageSet::from_vec(v, validate_crc)));
                         }
                         c if c == Compression::SNAPPY as i8 => {
                             let mut v = Vec::new();
                             try!(try!(SnappyReader::new(pmsg.value)).read_to_end(&mut v));
-                            return Ok(try!(MessageSet::from_vec(v)));
+                            return Ok(try!(MessageSet::from_vec(v, validate_crc)));
                         }
                         _ => panic!("Unknown compression type!"),
                     }
@@ -302,17 +412,15 @@ impl<'a> MessageSet<'a> {
         })
     }
 
-    fn next_message<'b>(r: &mut ZReader<'b>) -> Result<(i64, ProtocolMessage<'b>)> {
+    fn next_message<'b>(r: &mut ZReader<'b>, validate_crc: bool) -> Result<(i64, ProtocolMessage<'b>)> {
         let offset = try!(r.read_i64());
         let msg_data = try!(r.read_bytes());
-        Ok((offset, try!(ProtocolMessage::from_slice(msg_data))))
+        Ok((offset, try!(ProtocolMessage::from_slice(msg_data, validate_crc))))
     }
 }
 
 /// Represents a messages exactly as defined in the protocol.
 struct ProtocolMessage<'a> {
-    crc: i32,
-    magic: i8,
     attr: i8,
     key: &'a [u8],
     value: &'a [u8],
@@ -321,13 +429,20 @@ struct ProtocolMessage<'a> {
 impl<'a> ProtocolMessage<'a> {
     /// Parses a raw message from the given byte slice.  Does _not_
     /// handle any compression.
-    fn from_slice<'b>(raw_data: &'b [u8]) -> Result<ProtocolMessage<'b>> {
+    fn from_slice<'b>(raw_data: &'b [u8], validate_crc: bool) -> Result<ProtocolMessage<'b>> {
         let mut r = ZReader::new(raw_data);
 
+        // ~ optionally validate the crc checksum
         let msg_crc = try!(r.read_i32());
-        // XXX later validate the checksum
+        if validate_crc && tocrc(r.rest()) as i32 != msg_crc {
+            return Err(Error::Kafka(KafkaCode::CorruptMessage));
+        }
+        // ~ we support parsing only messages with the "zero"
+        // magic_byte; this covers kafka 0.8 and 0.9.
         let msg_magic = try!(r.read_i8());
-        // XXX validate that `msg_magic == 0`
+        if msg_magic != 0 {
+            return Err(Error::UnsupportedProtocol);
+        }
         let msg_attr = try!(r.read_i8());
         let msg_key = try!(r.read_bytes());
         let msg_val = try!(r.read_bytes());
@@ -335,8 +450,6 @@ impl<'a> ProtocolMessage<'a> {
         debug_assert!(r.is_empty());
 
         Ok(ProtocolMessage {
-            crc: msg_crc,
-            magic: msg_magic,
             attr: msg_attr,
             key: msg_key,
             value: msg_val,
@@ -351,6 +464,7 @@ mod tests {
     use std::str;
 
     use super::{Response, Message};
+    use error::{Error, KafkaCode};
 
     static FETCH1_TXT: &'static str =
         include_str!("../../test-data/fetch1.txt");
@@ -362,6 +476,13 @@ mod tests {
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
+
+    static FETCH2_TXT: &'static str =
+        include_str!("../../test-data/fetch2.txt");
+    static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900: &'static [u8] =
+        include_bytes!("../../test-data/fetch2.mytopic.nocompression.kafka.0900");
+    static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900: &'static [u8] =
+        include_bytes!("../../test-data/fetch2.mytopic.nocompression.invalid_crc.kafka.0900");
 
     fn into_messages<'a>(r: &'a Response) -> Vec<&'a Message<'a>> {
         let mut all_msgs = Vec::new();
@@ -380,8 +501,8 @@ mod tests {
         all_msgs
     }
 
-    fn test_decode_new_fetch_response(msg_per_line: &str, response: Vec<u8>) {
-        let resp = Response::from_vec(response);
+    fn test_decode_new_fetch_response(msg_per_line: &str, response: Vec<u8>, validate_crc: bool) {
+        let resp = Response::from_vec(response, validate_crc);
         let resp = resp.unwrap();
 
         let original: Vec<_> = msg_per_line.lines().collect();
@@ -406,7 +527,8 @@ mod tests {
 
     #[test]
     fn test_forget_before_offset() {
-        let r = Response::from_vec(FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned()).unwrap();
+        let r = Response::from_vec(FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), false)
+            .unwrap();
         let t = &r.topics()[0];
         let p = &t.partitions()[0];
         let data = p.data().as_ref().unwrap();
@@ -449,22 +571,40 @@ mod tests {
 
     #[test]
     fn test_from_slice_nocompression_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned());
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), false);
     }
 
     #[test]
     fn test_from_slice_snappy_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned());
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), false);
     }
 
     #[test]
     fn test_from_slice_snappy_k0822() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned());
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), false);
     }
 
     #[test]
     fn test_from_slice_gzip_k0821() {
-        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned());
+        test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), false);
+    }
+
+    #[test]
+    fn test_crc_validation() {
+        test_decode_new_fetch_response(FETCH2_TXT, FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900.to_owned(), true);
+
+        // now test the same message but with an invalid crc checksum
+        // (modified by hand)
+        // 1) without checking the crc ... since only the crc field is
+        // artificially falsified ... we expect the rest of the
+        // message to be parsed correctly
+        test_decode_new_fetch_response(FETCH2_TXT, FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(), false);
+        // 2) with checking the crc ... parsing should fail immediately
+        match Response::from_vec(FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(), true) {
+            Ok(_) => panic!("Expected error, but got successful response!"),
+            Err(Error::Kafka(KafkaCode::CorruptMessage)) => {}
+            Err(e) => panic!("Expected KafkaCode::CorruptMessage error, but got: {:?}", e),
+        }
     }
 
     #[cfg(feature = "nightly")]
@@ -474,11 +614,11 @@ mod tests {
         use super::super::Response;
         use super::into_messages;
 
-        fn bench_decode_new_fetch_response(b: &mut Bencher, data: Vec<u8>) {
+        fn bench_decode_new_fetch_response(b: &mut Bencher, data: Vec<u8>, validate_crc: bool) {
             b.bytes = data.len() as u64;
             b.iter(|| {
                 let data = data.clone();
-                let r = black_box(Response::from_vec(data).unwrap());
+                let r = black_box(Response::from_vec(data, validate_crc).unwrap());
                 let v = black_box(into_messages(&r));
                 v.len()
             });
@@ -486,22 +626,42 @@ mod tests {
 
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned())
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), false)
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned())
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), false)
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned())
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), false)
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned())
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), false)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_nocompression_k0821_validate_crc(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), true)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_snappy_k0821_validate_crc(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), true)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_snappy_k0822_validate_crc(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), true)
+        }
+
+        #[bench]
+        fn bench_decode_new_fetch_response_gzip_k0821_validate_crc(b: &mut Bencher) {
+            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), true)
         }
     }
 }

@@ -33,6 +33,12 @@ impl<'a> ZReader<'a> {
         }
     }
 
+    /// ~ Retrieves the rest of the underlying slice without advancing
+    /// this reader.
+    pub fn rest(&self) -> &[u8] {
+        self.data
+    }
+
     /// ~ Determines whether there are still some bytes available for
     /// consumption.
     pub fn is_empty(&self) -> bool {

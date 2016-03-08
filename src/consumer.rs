@@ -610,6 +610,7 @@ pub struct Builder {
     fetch_min_bytes: i32,
     fetch_max_bytes_per_partition: i32,
     retry_max_bytes_limit: i32,
+    fetch_crc_validation: bool,
 }
 
 impl Builder {
@@ -620,6 +621,7 @@ impl Builder {
             fetch_max_wait_time: client::DEFAULT_FETCH_MAX_WAIT_TIME,
             fetch_min_bytes: client::DEFAULT_FETCH_MIN_BYTES,
             fetch_max_bytes_per_partition: client::DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
+            fetch_crc_validation: client::DEFAULT_FETCH_CRC_VALIDATION,
             retry_max_bytes_limit: DEFAULT_RETRY_MAX_BYTES_LIMIT,
             group: "".to_owned(),
             topic: "".to_owned(),
@@ -630,6 +632,7 @@ impl Builder {
             b.fetch_max_wait_time = c.fetch_max_wait_time();
             b.fetch_min_bytes = c.fetch_min_bytes();
             b.fetch_max_bytes_per_partition = c.fetch_max_bytes_per_partition();
+            b.fetch_crc_validation = c.fetch_crc_validation();
         }
         b
     }
@@ -691,6 +694,12 @@ impl Builder {
     /// See `KafkaClient::set_fetch_max_bytes_per_partition`
     pub fn with_fetch_max_bytes_per_partition(mut self, max_bytes_per_partition: i32) -> Builder {
         self.fetch_max_bytes_per_partition = max_bytes_per_partition;
+        self
+    }
+
+    /// See `KafkaClient::set_fetch_crc_validation`
+    pub fn with_fetch_crc_validation(mut self, validate_crc: bool) -> Builder {
+        self.fetch_crc_validation = validate_crc;
         self
     }
 

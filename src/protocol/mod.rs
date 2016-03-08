@@ -12,26 +12,22 @@ macro_rules! try_multi {
     })
 }
 
-// ~ exposed merely for unit testing purposes with this crate.
-// however, there are _not_ intended to be a public artifact of this
-// crate and, therefore, are marked as "int"ernal.
-pub mod produce_int;
-pub mod offset_int;
-pub mod metadata_int;
-pub mod consumer_int;
-pub mod fetch_int;
+pub mod produce;
+pub mod offset;
+pub mod metadata;
+pub mod consumer;
 
 mod zreader;
 pub mod fetch;
 
 // ~ convenient re-exports for request/response types defined in the
 // submodules
-pub use self::fetch_int::FetchRequest;
-pub use self::produce_int::{ProduceRequest, ProduceResponse};
-pub use self::offset_int::{OffsetRequest, OffsetResponse};
-pub use self::metadata_int::{MetadataRequest, MetadataResponse};
-pub use self::consumer_int::{OffsetFetchRequest, OffsetFetchResponse,
-                             OffsetCommitRequest, OffsetCommitResponse};
+pub use self::fetch::FetchRequest;
+pub use self::produce::{ProduceRequest, ProduceResponse};
+pub use self::offset::{OffsetRequest, OffsetResponse};
+pub use self::metadata::{MetadataRequest, MetadataResponse};
+pub use self::consumer::{OffsetFetchRequest, OffsetFetchResponse,
+                         OffsetCommitRequest, OffsetCommitResponse};
 
 // --------------------------------------------------------------------
 
@@ -51,8 +47,9 @@ const API_VERSION: i16 = 0;
 
 /// Provides a way to parse the full raw response data into a
 /// particular response structure.
-pub trait FromResponse : Sized {
-    fn from_response(response: Vec<u8>) -> Result<Self>;
+pub trait ResponseParser {
+    type T;
+    fn parse(&self, response: Vec<u8>) -> Result<Self::T>;
 }
 
 // --------------------------------------------------------------------
@@ -62,7 +59,7 @@ impl Error {
     fn from_protocol_error(n: i16) -> Option<Error> {
         match n {
             1 => Some(Error::Kafka(KafkaCode::OffsetOutOfRange)),
-            2 => Some(Error::Kafka(KafkaCode::InvalidMessage)),
+            2 => Some(Error::Kafka(KafkaCode::CorruptMessage)),
             3 => Some(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
             4 => Some(Error::Kafka(KafkaCode::InvalidMessageSize)),
             5 => Some(Error::Kafka(KafkaCode::LeaderNotAvailable)),

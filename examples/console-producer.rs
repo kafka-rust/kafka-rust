@@ -4,9 +4,10 @@ extern crate getopts;
 use std::{env, fmt, process};
 use std::fs::File;
 use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
+use std::ops::{Deref, DerefMut};
 
 use kafka::client::{KafkaClient, Compression};
-use kafka::producer::{Producer, Record};
+use kafka::producer::{AsBytes, Producer, Record};
 
 // how many brokers do we require to acknowledge the send messages
 const REQUIRED_ACKS: i16 = 1;
@@ -67,9 +68,30 @@ fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<
     }
 }
 
+struct Trimmed(String);
+
+impl AsBytes for Trimmed {
+    fn as_bytes(&self) -> &[u8] {
+        self.0.trim().as_bytes()
+    }
+}
+
+impl Deref for Trimmed {
+    type Target = String;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Trimmed {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config) -> Result<(), Error> {
     let mut stderr = stderr();
-    let mut rec = Record::from_value(&cfg.topic, String::new());
+    let mut rec = Record::from_value(&cfg.topic, Trimmed(String::new()));
     loop {
         rec.value.clear();
         if try!(src.read_line(&mut rec.value)) == 0 {
@@ -96,9 +118,9 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
     // ~ a buffer of prepared records to be send in a batch to Kafka
     // ~ in the loop following, we'll only modify the 'value' of the
     // cached records
-    let mut rec_stash: Vec<Record<(), String>> =
+    let mut rec_stash: Vec<Record<(), Trimmed>> =
         (0 .. cfg.batch_size)
-        .map(|_| Record::from_value(&cfg.topic, String::new()))
+        .map(|_| Record::from_value(&cfg.topic, Trimmed(String::new())))
         .collect();
     // ~ points to the next free slot in `rec_stash`.  if it reaches
     // `rec_stash.len()` we'll send `rec_stash` to kafka
@@ -127,7 +149,7 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
     Ok(())
 }
 
-fn send_batch(producer: &mut Producer, batch: &[Record<(), String>]) -> Result<(), Error> {
+fn send_batch(producer: &mut Producer, batch: &[Record<(), Trimmed>]) -> Result<(), Error> {
     let rs = try!(producer.send_all(batch));
     for r in rs {
         if let Err(e) = r.offset {

@@ -12,17 +12,24 @@ use std::mem;
 
 // pub re-export
 pub use compression::Compression;
-pub use protocol::fetch;
 pub use utils::PartitionOffset;
 pub use utils::TopicPartitionOffset;
 
 use codecs::{ToByte, FromByte};
 use connection::KafkaConnection;
 use error::{Result, Error, KafkaCode};
-use protocol::{self, FromResponse};
+use protocol::{self, ResponseParser};
 
 pub mod metadata;
 mod state;
+
+// ~ re-export (only) certain types from the protocol::fetch module as
+// 'client::fetch'.
+pub mod fetch {
+    //! A representation of fetched messages from Kafka.
+
+    pub use protocol::fetch::{Data, Message, Partition, Response, Topic};
+}
 
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_SO_TIMEOUT_SECS: i32 = 120; // socket read, write timeout seconds
@@ -38,6 +45,9 @@ pub const DEFAULT_FETCH_MIN_BYTES: i32 = 4096;
 
 /// The default value for `KafkaClient::set_fetch_max_bytes(..)`
 pub const DEFAULT_FETCH_MAX_BYTES_PER_PARTITION: i32 = 32 * 1024;
+
+/// The default value for `KafkaClient::set_fetch_crc_validation(..)`
+pub const DEFAULT_FETCH_CRC_VALIDATION: bool = true;
 
 
 /// Client struct keeping track of brokers and topic metadata.
@@ -68,6 +78,7 @@ struct ClientConfig {
     fetch_max_wait_time: i32,
     fetch_min_bytes: i32,
     fetch_max_bytes_per_partition: i32,
+    fetch_crc_validation: bool,
 }
 
 #[derive(Debug)]
@@ -276,7 +287,6 @@ impl KafkaClient {
     /// ```
     ///
     /// See also `KafkaClient::load_metadatata_all` and `KafkaClient::load_metadata`
-    // XXX make this a top-level function of this module
     pub fn new(hosts: Vec<String>) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
@@ -286,6 +296,7 @@ impl KafkaClient {
                 fetch_max_wait_time: DEFAULT_FETCH_MAX_WAIT_TIME,
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
+                fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
             },
             conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
             state: state::ClientState::new(),
@@ -404,6 +415,24 @@ impl KafkaClient {
     #[inline]
     pub fn fetch_max_bytes_per_partition(&self) -> i32 {
         self.config.fetch_max_bytes_per_partition
+    }
+
+    /// Specifies whether the to perform CRC validation on fetched
+    /// messages.
+    ///
+    /// This ensures detection of on-the-wire or on-disk corruption to
+    /// fetched messages.  This check adds some overhead, so it may be
+    /// disabled in cases seeking extreme performance.
+    #[inline]
+    pub fn set_fetch_crc_validation(&mut self, validate_crc: bool) {
+        self.config.fetch_crc_validation = validate_crc;
+    }
+
+    /// Retrieves the current `KafkaClient::set_fetch_crc_validation`
+    /// setting.
+    #[inline]
+    pub fn fetch_crc_validation(&self) -> bool {
+        self.config.fetch_crc_validation
     }
 
     /// Provides a view onto the currently loaded metadata of known topics.
@@ -673,7 +702,7 @@ impl KafkaClient {
             }
         }
 
-        __fetch_messages(&mut self.conn_pool, reqs)
+        __fetch_messages(&mut self.conn_pool, config, reqs)
     }
 
     /// Fetch messages from a single kafka partition.
@@ -907,14 +936,19 @@ fn __fetch_group_offsets(conn_pool: &mut ConnectionPool,
 }
 
 /// ~ carries out the given fetch requests and returns the response
-fn __fetch_messages(conn_pool: &mut ConnectionPool, reqs: HashMap<&str, protocol::FetchRequest>)
+fn __fetch_messages(conn_pool: &mut ConnectionPool,
+                    config: &ClientConfig,
+                    reqs: HashMap<&str, protocol::FetchRequest>)
                     -> Result<Vec<fetch::Response>>
 {
+    let p = protocol::fetch::ResponseParser {
+        validate_crc: config.fetch_crc_validation,
+    };
+
     // Call each broker with the request formed earlier
     let mut res = Vec::with_capacity(reqs.len());
     for (host, req) in reqs {
-        let resp = try!(__z_send_receive::<protocol::FetchRequest, fetch::Response>(conn_pool, host, req));
-        res.push(resp);
+        res.push(try!(__z_send_receive::<protocol::FetchRequest, _>(conn_pool, host, req, &p)));
     }
     Ok(res)
 }
@@ -984,7 +1018,6 @@ fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
     //     use std::io::Write;
     //     let mut f = OpenOptions::new()
     //         .write(true)
-    //         .append(true)
     //         .truncate(true)
     //         .create(true)
     //         .open("/tmp/dump.dat")
@@ -995,17 +1028,34 @@ fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
     T::decode_new(&mut Cursor::new(resp))
 }
 
-fn __z_send_receive<T: ToByte, V: FromResponse>(conn_pool: &mut ConnectionPool, host: &str, req: T)
-                                                -> Result<V> {
+fn __z_send_receive<R, P>(conn_pool: &mut ConnectionPool, host: &str, req: R, parser: &P)
+                          -> Result<P::T>
+    where R: ToByte, P: ResponseParser
+{
     let mut conn = try!(conn_pool.get_conn(host));
     try!(__send_request(&mut conn, req));
-    __z_get_response::<V>(&mut conn)
+    __z_get_response(&mut conn, parser)
 }
 
-fn __z_get_response<T: FromResponse>(conn: &mut KafkaConnection) -> Result<T> {
+fn __z_get_response<P>(conn: &mut KafkaConnection, parser: &P) -> Result<P::T>
+    where P: ResponseParser
+{
     let v = try!(conn.read_exact(4));
     let size = try!(i32::decode_new(&mut Cursor::new(v)));
 
     let resp = try!(conn.read_exact(size as u64));
-    T::from_response(resp)
+
+    // {
+    //     use std::fs::OpenOptions;
+    //     use std::io::Write;
+    //     let mut f = OpenOptions::new()
+    //         .write(true)
+    //         .truncate(true)
+    //         .create(true)
+    //         .open("/tmp/dump.dat")
+    //         .unwrap();
+    //     f.write_all(&resp[..]).unwrap();
+    // }
+
+    parser.parse(resp)
 }

@@ -328,7 +328,7 @@ impl ClientState {
 mod tests {
     use super::ClientState;
     use protocol;
-    use protocol::metadata_int as md;
+    use protocol::metadata as md;
 
     fn new_partition(id: i32, leader: i32) -> md::PartitionMetadata {
         md::PartitionMetadata {
