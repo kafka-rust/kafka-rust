@@ -464,6 +464,7 @@ mod tests {
     use std::str;
 
     use super::{Response, Message};
+    use error::{Error, KafkaCode};
 
     static FETCH1_TXT: &'static str =
         include_str!("../../test-data/fetch1.txt");
@@ -475,6 +476,13 @@ mod tests {
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
+
+    static FETCH2_TXT: &'static str =
+        include_str!("../../test-data/fetch2.txt");
+    static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900: &'static [u8] =
+        include_bytes!("../../test-data/fetch2.mytopic.nocompression.kafka.0900");
+    static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900: &'static [u8] =
+        include_bytes!("../../test-data/fetch2.mytopic.nocompression.invalid_crc.kafka.0900");
 
     fn into_messages<'a>(r: &'a Response) -> Vec<&'a Message<'a>> {
         let mut all_msgs = Vec::new();
@@ -581,7 +589,22 @@ mod tests {
         test_decode_new_fetch_response(FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), false);
     }
 
-    // XXX test that validating_crc does and doesn't fail on request
+    #[test]
+    fn test_crc_validation() {
+        test_decode_new_fetch_response(FETCH2_TXT, FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900.to_owned(), true);
+
+        // now test the same message but with an invalid crc checksum
+        // (modified by hand) 1) without checking the crc ... since
+        // only the crc field is artificially falsified ... we expect
+        // the rest of the message to be parsed correctly
+        test_decode_new_fetch_response(FETCH2_TXT, FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(), false);
+        // 2) with checking the crc ... parsing should fail immediately
+        match Response::from_vec(FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(), true) {
+            Ok(_) => panic!("Expected error, but got successful response!"),
+            Err(Error::Kafka(KafkaCode::CorruptMessage)) => {}
+            Err(e) => panic!("Expected KafkaCode::CorruptMessage error, but got: {:?}", e),
+        }
+    }
 
     #[cfg(feature = "nightly")]
     mod benches {
