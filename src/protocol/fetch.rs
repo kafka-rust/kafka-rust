@@ -594,9 +594,10 @@ mod tests {
         test_decode_new_fetch_response(FETCH2_TXT, FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900.to_owned(), true);
 
         // now test the same message but with an invalid crc checksum
-        // (modified by hand) 1) without checking the crc ... since
-        // only the crc field is artificially falsified ... we expect
-        // the rest of the message to be parsed correctly
+        // (modified by hand)
+        // 1) without checking the crc ... since only the crc field is
+        // artificially falsified ... we expect the rest of the
+        // message to be parsed correctly
         test_decode_new_fetch_response(FETCH2_TXT, FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(), false);
         // 2) with checking the crc ... parsing should fail immediately
         match Response::from_vec(FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(), true) {
