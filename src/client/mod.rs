@@ -12,7 +12,6 @@ use std::mem;
 
 // pub re-export
 pub use compression::Compression;
-pub use protocol::fetch;
 pub use utils::PartitionOffset;
 pub use utils::TopicPartitionOffset;
 
@@ -23,6 +22,14 @@ use protocol::{self, FromResponse};
 
 pub mod metadata;
 mod state;
+
+// ~ re-export (only) certain types from the protocol::fetch module as
+// 'client::fetch'.
+pub mod fetch {
+    //! A representation of fetched messages from Kafka.
+
+    pub use protocol::fetch::{Data, Message, Partition, Response, Topic};
+}
 
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_SO_TIMEOUT_SECS: i32 = 120; // socket read, write timeout seconds

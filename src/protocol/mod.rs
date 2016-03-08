@@ -12,26 +12,22 @@ macro_rules! try_multi {
     })
 }
 
-// ~ exposed merely for unit testing purposes with this crate.
-// however, there are _not_ intended to be a public artifact of this
-// crate and, therefore, are marked as "int"ernal.
-pub mod produce_int;
-pub mod offset_int;
-pub mod metadata_int;
-pub mod consumer_int;
-pub mod fetch_int;
+pub mod produce;
+pub mod offset;
+pub mod metadata;
+pub mod consumer;
 
 mod zreader;
 pub mod fetch;
 
 // ~ convenient re-exports for request/response types defined in the
 // submodules
-pub use self::fetch_int::FetchRequest;
-pub use self::produce_int::{ProduceRequest, ProduceResponse};
-pub use self::offset_int::{OffsetRequest, OffsetResponse};
-pub use self::metadata_int::{MetadataRequest, MetadataResponse};
-pub use self::consumer_int::{OffsetFetchRequest, OffsetFetchResponse,
-                             OffsetCommitRequest, OffsetCommitResponse};
+pub use self::fetch::FetchRequest;
+pub use self::produce::{ProduceRequest, ProduceResponse};
+pub use self::offset::{OffsetRequest, OffsetResponse};
+pub use self::metadata::{MetadataRequest, MetadataResponse};
+pub use self::consumer::{OffsetFetchRequest, OffsetFetchResponse,
+                         OffsetCommitRequest, OffsetCommitResponse};
 
 // --------------------------------------------------------------------
 
