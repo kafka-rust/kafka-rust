@@ -10,7 +10,7 @@ use error::{Error, KafkaCode, Result};
 use compression::{gzip, Compression};
 use compression::snappy::SnappyReader;
 
-use super::{HeaderRequest, FromResponse, API_KEY_FETCH, API_VERSION};
+use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
 use super::zreader::ZReader;
 use super::tocrc;
 
@@ -119,6 +119,17 @@ impl ToByte for PartitionFetchRequest {
 
 // ~ response related -------------------------------------------------
 
+pub struct ResponseParser {
+    pub validate_crc: bool,
+}
+
+impl super::ResponseParser for ResponseParser {
+    type T = Response;
+    fn parse(&self, response: Vec<u8>) -> Result<Self::T> {
+        Response::from_vec(response, self.validate_crc)
+    }
+}
+
 // ~ helper macro to aid parsing arrays of values (as defined by the
 // Kafka protocol.)
 macro_rules! array_of {
@@ -148,13 +159,6 @@ pub struct Response {
     // exposed only through an accessor which binds the exposed
     // lifetime to the lifetime of the Response instance.
     topics: Vec<Topic<'static>>,
-}
-
-impl FromResponse for Response {
-    fn from_response(response: Vec<u8>) -> Result<Self> {
-        // XXX
-        Response::from_vec(response, false)
-    }
 }
 
 impl Response {

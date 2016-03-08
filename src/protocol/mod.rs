@@ -47,8 +47,9 @@ const API_VERSION: i16 = 0;
 
 /// Provides a way to parse the full raw response data into a
 /// particular response structure.
-pub trait FromResponse : Sized {
-    fn from_response(response: Vec<u8>) -> Result<Self>;
+pub trait ResponseParser {
+    type T;
+    fn parse(&self, response: Vec<u8>) -> Result<Self::T>;
 }
 
 // --------------------------------------------------------------------

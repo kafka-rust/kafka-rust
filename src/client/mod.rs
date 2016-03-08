@@ -18,7 +18,7 @@ pub use utils::TopicPartitionOffset;
 use codecs::{ToByte, FromByte};
 use connection::KafkaConnection;
 use error::{Result, Error, KafkaCode};
-use protocol::{self, FromResponse};
+use protocol::{self, ResponseParser};
 
 pub mod metadata;
 mod state;
@@ -917,11 +917,14 @@ fn __fetch_group_offsets(conn_pool: &mut ConnectionPool,
 fn __fetch_messages(conn_pool: &mut ConnectionPool, reqs: HashMap<&str, protocol::FetchRequest>)
                     -> Result<Vec<fetch::Response>>
 {
+    let p = protocol::fetch::ResponseParser {
+        validate_crc: false,
+    };
+
     // Call each broker with the request formed earlier
     let mut res = Vec::with_capacity(reqs.len());
     for (host, req) in reqs {
-        let resp = try!(__z_send_receive::<protocol::FetchRequest, fetch::Response>(conn_pool, host, req));
-        res.push(resp);
+        res.push(try!(__z_send_receive::<protocol::FetchRequest, _>(conn_pool, host, req, &p)));
     }
     Ok(res)
 }
@@ -1002,17 +1005,21 @@ fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
     T::decode_new(&mut Cursor::new(resp))
 }
 
-fn __z_send_receive<T: ToByte, V: FromResponse>(conn_pool: &mut ConnectionPool, host: &str, req: T)
-                                                -> Result<V> {
+fn __z_send_receive<R, P>(conn_pool: &mut ConnectionPool, host: &str, req: R, parser: &P)
+                          -> Result<P::T>
+    where R: ToByte, P: ResponseParser
+{
     let mut conn = try!(conn_pool.get_conn(host));
     try!(__send_request(&mut conn, req));
-    __z_get_response::<V>(&mut conn)
+    __z_get_response(&mut conn, parser)
 }
 
-fn __z_get_response<T: FromResponse>(conn: &mut KafkaConnection) -> Result<T> {
+fn __z_get_response<P>(conn: &mut KafkaConnection, parser: &P) -> Result<P::T>
+    where P: ResponseParser
+{
     let v = try!(conn.read_exact(4));
     let size = try!(i32::decode_new(&mut Cursor::new(v)));
 
     let resp = try!(conn.read_exact(size as u64));
-    T::from_response(resp)
+    parser.parse(resp)
 }
