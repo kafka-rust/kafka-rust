@@ -14,6 +14,7 @@ extern crate flate2;
 extern crate crc;
 extern crate snappy;
 extern crate ref_slice;
+extern crate fnv;
 
 #[macro_use]
 extern crate log;
