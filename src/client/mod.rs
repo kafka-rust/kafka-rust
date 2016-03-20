@@ -995,14 +995,17 @@ fn __send_noack<T: ToByte, V: FromByte>(conn_pool: &mut ConnectionPool, host: &s
 fn __send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
                            -> Result<usize>
 {
-    let mut buffer = vec!();
+    // ~ buffer to receive data to be sent
+    let mut buffer = Vec::with_capacity(4);
+    // ~ reserve bytes for the actual request size (we'll fill in that later)
+    buffer.extend_from_slice(&[0, 0, 0, 0]);
+    // ~ encode the request data
     try!(request.encode(&mut buffer));
-
-    let mut s = vec!();
-    try!((buffer.len() as i32).encode(&mut s));
-    for byte in &buffer { s.push(*byte); }
-
-    conn.send(&s)
+    // ~ put the size of the request data into the reseved area
+    let size = buffer.len() as i32 - 4;
+    try!(size.encode(&mut &mut buffer[..]));
+    // ~ send the prepared buffer
+    conn.send(&buffer)
 }
 
 fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
