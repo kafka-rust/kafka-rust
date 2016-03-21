@@ -212,12 +212,6 @@ impl Consumer {
                     let mut fetch_state = self.state.fetch_offsets
                             .get_mut(&partition)
                             .expect("non-requested partition");
-                    // ~ make sure we skip messages we have not asked
-                    // for in further processing
-                    // XXX move functionality directly into the code which parses the protocol data
-                    unsafe {
-                        data.forget_before_offset(fetch_state.offset);
-                    }
                     // ~ book keeping
                     if let Some(last_msg) = data.messages().last() {
                         fetch_state.offset = last_msg.offset + 1;
