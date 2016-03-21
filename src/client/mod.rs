@@ -634,8 +634,9 @@ impl KafkaClient {
     /// messages with a lower offset.)
     ///
     /// Note: before using this method consider using
-    /// `kafka::consumer::Consumer` instead which provides an to use
-    /// API for the use-case of fetching messesage from Kafka.
+    /// `kafka::consumer::Consumer` instead which provides an easier
+    /// to use API for the regular use-case of fetching messesage from
+    /// Kafka.
     ///
     /// # Example
     ///
