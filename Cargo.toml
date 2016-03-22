@@ -17,6 +17,7 @@ crc = "1.2"
 log = "0.3"
 snappy = "0.3"
 ref_slice = "1.0"
+fnv = "1.0"
 
 [dev-dependencies]
 getopts = "0.2"

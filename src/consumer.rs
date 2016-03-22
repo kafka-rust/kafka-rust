@@ -45,6 +45,9 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::collections::VecDeque;
 use std::slice;
+use std::hash::BuildHasherDefault;
+
+use fnv::FnvHasher;
 
 use client::{self, KafkaClient, FetchPartition, CommitOffset, FetchGroupOffset};
 use client::metadata::Topics;
@@ -57,6 +60,8 @@ pub use client::FetchOffset;
 
 /// The default value for `Builder::with_retry_max_bytes_limit`.
 pub const DEFAULT_RETRY_MAX_BYTES_LIMIT: i32 = 0;
+
+type PartitionHasher = BuildHasherDefault<FnvHasher>;
 
 /// The Kafka Consumer
 ///
@@ -80,7 +85,7 @@ struct FetchState {
 struct State {
     /// Contains the information relevant for the next fetch operation
     /// on the corresponding partitions
-    fetch_offsets: HashMap<i32, FetchState>,
+    fetch_offsets: HashMap<i32, FetchState, PartitionHasher>,
 
     /// Specifies partitions to be fetched on their own in the next
     /// poll request.
@@ -88,7 +93,7 @@ struct State {
 
     /// Contains the offsets of messages marked as "consumed" (to be
     /// committed)
-    consumed_offsets: HashMap<i32, i64>,
+    consumed_offsets: HashMap<i32, i64, PartitionHasher>,
 
     /// `true` iff the consumed_offsets contain data which needs to be
     /// committed. Set to `false` after commit.
@@ -207,12 +212,6 @@ impl Consumer {
                     let mut fetch_state = self.state.fetch_offsets
                             .get_mut(&partition)
                             .expect("non-requested partition");
-                    // ~ make sure we skip messages we have not asked
-                    // for in further processing
-                    // XXX move functionality directly into the code which parses the protocol data
-                    unsafe {
-                        data.forget_before_offset(fetch_state.offset);
-                    }
                     // ~ book keeping
                     if let Some(last_msg) = data.messages().last() {
                         fetch_state.offset = last_msg.offset + 1;
@@ -406,7 +405,7 @@ fn determine_partitions(config: &Config, metadata: Topics) -> Result<Vec<i32>> {
 // Fetches the so-far commited/consumed offsets for the configured
 // group/topic/partitions.
 fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: &[i32])
-                         -> Result<HashMap<i32, i64>>
+                         -> Result<HashMap<i32, i64, PartitionHasher>>
 {
     assert!(!partitions.is_empty());
 
@@ -415,7 +414,8 @@ fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: 
         &config.group,
         partitions.iter().map(|&p_id | FetchGroupOffset::new(topic, p_id))));
 
-    let mut offs = HashMap::with_capacity(partitions.len());
+    let mut offs = HashMap::with_capacity_and_hasher(partitions.len(),
+                                                     PartitionHasher::default());
     for tpo in tpos {
         match tpo.offset {
             Ok(o) if o != -1 => {
@@ -432,14 +432,14 @@ fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: 
 fn load_fetch_states(config: &Config,
                       client: &mut KafkaClient,
                       partitions: &[i32],
-                      consumed_offsets: &HashMap<i32, i64>)
-                      -> Result<HashMap<i32, FetchState>>
+                      consumed_offsets: &HashMap<i32, i64, PartitionHasher>)
+                      -> Result<HashMap<i32, FetchState, PartitionHasher>>
 {
     fn load_partition_offsets(client: &mut KafkaClient, topic: &str, offset: FetchOffset)
-                              -> Result<HashMap<i32, i64>>
+                              -> Result<HashMap<i32, i64, PartitionHasher>>
     {
         let offs = try!(client.fetch_topic_offsets(topic, offset));
-        let mut m = HashMap::with_capacity(offs.len());
+        let mut m = HashMap::with_capacity_and_hasher(offs.len(), PartitionHasher::default());
         for off in offs {
             m.insert(off.partition, off.offset.unwrap_or(-1));
         }
@@ -455,7 +455,7 @@ fn load_fetch_states(config: &Config,
     // ~ for each partition if we have a consumed_offset verify it is
     // in the earliest/latest range and use that consumed_offset+1 as
     // the fetch_message.
-    let mut fetch_offsets = HashMap::new();
+    let mut fetch_offsets = HashMap::default();
     for p in partitions {
         let (&l_off, &e_off) = (latest.get(p).unwrap_or(&-1), earliest.get(p).unwrap_or(&-1));
         let offset = match consumed_offsets.get(p) {

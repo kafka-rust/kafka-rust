@@ -619,21 +619,24 @@ impl KafkaClient {
     /// greater than zero.
     ///
     /// The result is exposed in a raw, complicated manner but allows
-    /// for very efficient consumption possibilities.  In particular,
-    /// each of the returned fetch responses directly corresponds to
-    /// fetch requests to the underlying kafka brokers.  Except of
-    /// transparently uncompressing compressed messages, the result is
-    /// not otherwise prepared.
+    /// for very efficient consumption possibilities. All of the data
+    /// available through the returned fetch responses is bound to
+    /// their lifetime as that data is merely a "view" into parts of
+    /// the response structs.  If you need to keep individual messages
+    /// for a longer time than the whole fetch responses, you'll need
+    /// to make a copy of the message data.
     ///
-    /// All of the data available through the returned fetch responses
-    /// is bound to their lifetime as that data is merely a "view"
-    /// into parts of the response structs.  If you need to keep
-    /// individual messages for a longer time than the whole fetch
-    /// responses, you'll need to make a copy of the message data.
+    /// * This method transparently uncompresses messages (while Kafka
+    /// might sent them in compressed format.)
+    ///
+    /// * This method ensures to skip messages with a lower offset
+    /// than requested (while Kafka might for efficiency reasons sent
+    /// messages with a lower offset.)
     ///
     /// Note: before using this method consider using
-    /// `kafka::consumer::Consumer` instead which provides a much
-    /// easier API for the use-case of fetching messesage from Kafka.
+    /// `kafka::consumer::Consumer` instead which provides an easier
+    /// to use API for the regular use-case of fetching messesage from
+    /// Kafka.
     ///
     /// # Example
     ///
@@ -711,9 +714,6 @@ impl KafkaClient {
     pub fn fetch_messages_for_partition<'a>(&mut self, req: &FetchPartition<'a>)
                                             -> Result<Vec<fetch::Response>>
     {
-        // XXX since we deal with exactly one partition we can generate
-        // the fetch request to the corresponding kafka broker more
-        // efficiently
         self.fetch_messages(&[req])
     }
 
@@ -941,14 +941,15 @@ fn __fetch_messages(conn_pool: &mut ConnectionPool,
                     reqs: HashMap<&str, protocol::FetchRequest>)
                     -> Result<Vec<fetch::Response>>
 {
-    let p = protocol::fetch::ResponseParser {
-        validate_crc: config.fetch_crc_validation,
-    };
-
     // Call each broker with the request formed earlier
     let mut res = Vec::with_capacity(reqs.len());
     for (host, req) in reqs {
-        res.push(try!(__z_send_receive::<protocol::FetchRequest, _>(conn_pool, host, req, &p)));
+        let p = protocol::fetch::ResponseParser {
+            validate_crc: config.fetch_crc_validation,
+            requests: Some(&req),
+        };
+
+        res.push(try!(__z_send_receive::<&protocol::FetchRequest, _>(conn_pool, host, &req, &p)));
     }
     Ok(res)
 }
