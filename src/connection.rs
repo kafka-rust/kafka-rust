@@ -1,12 +1,9 @@
 use std::fmt;
-use std::path::Path;
 use std::io::{self, Read,Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-use openssl::ssl::{Ssl, SslContext, SslStream, SslMethod, SSL_VERIFY_NONE};
-use openssl::x509::X509FileType;
-
+use openssl::ssl::{Ssl, SslStream};
 use error::{Error, Result};
 
 enum KafkaStream {
@@ -28,7 +25,7 @@ impl Read for KafkaStream {
         match self {
             &mut KafkaStream::Plain(ref mut s) => s.read(buf),
             &mut KafkaStream::Ssl(ref mut s) => s.read(buf),
-        } 
+        }
     }
 }
 
@@ -85,20 +82,12 @@ impl KafkaConnection {
         Ok(KafkaConnection{host: host.to_owned(), stream: stream})
     }
 
-    pub fn ssl<C,K>(&mut self, cert: C, key: K) -> Result<()>
-    where C: AsRef<Path>, K: AsRef<Path> {
-        let mut context = try!(SslContext::new(SslMethod::Sslv23));
-        try!(context.set_cipher_list("DEFAULT"));
-        try!(context.set_certificate_file(cert.as_ref(), X509FileType::PEM));
-        try!(context.set_private_key_file(key.as_ref(), X509FileType::PEM));
-        context.set_verify(SSL_VERIFY_NONE, None);
-        let ssl = try!(Ssl::new(&context));
-
+    pub fn ssl(&mut self, config: Ssl) -> Result<()> {
         let plain_stream = match self.stream {
             KafkaStream::Plain(ref s) => try!(s.try_clone()),
             KafkaStream::Ssl(_) => return Err(Error::AlreadySecure),
         };
-        let stream = try!(SslStream::connect(ssl, plain_stream));
+        let stream = try!(SslStream::connect(config, plain_stream));
         self.stream = KafkaStream::Ssl(stream);
         Ok(())
     }

@@ -19,6 +19,7 @@ use codecs::{ToByte, FromByte};
 use connection::KafkaConnection;
 use error::{Result, Error, KafkaCode};
 use protocol::{self, ResponseParser};
+use openssl::ssl::Ssl;
 
 pub mod metadata;
 mod state;
@@ -301,6 +302,50 @@ impl KafkaClient {
             conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
             state: state::ClientState::new(),
         }
+    }
+
+    // Side note: The below example MUST have a `main` function delcared to pull in the extern crate.
+
+    /// Creates a new instance of KafkaClient with SSL secured connections.
+    /// This returns a `Result<KafkaClient>` because all connections are
+    /// attempted at creation time. Errors thrown here will be SSL related.
+    /// Before being able to successfully use the new client, you'll have to
+    /// load metadata.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// extern crate openssl;
+    /// extern crate kafka;
+    /// use openssl::ssl::{Ssl, SslContext, SslStream, SslMethod, SSL_VERIFY_NONE};
+    /// use openssl::x509::X509FileType;
+    /// use kafka::client::KafkaClient;
+    /// use std::path::Path;
+    ///
+    /// fn main() {
+    ///     let (key, cert) = ("foo.key".to_string(), "bar.crt".to_string());
+    ///
+    ///      // OpenSSL offers a variety of complex configurations. Here is an example:
+    ///      let mut context = SslContext::new(SslMethod::Sslv23).unwrap();
+    ///      context.set_cipher_list("DEFAULT").unwrap();
+    ///      context.set_certificate_file(&cert, X509FileType::PEM).unwrap();
+    ///      context.set_private_key_file(&key, X509FileType::PEM).unwrap();
+    ///      context.set_verify(SSL_VERIFY_NONE, None);
+    ///      let ssl = Ssl::new(&context).unwrap();
+    ///
+    ///      let mut client = KafkaClient::new_secured(vec!("localhost:9092".to_owned()), ssl).unwrap();
+    ///      client.load_metadata_all().unwrap();
+    /// }
+    /// ```
+    ///
+    /// See also `KafkaClient::load_metadatata_all` and `KafkaClient::load_metadata`
+    pub fn new_secured(hosts: Vec<String>, ssl: Ssl) -> Result<KafkaClient> {
+        let mut client = KafkaClient::new(hosts);
+        for host in &client.config.hosts {
+            let conn = try!(client.conn_pool.get_conn(host));
+            try!(conn.ssl(ssl.clone()));
+        }
+        Ok(client)
     }
 
     /// Exposes the hosts used for discovery of the target kafka
