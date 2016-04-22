@@ -69,6 +69,7 @@ use error::Result;
 use utils::TopicPartitionOffset;
 
 use ref_slice::ref_slice;
+use client::SecurityConfig;
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT: i32 = 30 * 1000;
@@ -313,6 +314,7 @@ pub struct Builder<P = DefaultPartitioner> {
     ack_timeout: i32,
     required_acks: i16,
     partitioner: P,
+    security_config: Option<SecurityConfig>,
 }
 
 impl Builder {
@@ -324,11 +326,17 @@ impl Builder {
             ack_timeout: DEFAULT_ACK_TIMEOUT,
             required_acks: DEFAULT_REQUIRED_ACKS,
             partitioner: DefaultPartitioner::default(),
+            security_config: None,
         };
         if let Some(ref c) = b.client {
             b.compression = c.compression();
         }
         b
+    }
+
+    pub fn with_security(mut self, security: SecurityConfig) -> Self {
+        self.security_config = Some(security);
+        self
     }
 
     /// Sets the compression algorithm to use when sending out data.
@@ -375,6 +383,7 @@ impl<P> Builder<P> {
             ack_timeout: self.ack_timeout,
             required_acks: self.required_acks,
             partitioner: partitioner,
+            security_config: None,
         }
     }
 
@@ -384,7 +393,7 @@ impl<P> Builder<P> {
         let mut client = match self.client {
             Some(client) => client,
             None => {
-                let mut client = KafkaClient::new(self.hosts);
+                let mut client = KafkaClient::new(self.hosts, self.security_config);
                 try!(client.load_metadata_all());
                 client
             }

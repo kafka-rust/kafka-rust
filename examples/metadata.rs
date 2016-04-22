@@ -12,7 +12,7 @@ fn main() {
         brokers.push(DEFAULT_BROKER.to_owned());
     }
 
-    let mut client = KafkaClient::new(brokers);
+    let mut client = KafkaClient::new(brokers, None);
     if let Err(e) = client.load_metadata_all() {
         println!("Failed to load metadata from {:?}: {}", client.hosts(), e);
         return;

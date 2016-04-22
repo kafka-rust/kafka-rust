@@ -2,13 +2,15 @@
 //! allowing building higher level constructs.
 //!
 //! The entry point into this module is `KafkaClient` obtained by a
-//! call to `KafkaClient::new`.
+//! call to `KafkaClient::new(`.
 
 use std::collections::hash_map::HashMap;
 use std::io::Cursor;
 use std::io::Read;
 use std::iter::Iterator;
 use std::mem;
+
+use openssl::ssl::Ssl;
 
 // pub re-export
 pub use compression::Compression;
@@ -19,7 +21,6 @@ use codecs::{ToByte, FromByte};
 use connection::KafkaConnection;
 use error::{Result, Error, KafkaCode};
 use protocol::{self, ResponseParser};
-use openssl::ssl::Ssl;
 
 pub mod metadata;
 mod state;
@@ -86,13 +87,15 @@ struct ClientConfig {
 struct ConnectionPool {
     conns: HashMap<String, KafkaConnection>,
     timeout: i32,
+    security_config: Option<SecurityConfig>
 }
 
 impl ConnectionPool {
-    fn new(timeout: i32) -> ConnectionPool {
+    fn new(timeout: i32, security: Option<SecurityConfig>) -> ConnectionPool {
         ConnectionPool {
             conns: HashMap::new(),
             timeout: timeout,
+            security_config: security,
         }
     }
 
@@ -105,7 +108,7 @@ impl ConnectionPool {
             return Ok(unsafe { mem::transmute(conn) });
         }
         self.conns.insert(host.to_owned(),
-                          try!(KafkaConnection::new(host, self.timeout)));
+                          try!(KafkaConnection::new(host, self.timeout, self.security_config.clone())));
         Ok(self.conns.get_mut(host).unwrap())
     }
 }
@@ -275,6 +278,19 @@ impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
 
 // --------------------------------------------------------------------
 
+/// This will be expanded in the future. See #51.
+#[derive(Debug, Clone)]
+pub struct SecurityConfig(pub Ssl);
+
+impl SecurityConfig {
+    /// In the future this will also support a kerbos via #51.
+    pub fn new(ssl: Ssl) -> SecurityConfig {
+        SecurityConfig(ssl)
+    }
+}
+
+// --------------------------------------------------------------------
+
 impl KafkaClient {
 
     /// Creates a new instance of KafkaClient. Before being able to
@@ -282,44 +298,21 @@ impl KafkaClient {
     ///
     /// # Examples
     ///
+    /// Insecure:
+    ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()), None);
     /// client.load_metadata_all().unwrap();
     /// ```
     ///
-    /// See also `KafkaClient::load_metadatata_all` and `KafkaClient::load_metadata`
-    pub fn new(hosts: Vec<String>) -> KafkaClient {
-        KafkaClient {
-            config: ClientConfig {
-                client_id: CLIENTID.to_owned(),
-                hosts: hosts,
-                compression: DEFAULT_COMPRESSION,
-                fetch_max_wait_time: DEFAULT_FETCH_MAX_WAIT_TIME,
-                fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
-                fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
-                fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
-            },
-            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
-            state: state::ClientState::new(),
-        }
-    }
-
-    // Side note: The below example MUST have a `main` function delcared to pull in the extern crate.
-
-    /// Creates a new instance of KafkaClient with SSL secured connections.
-    /// This returns a `Result<KafkaClient>` because all connections are
-    /// attempted at creation time. Errors thrown here will be SSL related.
-    /// Before being able to successfully use the new client, you'll have to
-    /// load metadata.
-    ///
-    /// # Examples
+    /// Secure:
     ///
     /// ```no_run
     /// extern crate openssl;
     /// extern crate kafka;
     /// use openssl::ssl::{Ssl, SslContext, SslStream, SslMethod, SSL_VERIFY_NONE};
     /// use openssl::x509::X509FileType;
-    /// use kafka::client::KafkaClient;
+    /// use kafka::client::{KafkaClient, SecurityConfig};
     /// use std::path::Path;
     ///
     /// fn main() {
@@ -333,19 +326,26 @@ impl KafkaClient {
     ///      context.set_verify(SSL_VERIFY_NONE, None);
     ///      let ssl = Ssl::new(&context).unwrap();
     ///
-    ///      let mut client = KafkaClient::new_secured(vec!("localhost:9092".to_owned()), ssl).unwrap();
+    ///      let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()), Some(SecurityConfig::new(ssl)));
     ///      client.load_metadata_all().unwrap();
     /// }
     /// ```
     ///
     /// See also `KafkaClient::load_metadatata_all` and `KafkaClient::load_metadata`
-    pub fn new_secured(hosts: Vec<String>, ssl: Ssl) -> Result<KafkaClient> {
-        let mut client = KafkaClient::new(hosts);
-        for host in &client.config.hosts {
-            let conn = try!(client.conn_pool.get_conn(host));
-            try!(conn.ssl(ssl.clone()));
+    pub fn new(hosts: Vec<String>, security: Option<SecurityConfig>) -> KafkaClient {
+        KafkaClient {
+            config: ClientConfig {
+                client_id: CLIENTID.to_owned(),
+                hosts: hosts,
+                compression: DEFAULT_COMPRESSION,
+                fetch_max_wait_time: DEFAULT_FETCH_MAX_WAIT_TIME,
+                fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
+                fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
+                fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
+            },
+            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS, security),
+            state: state::ClientState::new(),
         }
-        Ok(client)
     }
 
     /// Exposes the hosts used for discovery of the target kafka
@@ -361,7 +361,7 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()), None);
     /// client.load_metadata_all().unwrap();
     /// client.set_compression(kafka::client::Compression::SNAPPY);
     /// ```
@@ -409,7 +409,7 @@ impl KafkaClient {
     /// ```no_run
     /// use kafka::client::{KafkaClient, FetchPartition};
     ///
-    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()], None);
     /// client.load_metadata_all().unwrap();
     /// client.set_fetch_max_wait_time(100);
     /// client.set_fetch_min_bytes(64 * 1024);
@@ -480,14 +480,14 @@ impl KafkaClient {
         self.config.fetch_crc_validation
     }
 
-    /// Provides a view onto the currently loaded metadata of known topics.
+    /// Provides a view onto the currently loaded metadata of known .
     ///
     /// # Examples
     /// ```no_run
     /// use kafka::client::KafkaClient;
     /// use kafka::client::metadata::Broker;
     ///
-    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()], None);
     /// client.load_metadata_all().unwrap();
     /// for topic in client.topics() {
     ///   for partition in topic.partitions() {
@@ -509,7 +509,7 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()), None);
     /// client.load_metadata_all().unwrap();
     /// for topic in client.topics().names() {
     ///   println!("topic: {}", topic);
@@ -540,7 +540,7 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()), None);
     /// let _ = client.load_metadata(&["my-topic"]).unwrap();
     /// ```
     ///
@@ -582,7 +582,7 @@ impl KafkaClient {
     /// ```no_run
     /// use kafka::client::KafkaClient;
     ///
-    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()], None);
     /// client.load_metadata_all().unwrap();
     /// let topics: Vec<String> = client.topics().names().map(ToOwned::to_owned).collect();
     /// let offsets = client.fetch_offsets(&topics, kafka::client::FetchOffset::Latest).unwrap();
@@ -634,7 +634,7 @@ impl KafkaClient {
     /// ```no_run
     /// use kafka::client::{KafkaClient, FetchOffset};
     ///
-    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()], None);
     /// client.load_metadata_all().unwrap();
     /// let offsets = client.fetch_topic_offsets("my-topic", FetchOffset::Latest).unwrap();
     /// ```
@@ -695,7 +695,7 @@ impl KafkaClient {
     /// ```no_run
     /// use kafka::client::{KafkaClient, FetchPartition};
     ///
-    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()), None);
     /// client.load_metadata_all().unwrap();
     /// let reqs = &[FetchPartition::new("my-topic", 0, 0),
     ///              FetchPartition::new("my-topic-2", 0, 0).with_max_bytes(1024*1024)];
@@ -795,7 +795,7 @@ impl KafkaClient {
     /// ```no_run
     /// use kafka::client::{KafkaClient, ProduceMessage};
     ///
-    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()), None);
     /// client.load_metadata_all().unwrap();
     /// let req = vec![ProduceMessage::new("my-topic", 0, None, Some("a".as_bytes())),
     ///                ProduceMessage::new("my-topic-2", 0, None, Some("b".as_bytes()))];
@@ -840,7 +840,7 @@ impl KafkaClient {
     /// ```no_run
     /// use kafka::client::{KafkaClient, CommitOffset};
     ///
-    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()], None);
     /// client.load_metadata_all().unwrap();
     /// client.commit_offsets("my-group",
     ///     &[CommitOffset::new("my-topic", 0, 100),
@@ -882,7 +882,7 @@ impl KafkaClient {
     /// ```no_run
     /// use kafka::client::KafkaClient;
     ///
-    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()], None);
     /// client.load_metadata_all().unwrap();
     /// client.commit_offset("my-group", "my-topic", 0, 100).unwrap();
     /// ```
@@ -901,7 +901,7 @@ impl KafkaClient {
     /// ```no_run
     /// use kafka::client::{KafkaClient, FetchGroupOffset};
     ///
-    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()], None);
     /// client.load_metadata_all().unwrap();
     ///
     /// let offsets =
@@ -939,7 +939,7 @@ impl KafkaClient {
     /// ```no_run
     /// use kafka::client::KafkaClient;
     ///
-    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()], None);
     /// client.load_metadata_all().unwrap();
     /// let offsets = client.fetch_group_topic_offsets("my-group", "my-topic").unwrap();
     /// ```

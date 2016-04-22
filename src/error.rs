@@ -26,8 +26,6 @@ pub enum Error {
     /// An error as reported by OpenSsl
     Ssl(ssl::error::SslError),
 
-    /// Failed to elevate to Ssl connection because already secure.
-    AlreadySecure,
     /// Failure to correctly parse the server response due to the
     /// server speaking a newer protocol version (than the one this
     /// library supports)
@@ -184,7 +182,6 @@ impl Clone for Error {
                 &ssl::error::SslError::OpenSslErrors(ref v) => 
                     Error::Ssl(ssl::error::SslError::OpenSslErrors(v.clone())),
             },
-            &Error::AlreadySecure => Error::AlreadySecure,
             &Error::UnsupportedProtocol => Error::UnsupportedProtocol,
             &Error::InvalidInputSnappy => Error::InvalidInputSnappy,
             &Error::UnexpectedEOF => Error::UnexpectedEOF,
@@ -201,7 +198,6 @@ impl error::Error for Error {
             Error::Io(ref err) => error::Error::description(err),
             Error::Kafka(_) => "Kafka Error",
             Error::Ssl(ref err) => error::Error::description(err),
-            Error::AlreadySecure => "Already secure",
             Error::UnsupportedProtocol => "Unsupported protocol version",
             Error::InvalidInputSnappy => "Snappy decode error",
             Error::UnexpectedEOF => "Unexpected EOF",
@@ -225,7 +221,6 @@ impl fmt::Display for Error {
             Error::Io(ref err) => err.fmt(f),
             Error::Kafka(ref c) => write!(f, "Kafka Error ({:?})", c),
             Error::Ssl(ref err) => err.fmt(f),
-            Error::AlreadySecure => write!(f, "Already secure"),
             Error::UnsupportedProtocol => write!(f, "Unsupported protocol version"),
             Error::InvalidInputSnappy => write!(f, "Snappy decode error"),
             Error::UnexpectedEOF => write!(f, "Unexpected EOF"),

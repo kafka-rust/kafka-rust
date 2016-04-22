@@ -3,7 +3,9 @@ use std::io::{self, Read,Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-use openssl::ssl::{Ssl, SslStream};
+use openssl::ssl::{SslStream};
+
+use client::SecurityConfig;
 use error::{Error, Result};
 
 enum KafkaStream {
@@ -72,23 +74,17 @@ impl KafkaConnection {
         }
     }
 
-    pub fn new(host: &str, timeout_secs: i32) -> Result<KafkaConnection> {
-        let stream = KafkaStream::Plain(try!(TcpStream::connect(host)));
+    pub fn new(host: &str, timeout_secs: i32, security: Option<SecurityConfig>) -> Result<KafkaConnection> {
+        let plain_stream = try!(TcpStream::connect(host));
+        let stream = match security {
+            Some(SecurityConfig(config)) => KafkaStream::Ssl(try!(SslStream::connect(config, plain_stream))),
+            None => KafkaStream::Plain(plain_stream),
+        };
         if timeout_secs > 0 {
             let t = Some(Duration::from_secs(timeout_secs as u64));
             stream.get_ref().set_read_timeout(t).expect("Set connection read-timeout");
             stream.get_ref().set_write_timeout(t).expect("Set connection write-timeout");
         }
         Ok(KafkaConnection{host: host.to_owned(), stream: stream})
-    }
-
-    pub fn ssl(&mut self, config: Ssl) -> Result<()> {
-        let plain_stream = match self.stream {
-            KafkaStream::Plain(ref s) => try!(s.try_clone()),
-            KafkaStream::Ssl(_) => return Err(Error::AlreadySecure),
-        };
-        let stream = try!(SslStream::connect(config, plain_stream));
-        self.stream = KafkaStream::Ssl(stream);
-        Ok(())
     }
 }

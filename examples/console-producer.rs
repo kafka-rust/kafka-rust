@@ -35,7 +35,7 @@ fn main() {
 }
 
 fn produce(cfg: &Config) -> Result<(), Error> {
-    let mut client = KafkaClient::new(cfg.brokers.clone());
+    let mut client = KafkaClient::new(cfg.brokers.clone(), None);
     client.set_compression(cfg.compression);
     try!(client.load_metadata_all());
 

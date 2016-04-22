@@ -53,6 +53,7 @@ use client::{self, KafkaClient, FetchPartition, CommitOffset, FetchGroupOffset};
 use client::metadata::Topics;
 use error::{Error, KafkaCode, Result};
 use client::fetch;
+use client::SecurityConfig;
 
 // public re-exports
 pub use client::fetch::Message;
@@ -611,6 +612,7 @@ pub struct Builder {
     fetch_max_bytes_per_partition: i32,
     retry_max_bytes_limit: i32,
     fetch_crc_validation: bool,
+    security_config: Option<SecurityConfig>,
 }
 
 impl Builder {
@@ -627,6 +629,7 @@ impl Builder {
             topic: "".to_owned(),
             partitions: Vec::new(),
             fallback_offset: None,
+            security_config: None,
         };
         if let Some(ref c) = b.client {
             b.fetch_max_wait_time = c.fetch_max_wait_time();
@@ -641,6 +644,12 @@ impl Builder {
     /// message offsets.
     fn with_group(mut self, group: String) -> Builder {
         self.group = group;
+        self
+    }
+
+    /// Specifies the security config to use.
+    fn with_security_config(mut self, sec: SecurityConfig) -> Builder {
+        self.security_config = Some(sec);
         self
     }
 
@@ -736,7 +745,7 @@ impl Builder {
         let mut client = match self.client {
             Some(client) => client,
             None => {
-                let mut client = KafkaClient::new(self.hosts);
+                let mut client = KafkaClient::new(self.hosts, self.security_config);
                 try!(client.load_metadata_all());
                 client
             }
