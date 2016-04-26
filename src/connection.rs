@@ -77,7 +77,7 @@ impl KafkaConnection {
     pub fn new(host: &str, timeout_secs: i32, security: Option<SecurityConfig>) -> Result<KafkaConnection> {
         let plain_stream = try!(TcpStream::connect(host));
         let stream = match security {
-            Some(SecurityConfig(config)) => KafkaStream::Ssl(try!(SslStream::connect(config, plain_stream))),
+            Some(config) => KafkaStream::Ssl(try!(SslStream::connect(config.ssl(), plain_stream))),
             None => KafkaStream::Plain(plain_stream),
         };
         if timeout_secs > 0 {

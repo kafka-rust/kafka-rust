@@ -393,7 +393,11 @@ impl<P> Builder<P> {
         let mut client = match self.client {
             Some(client) => client,
             None => {
-                let mut client = KafkaClient::new(self.hosts, self.security_config);
+                let mut client = if let Some(security_config) = self.security_config {
+                    KafkaClient::new_secure(self.hosts, security_config)
+                } else {
+                    KafkaClient::new(self.hosts)
+                };
                 try!(client.load_metadata_all());
                 client
             }

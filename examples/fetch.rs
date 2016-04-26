@@ -14,7 +14,7 @@ fn main() {
         broker, topic, partition, offset);
 
 
-    let mut client = KafkaClient::new(vec!(broker.to_owned()), None);
+    let mut client = KafkaClient::new(vec!(broker.to_owned()));
     if let Err(e) = client.load_metadata_all() {
         println!("Failed to load metadata from {}: {}", broker, e);
         return;
