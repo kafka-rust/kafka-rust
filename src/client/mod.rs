@@ -108,7 +108,7 @@ impl ConnectionPool {
             return Ok(unsafe { mem::transmute(conn) });
         }
         self.conns.insert(host.to_owned(),
-                          try!(KafkaConnection::new(host, self.timeout, self.security_config.clone())));
+            try!(KafkaConnection::new(host, self.timeout, self.security_config.as_ref().map(|x| x.0.clone()))));
         Ok(self.conns.get_mut(host).unwrap())
     }
 }
@@ -279,16 +279,13 @@ impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
 // --------------------------------------------------------------------
 
 /// This will be expanded in the future. See #51.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SecurityConfig(Ssl);
 
 impl SecurityConfig {
     /// In the future this will also support a kerbos via #51.
     pub fn new(ssl: Ssl) -> SecurityConfig {
         SecurityConfig(ssl)
-    }
-    pub fn ssl(&self) -> Ssl {
-        self.0.clone()
     }
 }
 

@@ -3,9 +3,8 @@ use std::io::{self, Read,Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-use openssl::ssl::{SslStream};
+use openssl::ssl::{Ssl, SslStream};
 
-use client::SecurityConfig;
 use error::{Error, Result};
 
 enum KafkaStream {
@@ -74,10 +73,10 @@ impl KafkaConnection {
         }
     }
 
-    pub fn new(host: &str, timeout_secs: i32, security: Option<SecurityConfig>) -> Result<KafkaConnection> {
+    pub fn new(host: &str, timeout_secs: i32, security: Option<Ssl>) -> Result<KafkaConnection> {
         let plain_stream = try!(TcpStream::connect(host));
         let stream = match security {
-            Some(config) => KafkaStream::Ssl(try!(SslStream::connect(config.ssl(), plain_stream))),
+            Some(config) => KafkaStream::Ssl(try!(SslStream::connect(config, plain_stream))),
             None => KafkaStream::Plain(plain_stream),
         };
         if timeout_secs > 0 {

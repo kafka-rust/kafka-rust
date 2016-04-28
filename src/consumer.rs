@@ -648,7 +648,8 @@ impl Builder {
     }
 
     /// Specifies the security config to use.
-    fn with_security_config(mut self, sec: SecurityConfig) -> Builder {
+    /// See `KafkaClient::new_secure` for more info.
+    fn with_security(mut self, sec: SecurityConfig) -> Builder {
         self.security_config = Some(sec);
         self
     }
