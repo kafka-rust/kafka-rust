@@ -108,7 +108,9 @@ impl ConnectionPool {
             return Ok(unsafe { mem::transmute(conn) });
         }
         self.conns.insert(host.to_owned(),
-            try!(KafkaConnection::new(host, self.timeout, self.security_config.as_ref().map(|x| x.0.clone()))));
+                          try!(KafkaConnection::new(
+                              host, self.timeout,
+                              self.security_config.as_ref().map(|x| x.0.clone()))));
         Ok(self.conns.get_mut(host).unwrap())
     }
 }
@@ -581,10 +583,17 @@ impl KafkaClient {
     fn fetch_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<protocol::MetadataResponse> {
         let correlation = self.state.next_correlation_id();
         for host in &self.config.hosts {
-            if let Ok(conn) = self.conn_pool.get_conn(host) {
-                let req = protocol::MetadataRequest::new(correlation, &self.config.client_id, topics);
-                if __send_request(conn, req).is_ok() {
-                    return __get_response::<protocol::MetadataResponse>(conn);
+            debug!("Attempting to fetch metadata from {}", host);
+            match self.conn_pool.get_conn(host) {
+                Ok(conn) => {
+                    let req = protocol::MetadataRequest::new(correlation, &self.config.client_id, topics);
+                    match __send_request(conn, req) {
+                        Ok(_) => return __get_response::<protocol::MetadataResponse>(conn),
+                        Err(e) => debug!("Failed to request metadata from {}: {}", host, e),
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to connect to {}: {}", host, e);
                 }
             }
         }
