@@ -647,13 +647,6 @@ impl Builder {
         self
     }
 
-    /// Specifies the security config to use.
-    /// See `KafkaClient::new_secure` for more info.
-    fn with_security(mut self, sec: SecurityConfig) -> Builder {
-        self.security_config = Some(sec);
-        self
-    }
-
     /// Specifies the topic to consume.
     fn with_topic(mut self, topic: String) -> Builder {
         self.topic = topic;
@@ -666,6 +659,13 @@ impl Builder {
     /// the underlying topic will be consumed assumed.
     pub fn with_partitions(mut self, partitions: &[i32]) -> Builder {
         self.partitions.extend_from_slice(partitions);
+        self
+    }
+
+    /// Specifies the security config to use.
+    /// See `KafkaClient::new_secure` for more info.
+    pub fn with_security(mut self, sec: SecurityConfig) -> Builder {
+        self.security_config = Some(sec);
         self
     }
 
