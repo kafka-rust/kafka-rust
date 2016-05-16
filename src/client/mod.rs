@@ -6,11 +6,10 @@
 
 use std::collections::hash_map::HashMap;
 use std::io::Cursor;
-use std::io::Read;
 use std::iter::Iterator;
 use std::mem;
 
-use openssl::ssl::Ssl;
+use openssl::ssl::SslContext;
 
 // pub re-export
 pub use compression::Compression;
@@ -110,7 +109,7 @@ impl ConnectionPool {
         self.conns.insert(host.to_owned(),
                           try!(KafkaConnection::new(
                               host, self.timeout,
-                              self.security_config.as_ref().map(|x| x.0.clone()))));
+                              self.security_config.as_ref().map(|c| &c.0))));
         Ok(self.conns.get_mut(host).unwrap())
     }
 }
@@ -282,11 +281,11 @@ impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
 
 /// This will be expanded in the future. See #51.
 #[derive(Debug)]
-pub struct SecurityConfig(Ssl);
+pub struct SecurityConfig(SslContext);
 
 impl SecurityConfig {
     /// In the future this will also support a kerbos via #51.
-    pub fn new(ssl: Ssl) -> SecurityConfig {
+    pub fn new(ssl: SslContext) -> SecurityConfig {
         SecurityConfig(ssl)
     }
 }
@@ -344,7 +343,8 @@ impl KafkaClient {
     ///      context.set_verify(SSL_VERIFY_NONE, None);
     ///      let ssl = Ssl::new(&context).unwrap();
     ///
-    ///      let mut client = KafkaClient::new_secure(vec!("localhost:9092".to_owned()), SecurityConfig::new(ssl));
+    ///      let mut client = KafkaClient::new_secure(vec!("localhost:9092".to_owned()),
+    ///                                               SecurityConfig::new(ssl));
     ///      client.load_metadata_all().unwrap();
     /// }
     /// ```
