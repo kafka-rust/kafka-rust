@@ -327,29 +327,33 @@ impl KafkaClient {
     /// ```no_run
     /// extern crate openssl;
     /// extern crate kafka;
-    /// use openssl::ssl::{Ssl, SslContext, SslStream, SslMethod, SSL_VERIFY_NONE};
+    ///
+    /// use openssl::ssl::{Ssl, SslContext, SslStream, SslMethod, SSL_VERIFY_PEER};
     /// use openssl::x509::X509FileType;
     /// use kafka::client::{KafkaClient, SecurityConfig};
-    /// use std::path::Path;
     ///
     /// fn main() {
-    ///     let (key, cert) = ("foo.key".to_string(), "bar.crt".to_string());
+    ///     let (key, cert) = ("client.key".to_string(), "client.crt".to_string());
     ///
     ///      // OpenSSL offers a variety of complex configurations. Here is an example:
-    ///      let mut context = SslContext::new(SslMethod::Sslv23).unwrap();
-    ///      context.set_cipher_list("DEFAULT").unwrap();
-    ///      context.set_certificate_file(&cert, X509FileType::PEM).unwrap();
-    ///      context.set_private_key_file(&key, X509FileType::PEM).unwrap();
-    ///      context.set_verify(SSL_VERIFY_NONE, None);
-    ///      let ssl = Ssl::new(&context).unwrap();
+    ///      let mut ctx = SslContext::new(SslMethod::Sslv23).unwrap();
+    ///      ctx.set_cipher_list("DEFAULT").unwrap();
+    ///      ctx.set_certificate_file(&cert, X509FileType::PEM).unwrap();
+    ///      ctx.set_private_key_file(&key, X509FileType::PEM).unwrap();
+    ///      ctx.set_default_verify_paths().unwrap();
+    ///      ctx.set_verify(SSL_VERIFY_PEER, None);
     ///
     ///      let mut client = KafkaClient::new_secure(vec!("localhost:9092".to_owned()),
-    ///                                               SecurityConfig::new(ssl));
+    ///                                               SecurityConfig::new(ctx));
     ///      client.load_metadata_all().unwrap();
     /// }
     /// ```
     ///
-    /// See also `KafkaClient::load_metadatata_all` and `KafkaClient::load_metadata`
+    /// See also `KafkaClient::load_metadatata_all` and
+    /// `KafkaClient::load_metadata` methods, the creates
+    /// [openssl](https://crates.io/crates/openssl)
+    /// and [openssl_verify](https://crates.io/crates/openssl-verify),
+    /// as well as [Kafka's documentation](https://kafka.apache.org/documentation.html#security_ssl).
     pub fn new_secure(hosts: Vec<String>, security: SecurityConfig) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
