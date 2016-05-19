@@ -2,13 +2,14 @@
 //! allowing building higher level constructs.
 //!
 //! The entry point into this module is `KafkaClient` obtained by a
-//! call to `KafkaClient::new`.
+//! call to `KafkaClient::new()`.
 
 use std::collections::hash_map::HashMap;
 use std::io::Cursor;
-use std::io::Read;
 use std::iter::Iterator;
 use std::mem;
+
+use openssl::ssl::SslContext;
 
 // pub re-export
 pub use compression::Compression;
@@ -85,13 +86,15 @@ struct ClientConfig {
 struct ConnectionPool {
     conns: HashMap<String, KafkaConnection>,
     timeout: i32,
+    security_config: Option<SecurityConfig>
 }
 
 impl ConnectionPool {
-    fn new(timeout: i32) -> ConnectionPool {
+    fn new(timeout: i32, security: Option<SecurityConfig>) -> ConnectionPool {
         ConnectionPool {
             conns: HashMap::new(),
             timeout: timeout,
+            security_config: security,
         }
     }
 
@@ -104,7 +107,9 @@ impl ConnectionPool {
             return Ok(unsafe { mem::transmute(conn) });
         }
         self.conns.insert(host.to_owned(),
-                          try!(KafkaConnection::new(host, self.timeout)));
+                          try!(KafkaConnection::new(
+                              host, self.timeout,
+                              self.security_config.as_ref().map(|c| &c.0))));
         Ok(self.conns.get_mut(host).unwrap())
     }
 }
@@ -274,6 +279,19 @@ impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
 
 // --------------------------------------------------------------------
 
+/// This will be expanded in the future. See #51.
+#[derive(Debug)]
+pub struct SecurityConfig(SslContext);
+
+impl SecurityConfig {
+    /// In the future this will also support a kerbos via #51.
+    pub fn new(ssl: SslContext) -> SecurityConfig {
+        SecurityConfig(ssl)
+    }
+}
+
+// --------------------------------------------------------------------
+
 impl KafkaClient {
 
     /// Creates a new instance of KafkaClient. Before being able to
@@ -285,8 +303,6 @@ impl KafkaClient {
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
     /// ```
-    ///
-    /// See also `KafkaClient::load_metadatata_all` and `KafkaClient::load_metadata`
     pub fn new(hosts: Vec<String>) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
@@ -298,7 +314,58 @@ impl KafkaClient {
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
             },
-            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
+            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS, None),
+            state: state::ClientState::new(),
+        }
+    }
+    
+    /// Creates a new secure instance of KafkaClient. Before being able to
+    /// successfully use the new client, you'll have to load metadata.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// extern crate openssl;
+    /// extern crate kafka;
+    ///
+    /// use openssl::ssl::{Ssl, SslContext, SslStream, SslMethod, SSL_VERIFY_PEER};
+    /// use openssl::x509::X509FileType;
+    /// use kafka::client::{KafkaClient, SecurityConfig};
+    ///
+    /// fn main() {
+    ///     let (key, cert) = ("client.key".to_string(), "client.crt".to_string());
+    ///
+    ///      // OpenSSL offers a variety of complex configurations. Here is an example:
+    ///      let mut ctx = SslContext::new(SslMethod::Sslv23).unwrap();
+    ///      ctx.set_cipher_list("DEFAULT").unwrap();
+    ///      ctx.set_certificate_file(&cert, X509FileType::PEM).unwrap();
+    ///      ctx.set_private_key_file(&key, X509FileType::PEM).unwrap();
+    ///      ctx.set_default_verify_paths().unwrap();
+    ///      ctx.set_verify(SSL_VERIFY_PEER, None);
+    ///
+    ///      let mut client = KafkaClient::new_secure(vec!("localhost:9092".to_owned()),
+    ///                                               SecurityConfig::new(ctx));
+    ///      client.load_metadata_all().unwrap();
+    /// }
+    /// ```
+    ///
+    /// See also `KafkaClient::load_metadatata_all` and
+    /// `KafkaClient::load_metadata` methods, the creates
+    /// [openssl](https://crates.io/crates/openssl)
+    /// and [openssl_verify](https://crates.io/crates/openssl-verify),
+    /// as well as [Kafka's documentation](https://kafka.apache.org/documentation.html#security_ssl).
+    pub fn new_secure(hosts: Vec<String>, security: SecurityConfig) -> KafkaClient {
+        KafkaClient {
+            config: ClientConfig {
+                client_id: CLIENTID.to_owned(),
+                hosts: hosts,
+                compression: DEFAULT_COMPRESSION,
+                fetch_max_wait_time: DEFAULT_FETCH_MAX_WAIT_TIME,
+                fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
+                fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
+                fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
+            },
+            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS, Some(security)),
             state: state::ClientState::new(),
         }
     }
@@ -435,7 +502,7 @@ impl KafkaClient {
         self.config.fetch_crc_validation
     }
 
-    /// Provides a view onto the currently loaded metadata of known topics.
+    /// Provides a view onto the currently loaded metadata of known .
     ///
     /// # Examples
     /// ```no_run
@@ -520,10 +587,17 @@ impl KafkaClient {
     fn fetch_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<protocol::MetadataResponse> {
         let correlation = self.state.next_correlation_id();
         for host in &self.config.hosts {
-            if let Ok(conn) = self.conn_pool.get_conn(host) {
-                let req = protocol::MetadataRequest::new(correlation, &self.config.client_id, topics);
-                if __send_request(conn, req).is_ok() {
-                    return __get_response::<protocol::MetadataResponse>(conn);
+            debug!("Attempting to fetch metadata from {}", host);
+            match self.conn_pool.get_conn(host) {
+                Ok(conn) => {
+                    let req = protocol::MetadataRequest::new(correlation, &self.config.client_id, topics);
+                    match __send_request(conn, req) {
+                        Ok(_) => return __get_response::<protocol::MetadataResponse>(conn),
+                        Err(e) => debug!("Failed to request metadata from {}: {}", host, e),
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to connect to {}: {}", host, e);
                 }
             }
         }

@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::default::Default;
 
-use byteorder::{ByteOrder, BigEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use error::{Result, Error};
 
 // Helper macro to safely convert an usize expression into a signed
