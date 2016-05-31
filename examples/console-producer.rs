@@ -228,6 +228,7 @@ impl Config {
                     .unwrap_or_else(|| "NONE".to_owned());
                 match s.trim() {
                     "none" | "NONE" => Compression::NONE,
+                    #[cfg(feature = "gzip")]
                     "gzip" | "GZIP" => Compression::GZIP,
                     #[cfg(feature = "snappy")]
                     "snappy" | "SNAPPY" => Compression::SNAPPY,

@@ -1,3 +1,4 @@
+#[cfg(feature = "gzip")]
 pub mod gzip;
 
 #[cfg(feature = "snappy")]
@@ -9,6 +10,7 @@ pub mod snappy;
 #[derive(Debug, Copy, Clone)]
 pub enum Compression {
     NONE = 0,
+    #[cfg(feature = "gzip")]
     GZIP = 1,
     #[cfg(feature = "snappy")]
     SNAPPY = 2,

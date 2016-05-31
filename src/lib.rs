@@ -10,7 +10,6 @@
 #![cfg_attr(feature = "nightly", feature(test))]
 
 extern crate byteorder;
-extern crate flate2;
 extern crate crc;
 extern crate ref_slice;
 extern crate fnv;
@@ -18,6 +17,9 @@ extern crate openssl;
 
 #[macro_use]
 extern crate log;
+
+#[cfg(feature = "gzip")]
+extern crate flate2;
 
 #[cfg(feature = "snappy")]
 extern crate snappy;

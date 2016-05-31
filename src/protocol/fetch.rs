@@ -11,7 +11,9 @@ use fnv::FnvHasher;
 
 use codecs::ToByte;
 use error::{Error, KafkaCode, Result};
-use compression::{gzip, Compression};
+use compression::Compression;
+#[cfg(feature = "gzip")]
+use compression::gzip;
 #[cfg(feature = "snappy")]
 use compression::snappy::SnappyReader;
 
@@ -347,6 +349,7 @@ pub struct Message<'a> {
 }
 
 impl<'a> MessageSet<'a> {
+    #[allow(dead_code)]
     fn from_vec(data: Vec<u8>, req_offset: i64, validate_crc: bool) -> Result<MessageSet<'a>> {
         // since we're going to keep the original
         // uncompressed vector around without
@@ -394,6 +397,7 @@ impl<'a> MessageSet<'a> {
                             }
                         }
                         // XXX handle recursive compression in future
+                        #[cfg(feature = "gzip")]
                         c if c == Compression::GZIP as i8 => {
                             let v = try!(gzip::uncompress(pmsg.value));
                             return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
@@ -479,6 +483,7 @@ mod tests {
     #[cfg(feature = "snappy")]
     static FETCH1_FETCH_RESPONSE_SNAPPY_K0822: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
+    #[cfg(feature = "gzip")]
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
@@ -590,6 +595,7 @@ mod tests {
             FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), Some(&req), false);
     }
 
+    #[cfg(feature = "gzip")]
     #[test]
     fn test_from_slice_gzip_k0821() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
@@ -664,6 +670,7 @@ mod tests {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), false)
         }
 
+        #[cfg(feature = "gzip")]
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), false)
@@ -686,6 +693,7 @@ mod tests {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), true)
         }
 
+        #[cfg(feature = "gzip")]
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821_validate_crc(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), true)
