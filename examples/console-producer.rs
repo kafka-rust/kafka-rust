@@ -229,8 +229,9 @@ impl Config {
                 match s.trim() {
                     "none" | "NONE" => Compression::NONE,
                     "gzip" | "GZIP" => Compression::GZIP,
+                    #[cfg(feature = "snappy")]
                     "snappy" | "SNAPPY" => Compression::SNAPPY,
-                    _ => return Err(Error::Literal(format!("Unknown compression type: {}", s))),
+                    _ => return Err(Error::Literal(format!("Unsupported compression type: {}", s))),
                 }
             },
             batch_size: {

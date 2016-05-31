@@ -1,7 +1,10 @@
 use std::io::{Read, Write};
 
 use codecs::{ToByte, FromByte};
-use compression::{Compression, gzip, snappy};
+use compression::{Compression, gzip};
+#[cfg(feature = "snappy")]
+use compression::snappy;
+
 use error::{Error, Result};
 use utils::TopicPartitionOffset;
 
@@ -144,6 +147,7 @@ impl<'a> PartitionProduceRequest<'a> {
             // ~ Compress the so far produced MessageSet (into a newly allocated buffer)
             let cdata = match compression {
                 Compression::GZIP => try!(gzip::compress(&buf)),
+                #[cfg(feature = "snappy")]
                 Compression::SNAPPY => try!(snappy::compress(&buf)),
                 c => panic!("Unknown compression type: {:?}", c),
             };

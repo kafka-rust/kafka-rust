@@ -12,13 +12,15 @@
 extern crate byteorder;
 extern crate flate2;
 extern crate crc;
-extern crate snappy;
 extern crate ref_slice;
 extern crate fnv;
 extern crate openssl;
 
 #[macro_use]
 extern crate log;
+
+#[cfg(feature = "snappy")]
+extern crate snappy;
 
 #[cfg(all(test, feature = "nightly"))]
 extern crate test;

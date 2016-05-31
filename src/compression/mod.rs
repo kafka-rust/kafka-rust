@@ -1,5 +1,7 @@
-pub mod snappy;
 pub mod gzip;
+
+#[cfg(feature = "snappy")]
+pub mod snappy;
 
 /// Compression types supported by kafka. The numeral values of this
 /// enumeration correspond to the compression encoding in the
@@ -8,7 +10,8 @@ pub mod gzip;
 pub enum Compression {
     NONE = 0,
     GZIP = 1,
-    SNAPPY = 2
+    #[cfg(feature = "snappy")]
+    SNAPPY = 2,
 }
 
 impl Default for Compression {

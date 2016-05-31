@@ -383,9 +383,11 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// use kafka::client::{Compression, KafkaClient};
+    ///
+    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// client.set_compression(kafka::client::Compression::SNAPPY);
+    /// client.set_compression(Compression::NONE);
     /// ```
     #[inline]
     pub fn set_compression(&mut self, compression: Compression) {

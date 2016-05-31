@@ -30,7 +30,11 @@ pub enum Error {
     /// server speaking a newer protocol version (than the one this
     /// library supports)
     UnsupportedProtocol,
+    /// Failure to correctly parse the server response by this library
+    /// due to an unsupported compression format of the data
+    UnsupportedCompression,
     /// Failure to decode a snappy compressed response from Kafka
+    #[cfg(feature = "snappy")]
     InvalidInputSnappy,
     /// Failure to decode a response due to an insufficient number of bytes available
     UnexpectedEOF,
@@ -183,6 +187,8 @@ impl Clone for Error {
                     Error::Ssl(ssl::error::SslError::OpenSslErrors(v.clone())),
             },
             &Error::UnsupportedProtocol => Error::UnsupportedProtocol,
+            &Error::UnsupportedCompression => Error::UnsupportedCompression,
+            #[cfg(feature = "snappy")]
             &Error::InvalidInputSnappy => Error::InvalidInputSnappy,
             &Error::UnexpectedEOF => Error::UnexpectedEOF,
             &Error::CodecError => Error::CodecError,
@@ -199,6 +205,8 @@ impl error::Error for Error {
             Error::Kafka(_) => "Kafka Error",
             Error::Ssl(ref err) => error::Error::description(err),
             Error::UnsupportedProtocol => "Unsupported protocol version",
+            Error::UnsupportedCompression => "Unsupported compression format",
+            #[cfg(feature = "snappy")]
             Error::InvalidInputSnappy => "Snappy decode error",
             Error::UnexpectedEOF => "Unexpected EOF",
             Error::CodecError => "Encoding/Decoding error",
@@ -222,6 +230,8 @@ impl fmt::Display for Error {
             Error::Kafka(ref c) => write!(f, "Kafka Error ({:?})", c),
             Error::Ssl(ref err) => err.fmt(f),
             Error::UnsupportedProtocol => write!(f, "Unsupported protocol version"),
+            Error::UnsupportedCompression => write!(f, "Unsupported compression format"),
+            #[cfg(feature = "snappy")]
             Error::InvalidInputSnappy => write!(f, "Snappy decode error"),
             Error::UnexpectedEOF => write!(f, "Unexpected EOF"),
             Error::CodecError => write!(f, "Encoding/Decoding Error"),
