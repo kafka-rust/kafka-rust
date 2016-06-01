@@ -83,7 +83,7 @@ struct ClientConfig {
     fetch_crc_validation: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ConnectionPool {
     conns: HashMap<String, KafkaConnection>,
     timeout: i32,
