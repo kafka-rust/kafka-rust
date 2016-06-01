@@ -13,10 +13,12 @@ extern crate byteorder;
 extern crate crc;
 extern crate ref_slice;
 extern crate fnv;
-extern crate openssl;
 
 #[macro_use]
 extern crate log;
+
+#[cfg(feature = "security")]
+extern crate openssl;
 
 #[cfg(feature = "gzip")]
 extern crate flate2;

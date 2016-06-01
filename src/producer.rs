@@ -69,7 +69,12 @@ use error::Result;
 use utils::TopicPartitionOffset;
 
 use ref_slice::ref_slice;
+
+#[cfg(feature = "security")]
 use client::SecurityConfig;
+
+#[cfg(not(feature = "security"))]
+type SecurityConfig = ();
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT: i32 = 30 * 1000;
@@ -336,6 +341,7 @@ impl Builder {
 
     /// Specifies the security config to use.
     /// See `KafkaClient::new_secure` for more info.
+    #[cfg(feature = "security")]
     pub fn with_security(mut self, security: SecurityConfig) -> Self {
         self.security_config = Some(security);
         self
@@ -389,17 +395,28 @@ impl<P> Builder<P> {
         }
     }
 
+
+    #[cfg(not(feature = "security"))]
+    fn new_kafka_client(hosts: Vec<String>, _: Option<SecurityConfig>) -> KafkaClient {
+        KafkaClient::new(hosts)
+    }
+
+    #[cfg(feature = "security")]
+    fn new_kafka_client(hosts: Vec<String>, security: Option<SecurityConfig>) -> KafkaClient {
+        if let Some(security) = security {
+            KafkaClient::new_secure(hosts, security)
+        } else {
+            KafkaClient::new(hosts)
+        }
+    }
+
     /// Finally creates/builds a new producer based on the so far
     /// supplied settings.
     pub fn create(self) -> Result<Producer<P>> {
         let mut client = match self.client {
             Some(client) => client,
             None => {
-                let mut client = if let Some(security_config) = self.security_config {
-                    KafkaClient::new_secure(self.hosts, security_config)
-                } else {
-                    KafkaClient::new(self.hosts)
-                };
+                let mut client = Self::new_kafka_client(self.hosts, self.security_config);
                 try!(client.load_metadata_all());
                 client
             }

@@ -53,11 +53,16 @@ use client::{self, KafkaClient, FetchPartition, CommitOffset, FetchGroupOffset};
 use client::metadata::Topics;
 use error::{Error, KafkaCode, Result};
 use client::fetch;
-use client::SecurityConfig;
 
 // public re-exports
 pub use client::fetch::Message;
 pub use client::FetchOffset;
+
+#[cfg(feature = "security")]
+use client::SecurityConfig;
+
+#[cfg(not(feature = "security"))]
+type SecurityConfig = ();
 
 /// The default value for `Builder::with_retry_max_bytes_limit`.
 pub const DEFAULT_RETRY_MAX_BYTES_LIMIT: i32 = 0;
@@ -664,6 +669,7 @@ impl Builder {
 
     /// Specifies the security config to use.
     /// See `KafkaClient::new_secure` for more info.
+    #[cfg(feature = "security")]
     pub fn with_security(mut self, sec: SecurityConfig) -> Builder {
         self.security_config = Some(sec);
         self
@@ -740,17 +746,27 @@ impl Builder {
         self
     }
 
+    #[cfg(not(feature = "security"))]
+    fn new_kafka_client(hosts: Vec<String>, _: Option<SecurityConfig>) -> KafkaClient {
+        KafkaClient::new(hosts)
+    }
+
+    #[cfg(feature = "security")]
+    fn new_kafka_client(hosts: Vec<String>, security: Option<SecurityConfig>) -> KafkaClient {
+        if let Some(security) = security {
+            KafkaClient::new_secure(hosts, security)
+        } else {
+            KafkaClient::new(hosts)
+        }
+    }
+
     /// Finally creates/builds a new consumer based on the so far
     /// supplied settings.
     pub fn create(self) -> Result<Consumer> {
         let mut client = match self.client {
             Some(client) => client,
             None => {
-                let mut client = if let Some(security_config) = self.security_config {
-                    KafkaClient::new_secure(self.hosts, security_config)
-                } else {
-                    KafkaClient::new(self.hosts)
-                };
+                let mut client = Self::new_kafka_client(self.hosts, self.security_config);
                 try!(client.load_metadata_all());
                 client
             }
