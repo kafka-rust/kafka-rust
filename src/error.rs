@@ -6,6 +6,8 @@ use std::io;
 use std::fmt;
 
 use byteorder;
+
+#[cfg(feature = "security")]
 use openssl::ssl;
 
 
@@ -24,13 +26,18 @@ pub enum Error {
     /// An error as reported by a remote Kafka server
     Kafka(KafkaCode),
     /// An error as reported by OpenSsl
+    #[cfg(feature = "security")]
     Ssl(ssl::error::SslError),
 
     /// Failure to correctly parse the server response due to the
     /// server speaking a newer protocol version (than the one this
     /// library supports)
     UnsupportedProtocol,
+    /// Failure to correctly parse the server response by this library
+    /// due to an unsupported compression format of the data
+    UnsupportedCompression,
     /// Failure to decode a snappy compressed response from Kafka
+    #[cfg(feature = "snappy")]
     InvalidInputSnappy,
     /// Failure to decode a response due to an insufficient number of bytes available
     UnexpectedEOF,
@@ -163,6 +170,7 @@ impl From<byteorder::Error> for Error {
     }
 }
 
+#[cfg(feature = "security")]
 impl From<ssl::error::SslError> for Error {
     fn from(err: ssl::error::SslError) -> Error { Error::Ssl(err) }
 }
@@ -172,6 +180,7 @@ impl Clone for Error {
         match self {
             &Error::Io(ref err) => Error::Io(io::Error::new(err.kind(), "Io Error")),
             &Error::Kafka(x) => Error::Kafka(x),
+            #[cfg(feature = "security")]
             &Error::Ssl(ref x) => match x {
                 &ssl::error::SslError::StreamError(ref e) => 
                     Error::Ssl(ssl::error::SslError::StreamError(
@@ -183,6 +192,8 @@ impl Clone for Error {
                     Error::Ssl(ssl::error::SslError::OpenSslErrors(v.clone())),
             },
             &Error::UnsupportedProtocol => Error::UnsupportedProtocol,
+            &Error::UnsupportedCompression => Error::UnsupportedCompression,
+            #[cfg(feature = "snappy")]
             &Error::InvalidInputSnappy => Error::InvalidInputSnappy,
             &Error::UnexpectedEOF => Error::UnexpectedEOF,
             &Error::CodecError => Error::CodecError,
@@ -197,8 +208,11 @@ impl error::Error for Error {
         match *self {
             Error::Io(ref err) => error::Error::description(err),
             Error::Kafka(_) => "Kafka Error",
+            #[cfg(feature = "security")]
             Error::Ssl(ref err) => error::Error::description(err),
             Error::UnsupportedProtocol => "Unsupported protocol version",
+            Error::UnsupportedCompression => "Unsupported compression format",
+            #[cfg(feature = "snappy")]
             Error::InvalidInputSnappy => "Snappy decode error",
             Error::UnexpectedEOF => "Unexpected EOF",
             Error::CodecError => "Encoding/Decoding error",
@@ -220,8 +234,11 @@ impl fmt::Display for Error {
         match *self {
             Error::Io(ref err) => err.fmt(f),
             Error::Kafka(ref c) => write!(f, "Kafka Error ({:?})", c),
+            #[cfg(feature = "security")]
             Error::Ssl(ref err) => err.fmt(f),
             Error::UnsupportedProtocol => write!(f, "Unsupported protocol version"),
+            Error::UnsupportedCompression => write!(f, "Unsupported compression format"),
+            #[cfg(feature = "snappy")]
             Error::InvalidInputSnappy => write!(f, "Snappy decode error"),
             Error::UnexpectedEOF => write!(f, "Unexpected EOF"),
             Error::CodecError => write!(f, "Encoding/Decoding Error"),

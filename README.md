@@ -27,6 +27,9 @@ If that library is not installed in the usual path, you can export the
 `LD_LIBRARY_PATH` and `LD_RUN_PATH` environment variables before
 issueing `cargo build`.
 
+Alternatively, support for various features, including snappy, can be
+turned off at compile time.  See kafka-rust's `Cargo.toml` and
+[cargo's documentation](http://doc.crates.io/manifest.html#the-features-section).
 
 ### Supported Kafka version
 

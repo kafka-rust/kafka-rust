@@ -1,7 +1,7 @@
 //! A representation of fetched messages from Kafka.
 
 use std::borrow::Cow;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::mem;
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -11,7 +11,10 @@ use fnv::FnvHasher;
 
 use codecs::ToByte;
 use error::{Error, KafkaCode, Result};
-use compression::{gzip, Compression};
+use compression::Compression;
+#[cfg(feature = "gzip")]
+use compression::gzip;
+#[cfg(feature = "snappy")]
 use compression::snappy::SnappyReader;
 
 use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
@@ -346,6 +349,7 @@ pub struct Message<'a> {
 }
 
 impl<'a> MessageSet<'a> {
+    #[allow(dead_code)]
     fn from_vec(data: Vec<u8>, req_offset: i64, validate_crc: bool) -> Result<MessageSet<'a>> {
         // since we're going to keep the original
         // uncompressed vector around without
@@ -393,16 +397,19 @@ impl<'a> MessageSet<'a> {
                             }
                         }
                         // XXX handle recursive compression in future
+                        #[cfg(feature = "gzip")]
                         c if c == Compression::GZIP as i8 => {
                             let v = try!(gzip::uncompress(pmsg.value));
                             return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
                         }
+                        #[cfg(feature = "snappy")]
                         c if c == Compression::SNAPPY as i8 => {
+                            use std::io::Read;
                             let mut v = Vec::new();
                             try!(try!(SnappyReader::new(pmsg.value)).read_to_end(&mut v));
                             return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
                         }
-                        _ => panic!("Unknown compression type!"),
+                        _ => return Err(Error::UnsupportedCompression),
                     }
                 }
             };
@@ -473,8 +480,10 @@ mod tests {
         include_bytes!("../../test-data/fetch1.mytopic.1p.nocompression.kafka.0821");
     static FETCH1_FETCH_RESPONSE_SNAPPY_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0821");
+    #[cfg(feature = "snappy")]
     static FETCH1_FETCH_RESPONSE_SNAPPY_K0822: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
+    #[cfg(feature = "gzip")]
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
@@ -542,14 +551,26 @@ mod tests {
         test_decode_new_fetch_response(
             FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), Some(&req), false);
 
-        // ~ pretend we asked for messages as of offset-one (while the
-        // server delivered the zero-offset message as well)
+        // ~ pretend we asked for messages as of offset five (while
+        // the server delivered the zero-offset message as well)
         req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 5, -1);
         test_decode_new_fetch_response(
-            skip_lines(FETCH1_TXT, 5), FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
+            skip_lines(FETCH1_TXT, 5), FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), Some(&req), false);
     }
 
+    // verify we don't crash but cleanly fail and report we don't
+    // support the compression
+    #[cfg(not(feature = "snappy"))]
+    #[test]
+    fn test_unsupported_compression_snappy() {
+        let mut req = FetchRequest::new(0, "test", -1, -1);
+        req.add("my-topic", 0, 0, -1);
+        let r = Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
+        assert!(match r { Err(Error::UnsupportedCompression) => true, _ => false });
+    }
+
+    #[cfg(feature = "snappy")]
     #[test]
     fn test_from_slice_snappy_k0821() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
@@ -557,14 +578,15 @@ mod tests {
         test_decode_new_fetch_response(
             FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
 
-        // ~ pretend we asked for messages as of offset-one (while the
-        // server delivered the zero-offset message as well)
+        // ~ pretend we asked for messages as of offset three (while
+        // the server delivered the zero-offset message as well)
         req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 3, -1);
         test_decode_new_fetch_response(
             skip_lines(FETCH1_TXT, 3), FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
     }
 
+    #[cfg(feature = "snappy")]
     #[test]
     fn test_from_slice_snappy_k0822() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
@@ -573,6 +595,7 @@ mod tests {
             FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), Some(&req), false);
     }
 
+    #[cfg(feature = "gzip")]
     #[test]
     fn test_from_slice_gzip_k0821() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
@@ -580,13 +603,13 @@ mod tests {
         test_decode_new_fetch_response(
             FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), Some(&req), false);
 
-        // ~ pretend we asked for messages as of offset-one (while the
+        // ~ pretend we asked for messages as of offset one (while the
         // server delivered the zero-offset message as well)
         req.add("my-topic", 0, 1, -1);
         test_decode_new_fetch_response(
             skip_lines(FETCH1_TXT, 1), FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), Some(&req), false);
 
-        // ~ pretend we asked for messages as of offset-one (while the
+        // ~ pretend we asked for messages as of offset ten (while the
         // server delivered the zero-offset message as well)
         req.add("my-topic", 0, 10, -1);
         test_decode_new_fetch_response(
@@ -635,16 +658,19 @@ mod tests {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), false)
         }
 
+        #[cfg(feature = "snappy")]
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0821(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), false)
         }
 
+        #[cfg(feature = "snappy")]
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), false)
         }
 
+        #[cfg(feature = "gzip")]
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), false)
@@ -655,16 +681,19 @@ mod tests {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), true)
         }
 
+        #[cfg(feature = "snappy")]
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0821_validate_crc(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), true)
         }
 
+        #[cfg(feature = "snappy")]
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822_validate_crc(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), true)
         }
 
+        #[cfg(feature = "gzip")]
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821_validate_crc(b: &mut Bencher) {
             bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), true)

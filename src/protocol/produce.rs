@@ -1,7 +1,12 @@
 use std::io::{Read, Write};
 
 use codecs::{ToByte, FromByte};
-use compression::{Compression, gzip, snappy};
+use compression::Compression;
+#[cfg(feature = "gzip")]
+use compression::gzip;
+#[cfg(feature = "snappy")]
+use compression::snappy;
+
 use error::{Error, Result};
 use utils::TopicPartitionOffset;
 
@@ -138,32 +143,39 @@ impl<'a> PartitionProduceRequest<'a> {
         for msg in &self.messages {
             try!(msg._encode_to_buf(&mut buf, MESSAGE_MAGIC_BYTE, 0));
         }
-        if let Compression::NONE = compression {
-            buf.encode(out)
-        } else {
-            // ~ Compress the so far produced MessageSet (into a newly allocated buffer)
-            let cdata = match compression {
-                Compression::GZIP => try!(gzip::compress(&buf)),
-                Compression::SNAPPY => try!(snappy::compress(&buf)),
-                c => panic!("Unknown compression type: {:?}", c),
-            };
-            // ~ now wrap the compressed data into a new MessagesSet
-            // with exactly one Message
-            buf.clear();
-            let cmsg = MessageProduceRequest::from_value(&cdata);
-            try!(cmsg._encode_to_buf(&mut buf, MESSAGE_MAGIC_BYTE, compression as i8));
-            buf.encode(out)
+        match compression {
+            Compression::NONE => {
+                // ~ nothing to do
+            }
+            #[cfg(feature = "gzip")]
+            Compression::GZIP => {
+                let cdata = try!(gzip::compress(&buf));
+                try!(render_compressed(&mut buf, &cdata, compression));
+            }
+            #[cfg(feature = "snappy")]
+            Compression::SNAPPY => {
+                let cdata = try!(snappy::compress(&buf));
+                try!(render_compressed(&mut buf, &cdata, compression));
+            }
         }
+        buf.encode(out)
     }
+}
+
+// ~ A helper method to render `cdata` into `out` as a compressed message.
+// ~ `out` is first cleared and then populated with the rendered message.
+#[cfg(any(feature = "snappy", feature = "gzip"))]
+fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression)
+                     -> Result<()>
+{
+    out.clear();
+    let cmsg = MessageProduceRequest::new(None, Some(cdata));
+    cmsg._encode_to_buf(out, MESSAGE_MAGIC_BYTE, compression as i8)
 }
 
 impl<'a> MessageProduceRequest<'a> {
     fn new<'b>(key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> MessageProduceRequest<'b> {
         MessageProduceRequest { key: key, value: value }
-    }
-
-    fn from_value<'b>(value: &'b [u8]) -> MessageProduceRequest<'b> {
-        MessageProduceRequest::new(None, Some(value))
     }
 
     // render a single message as: Offset MessageSize Message

@@ -10,19 +10,26 @@ readme = "README.md"
 keywords = ["kafka", "queue"]
 license = "MIT"
 
+
 [dependencies]
 byteorder = "0.4"
-flate2 = "0.2"
 crc = "1.2"
 log = "0.3"
-snappy = "0.3"
 ref_slice = "1.0"
 fnv = "1.0"
-openssl = "0.7"
+
+flate2 = { version = "0.2", optional = true }
+snappy = { version = "0.3", optional = true }
+openssl = { version = "0.7", optional = true }
+
 
 [dev-dependencies]
 getopts = "0.2"
 env_logger = "0.3"
 
+
 [features]
+default = ["snappy", "gzip", "security"]
+gzip = ["flate2"]
+security = ["openssl"]
 nightly = []

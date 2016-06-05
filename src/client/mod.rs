@@ -9,6 +9,7 @@ use std::io::Cursor;
 use std::iter::Iterator;
 use std::mem;
 
+#[cfg(feature = "security")]
 use openssl::ssl::SslContext;
 
 // pub re-export
@@ -86,11 +87,26 @@ struct ClientConfig {
 struct ConnectionPool {
     conns: HashMap<String, KafkaConnection>,
     timeout: i32,
+    #[cfg(feature = "security")]
     security_config: Option<SecurityConfig>
 }
 
 impl ConnectionPool {
-    fn new(timeout: i32, security: Option<SecurityConfig>) -> ConnectionPool {
+    #[cfg(not(feature = "security"))]
+    fn new(timeout: i32) -> ConnectionPool {
+        ConnectionPool {
+            conns: HashMap::new(),
+            timeout: timeout,
+        }
+    }
+
+    #[cfg(feature = "security")]
+    fn new(timeout: i32) -> ConnectionPool {
+        Self::new_with_security(timeout, None)
+    }
+
+    #[cfg(feature = "security")]
+    fn new_with_security(timeout: i32, security: Option<SecurityConfig>) -> ConnectionPool {
         ConnectionPool {
             conns: HashMap::new(),
             timeout: timeout,
@@ -106,11 +122,19 @@ impl ConnectionPool {
             // method is no longer recursive).
             return Ok(unsafe { mem::transmute(conn) });
         }
-        self.conns.insert(host.to_owned(),
-                          try!(KafkaConnection::new(
-                              host, self.timeout,
-                              self.security_config.as_ref().map(|c| &c.0))));
+        let conn = try!(self.new_conn(host));
+        self.conns.insert(host.to_owned(), conn);
         Ok(self.conns.get_mut(host).unwrap())
+    }
+
+    #[cfg(not(feature = "security"))]
+    fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
+        KafkaConnection::new(host, self.timeout)
+    }
+
+    #[cfg(feature = "security")]
+    fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
+        KafkaConnection::new(host, self.timeout, self.security_config.as_ref().map(|c| &c.0))
     }
 }
 
@@ -279,10 +303,13 @@ impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
 
 // --------------------------------------------------------------------
 
-/// This will be expanded in the future. See #51.
+/// Security relevant configuration options for KafkaClient.
+// This will be expanded in the future. See #51.
+#[cfg(feature = "security")]
 #[derive(Debug)]
 pub struct SecurityConfig(SslContext);
 
+#[cfg(feature = "security")]
 impl SecurityConfig {
     /// In the future this will also support a kerbos via #51.
     pub fn new(ssl: SslContext) -> SecurityConfig {
@@ -314,11 +341,11 @@ impl KafkaClient {
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
             },
-            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS, None),
+            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
             state: state::ClientState::new(),
         }
     }
-    
+
     /// Creates a new secure instance of KafkaClient. Before being able to
     /// successfully use the new client, you'll have to load metadata.
     ///
@@ -354,6 +381,7 @@ impl KafkaClient {
     /// [openssl](https://crates.io/crates/openssl)
     /// and [openssl_verify](https://crates.io/crates/openssl-verify),
     /// as well as [Kafka's documentation](https://kafka.apache.org/documentation.html#security_ssl).
+    #[cfg(feature = "security")]
     pub fn new_secure(hosts: Vec<String>, security: SecurityConfig) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
@@ -365,7 +393,7 @@ impl KafkaClient {
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
             },
-            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS, Some(security)),
+            conn_pool: ConnectionPool::new_with_security(DEFAULT_SO_TIMEOUT_SECS, Some(security)),
             state: state::ClientState::new(),
         }
     }
@@ -383,9 +411,11 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
-    /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// use kafka::client::{Compression, KafkaClient};
+    ///
+    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
-    /// client.set_compression(kafka::client::Compression::SNAPPY);
+    /// client.set_compression(Compression::NONE);
     /// ```
     #[inline]
     pub fn set_compression(&mut self, compression: Compression) {
