@@ -6,7 +6,7 @@ use std::time::Duration;
 #[cfg(feature = "security")]
 use openssl::ssl::{SslContext, SslStream};
 
-use error::{Error, Result};
+use error::Result;
 
 #[cfg(not(feature = "security"))]
 type KafkaStream = TcpStream;
@@ -86,15 +86,20 @@ impl KafkaConnection {
         self.stream.write(&msg[..]).map_err(From::from)
     }
 
-    pub fn read_exact(&mut self, size: u64) -> Result<Vec<u8>> {
-        let mut buffer: Vec<u8> = Vec::with_capacity(size as usize);
-        let mut s = (&mut self.stream).take(size);
-        let bytes_read = try!(s.read_to_end(&mut buffer));
-        if bytes_read != size as usize {
-            Err(Error::UnexpectedEOF)
-        } else {
-            Ok(buffer)
-        }
+    pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+        (&mut self.stream).read_exact(buf).map_err(From::from)
+    }
+
+    pub fn read_exact_alloc(&mut self, size: u64) -> Result<Vec<u8>> {
+        let size: usize = size as usize;
+        let mut buffer: Vec<u8> = Vec::with_capacity(size);
+        // this is safe actually: we are setting the len to the
+        // buffers capacity and either fully populate it in the
+        // following call to `read_exact` or discard the vector (in
+        // the error case)
+        unsafe { buffer.set_len(size) };
+        try!((&mut self.stream).read_exact(buffer.as_mut_slice()));
+        Ok(buffer)
     }
 
     fn from_stream(stream: KafkaStream, host: &str, timeout_secs: i32) -> KafkaConnection {

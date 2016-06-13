@@ -1116,10 +1116,9 @@ fn __send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
 fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
                              -> Result<T::R>
 {
-    let v = try!(conn.read_exact(4));
-    let size = try!(i32::decode_new(&mut Cursor::new(v)));
+    let size = try!(__get_response_size(conn));
 
-    let resp = try!(conn.read_exact(size as u64));
+    let resp = try!(conn.read_exact_alloc(size as u64));
 
     // {
     //     use std::fs::OpenOptions;
@@ -1148,10 +1147,8 @@ fn __z_send_receive<R, P>(conn_pool: &mut ConnectionPool, host: &str, req: R, pa
 fn __z_get_response<P>(conn: &mut KafkaConnection, parser: &P) -> Result<P::T>
     where P: ResponseParser
 {
-    let v = try!(conn.read_exact(4));
-    let size = try!(i32::decode_new(&mut Cursor::new(v)));
-
-    let resp = try!(conn.read_exact(size as u64));
+    let size = try!(__get_response_size(conn));
+    let resp = try!(conn.read_exact_alloc(size as u64));
 
     // {
     //     use std::fs::OpenOptions;
@@ -1166,4 +1163,10 @@ fn __z_get_response<P>(conn: &mut KafkaConnection, parser: &P) -> Result<P::T>
     // }
 
     parser.parse(resp)
+}
+
+fn __get_response_size(conn: &mut KafkaConnection) -> Result<i32> {
+    let mut buf = [0u8; 4];
+    try!(conn.read_exact(&mut buf));
+    i32::decode_new(&mut Cursor::new(&buf))
 }
