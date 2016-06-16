@@ -5,8 +5,6 @@ use std::error;
 use std::io;
 use std::fmt;
 
-use byteorder;
-
 #[cfg(feature = "security")]
 use openssl::ssl;
 
@@ -158,14 +156,11 @@ pub enum KafkaCode {
 }
 
 impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Error { Error::Io(err) }
-}
-
-impl From<byteorder::Error> for Error {
-    fn from(err: byteorder::Error) -> Error {
-        match err {
-            byteorder::Error::UnexpectedEOF => Error::UnexpectedEOF,
-            byteorder::Error::Io(err) => Error::Io(err)
+    fn from(err: io::Error) -> Error {
+        if err.kind() == io::ErrorKind::UnexpectedEof {
+            Error::UnexpectedEOF
+        } else {
+            Error::Io(err)
         }
     }
 }
