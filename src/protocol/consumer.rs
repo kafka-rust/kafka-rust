@@ -5,51 +5,66 @@ use error::{Error, Result};
 use utils::TopicPartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
-use super::{API_KEY_OFFSET_FETCH, API_KEY_OFFSET_COMMIT, API_VERSION};
+use super::{API_KEY_OFFSET_FETCH, API_KEY_OFFSET_COMMIT, API_KEY_GROUP_COORDINATOR, API_VERSION};
 
-//
-// XXX Seems like this got replaced: See https://cwiki.apache.org/confluence/pages/diffpages.action?originalId=61329518&pageId=61330213
-//
-// #[derive(Debug)]
-// pub struct ConsumerMetadataRequest<'a> {
-//     pub header: HeaderRequest<'a>,
-//     pub group: &'a str,
-// }
+// --------------------------------------------------------------------
 
-// impl<'a> ToByte for ConsumerMetadataRequest<'a> {
-//     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-//         try_multi!(
-//             self.header.encode(buffer),
-//             self.group.encode(buffer)
-//         )
-//     }
-// }
+#[derive(Debug)]
+pub struct GroupCoordinatorRequest<'a, 'b> {
+    pub header: HeaderRequest<'a>,
+    pub group: &'b str,
+}
 
-// // --------------------------------------------------------------------
+impl<'a, 'b> GroupCoordinatorRequest<'a, 'b> {
+    pub fn new(group: &'b str, correlation_id: i32, client_id: &'a str)
+               -> GroupCoordinatorRequest<'a, 'b>
+    {
+        GroupCoordinatorRequest {
+            header: HeaderRequest::new(
+                API_KEY_GROUP_COORDINATOR, API_VERSION, correlation_id, client_id),
+            group: group,
+        }
+    }
+}
 
-// #[derive(Default, Debug)]
-// pub struct ConsumerMetadataResponse {
-//     pub header: HeaderResponse,
-//     pub error: i16,
-//     pub id: i32,
-//     pub host: String,
-//     pub port: i32
-// }
+impl<'a, 'b> ToByte for GroupCoordinatorRequest<'a, 'b> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        try_multi!(
+            self.header.encode(buffer),
+            self.group.encode(buffer))
+    }
+}
 
-// impl FromByte for ConsumerMetadataResponse {
-//     type R = ConsumerMetadataResponse;
+#[derive(Debug, Default)]
+pub struct GroupCoordinatorResponse {
+    pub header: HeaderResponse,
+    pub error: i16,
+    pub coordinator_id: i32,
+    pub coordinator_port: i32,
+    pub coordinator_host: String,
+}
 
-//     #[allow(unused_must_use)]
-//     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-//         try_multi!(
-//             self.header.decode(buffer),
-//             self.error.decode(buffer),
-//             self.id.decode(buffer),
-//             self.host.decode(buffer),
-//             self.port.decode(buffer)
-//         )
-//     }
-// }
+impl GroupCoordinatorResponse {
+    pub fn to_result(self) -> Result<Self> {
+        match Error::from_protocol_error(self.error) {
+            Some(e) => Err(e),
+            None => Ok(self),
+        }
+    }
+}
+
+impl FromByte for GroupCoordinatorResponse {
+    type R = GroupCoordinatorResponse;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        try_multi!(
+            self.header.decode(buffer),
+            self.error.decode(buffer),
+            self.coordinator_id.decode(buffer),
+            self.coordinator_host.decode(buffer),
+            self.coordinator_port.decode(buffer))
+    }
+}
 
 // --------------------------------------------------------------------
 
@@ -347,35 +362,29 @@ pub struct PartitionOffsetCommitResponse {
 impl FromByte for OffsetCommitResponse {
     type R = OffsetCommitResponse;
 
-    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.header.decode(buffer),
-            self.topic_partitions.decode(buffer)
-        )
+            self.topic_partitions.decode(buffer))
     }
 }
 
 impl FromByte for TopicPartitionOffsetCommitResponse {
     type R = TopicPartitionOffsetCommitResponse;
 
-    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
+            self.partitions.decode(buffer))
     }
 }
 
 impl FromByte for PartitionOffsetCommitResponse {
     type R = PartitionOffsetCommitResponse;
 
-    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.partition.decode(buffer),
-            self.error.decode(buffer)
-        )
+            self.error.decode(buffer))
     }
 }
