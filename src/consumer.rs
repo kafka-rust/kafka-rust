@@ -24,7 +24,7 @@
 //!     }
 //!     consumer.consume_messageset(ms);
 //!   }
-//!   consumer.commit_consumed();
+//!   consumer.commit_consumed().unwrap();
 //! }
 //! ```
 //!
