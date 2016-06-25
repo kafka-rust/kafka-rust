@@ -153,6 +153,14 @@ pub enum KafkaCode {
     /// Returned by the broker when the client is not authorized to use an
     /// inter-broker or administrative API.
     ClusterAuthorizationFailedCode,
+    /// The timestamp of the message is out of acceptable range.
+    InvalidTimestamp,
+    /// The broker does not support the requested SASL mechanism.
+    UnsupportedSaslMechanism,
+    ///	Request is not valid given the current SASL state.
+    IllegalSaslState,
+    /// The version of API is not supported.
+    UnsupportedVersion,
 }
 
 impl From<io::Error> for Error {

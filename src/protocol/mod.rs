@@ -59,6 +59,7 @@ pub trait ResponseParser {
 impl Error {
     fn from_protocol_error(n: i16) -> Option<Error> {
         match n {
+            0 => None,
             1 => Some(Error::Kafka(KafkaCode::OffsetOutOfRange)),
             2 => Some(Error::Kafka(KafkaCode::CorruptMessage)),
             3 => Some(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
@@ -89,8 +90,11 @@ impl Error {
             29 => Some(Error::Kafka(KafkaCode::TopicAuthorizationFailedCode)),
             30 => Some(Error::Kafka(KafkaCode::GroupAuthorizationFailedCode)),
             31 => Some(Error::Kafka(KafkaCode::ClusterAuthorizationFailedCode)),
-            -1 => Some(Error::Kafka(KafkaCode::Unknown)),
-            _ => None
+            32 => Some(Error::Kafka(KafkaCode::InvalidTimestamp)),
+            33 => Some(Error::Kafka(KafkaCode::UnsupportedSaslMechanism)),
+            34 => Some(Error::Kafka(KafkaCode::IllegalSaslState)),
+            35 => Some(Error::Kafka(KafkaCode::UnsupportedVersion)),
+            _ => Some(Error::Kafka(KafkaCode::Unknown)),
         }
     }
 }
