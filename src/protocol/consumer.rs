@@ -46,7 +46,7 @@ pub struct GroupCoordinatorResponse {
 
 impl GroupCoordinatorResponse {
     pub fn to_result(self) -> Result<Self> {
-        match Error::from_protocol_error(self.error) {
+        match Error::from_protocol(self.error) {
             Some(e) => Err(e),
             None => Ok(self),
         }
@@ -195,7 +195,7 @@ impl PartitionOffsetFetchResponse {
         TopicPartitionOffset {
             topic: topic,
             partition: self.partition,
-            offset: match Error::from_protocol_error(self.error) {
+            offset: match Error::from_protocol(self.error) {
                 None => Ok(self.offset),
                 Some(e) => Err(e),
             }

@@ -57,7 +57,7 @@ pub trait ResponseParser {
 
 // a (sub-) module private method for error
 impl Error {
-    fn from_protocol_error(n: i16) -> Option<Error> {
+    fn from_protocol(n: i16) -> Option<Error> {
         match n {
             0 => None,
             1 => Some(Error::Kafka(KafkaCode::OffsetOutOfRange)),
@@ -110,7 +110,9 @@ pub struct HeaderRequest<'a> {
 }
 
 impl<'a> HeaderRequest<'a> {
-    fn new(api_key: i16, api_version: i16, correlation_id: i32, client_id: &'a str) -> HeaderRequest {
+    fn new(api_key: i16, api_version: i16, correlation_id: i32, client_id: &'a str)
+           -> HeaderRequest
+    {
         HeaderRequest {
             api_key: api_key,
             api_version: api_version,
@@ -148,6 +150,6 @@ impl FromByte for HeaderResponse {
 
 // --------------------------------------------------------------------
 
-pub fn tocrc(data: &[u8]) -> u32 {
+pub fn to_crc(data: &[u8]) -> u32 {
     crc32::checksum_ieee(data)
 }
