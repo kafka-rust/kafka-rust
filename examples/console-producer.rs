@@ -104,8 +104,8 @@ fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config
             continue; // ~ skip empty lines
         }
         // ~ directly send to kafka
-        let r = try!(producer.send(&rec));
-        let _ = write!(stderr, "debug: {:?}\n", r);
+        try!(producer.send(&rec));
+        let _ = write!(stderr, "Sent: {}", *rec.value);
     }
     Ok(())
 }
