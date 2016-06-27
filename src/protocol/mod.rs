@@ -27,8 +27,8 @@ pub use self::produce::{ProduceRequest, ProduceResponse};
 pub use self::offset::{OffsetRequest, OffsetResponse};
 pub use self::metadata::{MetadataRequest, MetadataResponse};
 pub use self::consumer::{GroupCoordinatorRequest, GroupCoordinatorResponse,
-                         OffsetFetchRequest, OffsetFetchResponse,
-                         OffsetCommitRequest, OffsetCommitResponse};
+                         OffsetFetchVersion, OffsetFetchRequest, OffsetFetchResponse,
+                         OffsetCommitVersion, OffsetCommitRequest, OffsetCommitResponse};
 
 // --------------------------------------------------------------------
 
@@ -37,11 +37,11 @@ const API_KEY_FETCH: i16     = 1;
 const API_KEY_OFFSET: i16    = 2;
 const API_KEY_METADATA: i16  = 3;
 // 4-7 reserved for non-public kafka api services
-const API_KEY_OFFSET_COMMIT: i16 = 8;
-const API_KEY_OFFSET_FETCH: i16  = 9;
+const API_KEY_OFFSET_COMMIT: i16     = 8;
+const API_KEY_OFFSET_FETCH: i16      = 9;
 const API_KEY_GROUP_COORDINATOR: i16 = 10;
 
-// the version of Kafka API we are requesting
+// the default version of Kafka API we are requesting
 const API_VERSION: i16 = 0;
 
 // --------------------------------------------------------------------

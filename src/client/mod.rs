@@ -127,6 +127,10 @@ impl ConnectionPool {
         Ok(self.conns.get_mut(host).unwrap())
     }
 
+    fn get_conn_any<'a>(&'a mut self) -> Option<&'a mut KafkaConnection> {
+        self.conns.values_mut().next()
+    }
+
     #[cfg(not(feature = "security"))]
     fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
         KafkaConnection::new(host, self.timeout)
@@ -617,17 +621,17 @@ impl KafkaClient {
     fn fetch_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<protocol::MetadataResponse> {
         let correlation = self.state.next_correlation_id();
         for host in &self.config.hosts {
-            debug!("Attempting to fetch metadata from {}", host);
+            debug!("attempting to fetch metadata from {}", host);
             match self.conn_pool.get_conn(host) {
                 Ok(conn) => {
                     let req = protocol::MetadataRequest::new(correlation, &self.config.client_id, topics);
                     match __send_request(conn, req) {
                         Ok(_) => return __get_response::<protocol::MetadataResponse>(conn),
-                        Err(e) => debug!("Failed to request metadata from {}: {}", host, e),
+                        Err(e) => debug!("failed to request metadata from {}: {}", host, e),
                     }
                 }
                 Err(e) => {
-                    debug!("Failed to connect to {}: {}", host, e);
+                    debug!("failed to connect to {}: {}", host, e);
                 }
             }
         }
@@ -675,7 +679,7 @@ impl KafkaClient {
         // Call each broker with the request formed earlier
         let mut res: HashMap<String, Vec<PartitionOffset>> = HashMap::with_capacity(n_topics);
         for (host, req) in reqs {
-            let resp = try!(__send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&mut self.conn_pool, &host, req));
+            let resp = try!(__send_receive::<_, protocol::OffsetResponse>(&mut self.conn_pool, &host, req));
             for tp in resp.topic_partitions {
                 let e = res.entry(tp.topic).or_insert(vec!());
                 for p in tp.partitions {
@@ -916,21 +920,18 @@ impl KafkaClient {
     pub fn commit_offsets<'a, J, I>(&mut self, group: &str, offsets: I) -> Result<()>
         where J: AsRef<CommitOffset<'a>>, I: IntoIterator<Item=J>
     {
-        let state = &mut self.state;
-        let correlation = state.next_correlation_id();
-
-        // Map topic and partition to the corresponding broker
-        let config = &self.config;
-        let mut reqs: HashMap<&str, protocol::OffsetCommitRequest> = HashMap:: new();
-        for tp in offsets {
-            let tp = tp.as_ref();
-            if let Some(broker) = state.find_broker(&tp.topic, tp.partition) {
-                reqs.entry(broker)
-                    .or_insert(protocol::OffsetCommitRequest::new(group, correlation, &config.client_id))
-                    .add(tp.topic, tp.partition, tp.offset, "");
+        let mut req = protocol::OffsetCommitRequest::new(
+            protocol::OffsetCommitVersion::V0, // XXX configurable
+            group, self.state.next_correlation_id(), &self.config.client_id);
+        for o in offsets {
+            let o = o.as_ref();
+            if self.state.contains_topic_partition(o.topic, o.partition) {
+                req.add(o.topic, o.partition, o.offset, "");
+            } else {
+                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
-        __commit_offsets(&mut self.conn_pool, reqs)
+        __commit_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
     }
 
     /// Commit offset of a particular topic partition on behalf of a
@@ -975,19 +976,18 @@ impl KafkaClient {
                                          -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<FetchGroupOffset<'a>>, I: IntoIterator<Item=J>
     {
-        let correlation = self.state.next_correlation_id();
-
-        // Map topic and partition to the corresponding broker
-        let mut reqs: HashMap<&str, protocol::OffsetFetchRequest> = HashMap:: new();
-        for tp in partitions {
-            let tp = tp.as_ref();
-            if let Some(broker) = self.state.find_broker(tp.topic, tp.partition) {
-                reqs.entry(broker)
-                    .or_insert(protocol::OffsetFetchRequest::new(group, correlation, &self.config.client_id))
-                    .add(tp.topic, tp.partition);
+        let mut req = protocol::OffsetFetchRequest::new(
+            protocol::OffsetFetchVersion::V0, // XXX configurable
+            group, self.state.next_correlation_id(), &self.config.client_id);
+        for p in partitions {
+            let p = p.as_ref();
+            if self.state.contains_topic_partition(p.topic, p.partition) {
+                req.add(p.topic, p.partition);
+            } else {
+                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
-        __fetch_group_offsets(&mut self.conn_pool, reqs)
+        __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
     }
 
     /// Fetch offset for all partitions of a particular topic of a consumer group
@@ -1005,38 +1005,68 @@ impl KafkaClient {
     pub fn fetch_group_topic_offsets(&mut self, group: &str, topic: &str)
                                -> Result<Vec<TopicPartitionOffset>>
     {
-        let tps: Vec<_> =
-            match self.state.partitions_for(topic) {
-                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
-                Some(tp) => tp.iter().map(|(id, _)| FetchGroupOffset::new(topic, id)).collect(),
-            };
-        self.fetch_group_offsets(group, tps)
-    }
-}
-
-fn __commit_offsets(conn_pool: &mut ConnectionPool,
-                    reqs: HashMap<&str, protocol::OffsetCommitRequest>)
-                    -> Result<()> {
-    // Call each broker with the request formed earlier
-    for (host, req) in reqs {
-        try!(__send_receive::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(conn_pool, host, req));
-    }
-    Ok(())
-}
-
-fn __fetch_group_offsets(conn_pool: &mut ConnectionPool,
-                               reqs: HashMap<&str, protocol::OffsetFetchRequest>)
-                               -> Result<Vec<TopicPartitionOffset>> {
-    // Call each broker with the request formed earlier
-    let mut res = vec!();
-    for (host, req) in reqs {
-        let resp = try!(__send_receive::<protocol::OffsetFetchRequest, protocol::OffsetFetchResponse>(conn_pool, host, req));
-        let o = resp.get_offsets();
-        for tpo in o {
-            res.push(tpo);
+        let mut req = protocol::OffsetFetchRequest::new(
+            protocol::OffsetFetchVersion::V0, // XXX configurable
+            group, self.state.next_correlation_id(), &self.config.client_id);
+        match self.state.partitions_for(topic) {
+            None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+            Some(tp) => {
+                for (id, _) in tp {
+                    req.add(topic, id);
+                }
+            }
         }
+        __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
     }
-    Ok(res)
+}
+
+fn __get_group_coordinator<'a>(group: &str,
+                               state: &'a mut state::ClientState,
+                               conn_pool: &mut ConnectionPool,
+                               config: &ClientConfig)
+                               -> Result<&'a str>
+{
+    if let Some(host) = state.group_coordinator(group) {
+        // ~ decouple the lifetimes to make borrowck happy;
+        // this is actually safe since we're immediatelly
+        // returning this, so the follow up code is not
+        // affected here
+        return Ok(unsafe { mem::transmute(host) });
+    }
+    let correlation_id = state.next_correlation_id();
+    let req = protocol::GroupCoordinatorRequest::new(group, correlation_id, &config.client_id);
+    // XXX make this work even if load_metadata has not been called yet
+    let conn = conn_pool.get_conn_any().expect("available connection");
+    debug!("determining group coordinator for group '{}' on: {:?}", group, conn);
+    let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, req)
+                 .and_then(protocol::GroupCoordinatorResponse::to_result));
+    Ok(state.set_group_coordinator(group, &r))
+}
+
+fn __commit_offsets(req: protocol::OffsetCommitRequest,
+                    state: &mut state::ClientState,
+                    conn_pool: &mut ConnectionPool,
+                    config: &ClientConfig)
+                    -> Result<()> {
+    let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
+    debug!("committing group offsets for '{}' to: {}", req.group, host);
+    __send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, req).map(|_| ())
+    // XXX handle NotCoordinatorForGroupCode(16) by refreshing the
+    // current group_coordinator and retring the fetch requests again
+    // XXX handle errors for individual partitions
+}
+
+fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
+                         state: &mut state::ClientState,
+                         conn_pool: &mut ConnectionPool,
+                         config: &ClientConfig)
+                         -> Result<Vec<TopicPartitionOffset>>
+{
+    let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
+    debug!("fetching group offsets for '{}' from: {}", req.group, host);
+    __send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, req).map(|r| r.get_offsets())
+    // XXX handle NotCoordinatorForGroupCode(16) by refreshing the
+    // current group_coordinator and retring the fetch requests again
 }
 
 /// ~ carries out the given fetch requests and returns the response
@@ -1073,7 +1103,7 @@ fn __produce_messages(conn_pool: &mut ConnectionPool,
     } else {
         let mut res: Vec<TopicPartitionOffset> = vec![];
         for (host, req) in reqs {
-            let resp = try!(__send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(conn_pool, &host, req));
+            let resp = try!(__send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, req));
             for tpo in resp.get_response() {
                 res.push(tpo);
             }
@@ -1082,23 +1112,30 @@ fn __produce_messages(conn_pool: &mut ConnectionPool,
     }
 }
 
-fn __send_receive<T: ToByte, V: FromByte>(conn_pool: &mut ConnectionPool, host: &str, req: T)
-                                        -> Result<V::R>
+fn __send_receive<T, V>(conn_pool: &mut ConnectionPool, host: &str, req: T)
+                        -> Result<V::R>
+    where T: ToByte, V: FromByte
 {
-    let mut conn = try!(conn_pool.get_conn(host));
-    try!(__send_request(&mut conn, req));
-    __get_response::<V>(&mut conn)
+    __send_receive_conn::<T, V>(try!(conn_pool.get_conn(host)), req)
 }
 
-fn __send_noack<T: ToByte, V: FromByte>(conn_pool: &mut ConnectionPool, host: &str, req: T)
-                                        -> Result<usize>
+fn __send_receive_conn<T, V>(conn: &mut KafkaConnection, req: T) -> Result<V::R>
+    where T: ToByte, V: FromByte
+{
+    try!(__send_request(conn, req));
+    __get_response::<V>(conn)
+}
+
+fn __send_noack<T, V>(conn_pool: &mut ConnectionPool, host: &str, req: T)
+                      -> Result<usize>
+    where T: ToByte, V: FromByte
 {
     let mut conn = try!(conn_pool.get_conn(&host));
     __send_request(&mut conn, req)
 }
 
 fn __send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
-                           -> Result<usize>
+                             -> Result<usize>
 {
     // ~ buffer to receive data to be sent
     let mut buffer = Vec::with_capacity(4);
@@ -1117,7 +1154,6 @@ fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
                              -> Result<T::R>
 {
     let size = try!(__get_response_size(conn));
-
     let resp = try!(conn.read_exact_alloc(size as u64));
 
     // {

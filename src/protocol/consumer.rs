@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use codecs::{ToByte, FromByte};
+use codecs::{self, ToByte, FromByte};
 use error::{Error, Result};
 use utils::TopicPartitionOffset;
 
@@ -68,6 +68,15 @@ impl FromByte for GroupCoordinatorResponse {
 
 // --------------------------------------------------------------------
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum OffsetFetchVersion {
+    /// causes the retrieval of the offsets from zookeeper
+    V0 = 0,
+    /// supported as of kafka 0.8.2, causes the retrieval of the
+    /// offsets from kafka itself
+    V1 = 1,
+}
+
 #[derive(Debug)]
 pub struct OffsetFetchRequest<'a, 'b, 'c> {
     pub header: HeaderRequest<'a>,
@@ -87,10 +96,13 @@ pub struct PartitionOffsetFetchRequest {
 }
 
 impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
-    pub fn new(group: &'b str, correlation_id: i32, client_id: &'a str) -> OffsetFetchRequest<'a, 'b, 'c> {
+    pub fn new(version: OffsetFetchVersion,
+               group: &'b str, correlation_id: i32, client_id: &'a str)
+               -> OffsetFetchRequest<'a, 'b, 'c>
+    {
         OffsetFetchRequest {
             header: HeaderRequest::new(
-                API_KEY_OFFSET_FETCH, API_VERSION, correlation_id, client_id),
+                API_KEY_OFFSET_FETCH, version as i16, correlation_id, client_id),
             group: group,
             topic_partitions: vec!()
         }
@@ -243,6 +255,29 @@ impl FromByte for PartitionOffsetFetchResponse {
 
 // --------------------------------------------------------------------
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum OffsetCommitVersion {
+    /// causes offset to be stored in zookeeper
+    V0 = 0,
+    /// supported as of kafka 0.8.2, causes offsets to be stored
+    /// directly in kafka
+    V1 = 1,
+    /// supported as of kafka 0.9.0, causes offsets to be stored
+    /// directly in kafka
+    V2 = 2,
+}
+
+impl OffsetCommitVersion {
+    fn from_protocol(n: i16) -> OffsetCommitVersion {
+        match n {
+            0 => OffsetCommitVersion::V0,
+            1 => OffsetCommitVersion::V1,
+            2 => OffsetCommitVersion::V2,
+            _ => panic!("Unknown offset commit version code: {}", n),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct OffsetCommitRequest<'a, 'b> {
     pub header: HeaderRequest<'a>,
@@ -264,10 +299,13 @@ pub struct PartitionOffsetCommitRequest<'a> {
 }
 
 impl<'a, 'b> OffsetCommitRequest<'a, 'b> {
-    pub fn new(group: &'b str, correlation_id: i32, client_id: &'a str) -> OffsetCommitRequest<'a, 'b> {
+    pub fn new(version: OffsetCommitVersion,
+               group: &'b str, correlation_id: i32, client_id: &'a str)
+               -> OffsetCommitRequest<'a, 'b>
+    {
         OffsetCommitRequest{
             header: HeaderRequest::new(
-                API_KEY_OFFSET_COMMIT, API_VERSION, correlation_id, client_id),
+                API_KEY_OFFSET_COMMIT, version as i16, correlation_id, client_id),
             group: group,
             topic_partitions: vec!()
         }
@@ -300,8 +338,10 @@ impl<'a> TopicPartitionOffsetCommitRequest<'a> {
 }
 
 impl<'a> PartitionOffsetCommitRequest<'a> {
-    pub fn new(partition: i32, offset: i64, metadata: &'a str) -> PartitionOffsetCommitRequest<'a> {
-        PartitionOffsetCommitRequest{
+    pub fn new(partition: i32, offset: i64, metadata: &'a str)
+               -> PartitionOffsetCommitRequest<'a>
+    {
+        PartitionOffsetCommitRequest {
             partition: partition,
             offset: offset,
             metadata: metadata
@@ -311,33 +351,36 @@ impl<'a> PartitionOffsetCommitRequest<'a> {
 
 impl<'a, 'b> ToByte for OffsetCommitRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.group.encode(buffer),
-            self.topic_partitions.encode(buffer)
-        )
+        let v = OffsetCommitVersion::from_protocol(self.header.api_version);
+        try!(self.header.encode(buffer));
+        try!(self.group.encode(buffer));
+        match v {
+            OffsetCommitVersion::V1 => {
+                try!((-1i32).encode(buffer));
+                try!("".encode(buffer));
+            }
+            OffsetCommitVersion::V2 => {
+                try!((-1i32).encode(buffer));
+                try!("".encode(buffer));
+                try!((-1i64).encode(buffer));
+            }
+            _ => { /* nothing to do */ }
+        }
+        codecs::encode_as_array(buffer, &self.topic_partitions, |buffer, tp| {
+            try_multi!(
+                tp.topic.encode(buffer),
+                codecs::encode_as_array(buffer, &tp.partitions, |buffer, p| {
+                    try!(p.partition.encode(buffer));
+                    try!(p.offset.encode(buffer));
+                    if v == OffsetCommitVersion::V1 {
+                        try!((-1i64).encode(buffer));
+                    }
+                    p.metadata.encode(buffer)
+                })
+            )
+        })
     }
 }
-
-impl<'a> ToByte for TopicPartitionOffsetCommitRequest<'a> {
-    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.topic.encode(buffer),
-            self.partitions.encode(buffer)
-        )
-    }
-}
-
-impl<'a> ToByte for PartitionOffsetCommitRequest<'a> {
-    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.partition.encode(buffer),
-            self.offset.encode(buffer),
-            self.metadata.encode(buffer)
-        )
-    }
-}
-
 
 // --------------------------------------------------------------------
 
