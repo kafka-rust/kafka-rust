@@ -128,7 +128,7 @@ impl ConnectionPool {
     }
 
     fn get_conn_any<'a>(&'a mut self) -> Option<&'a mut KafkaConnection> {
-        self.conns.values_mut().next()
+        self.conns.iter_mut().next().map(|(_, conn)| conn)
     }
 
     #[cfg(not(feature = "security"))]
