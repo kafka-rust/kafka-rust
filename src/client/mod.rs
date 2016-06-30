@@ -56,7 +56,7 @@ pub const DEFAULT_GROUP_OFFSET_STORAGE: GroupOffsetStorage = GroupOffsetStorage:
 
 /// Client struct keeping track of brokers and topic metadata.
 ///
-/// Implements methods described by the [Kafka Protocol](https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol).
+/// Implements methods described by the [Kafka Protocol](http://kafka.apache.org/protocol.html).
 ///
 /// You will have to load metadata before making any other request.
 #[derive(Debug)]

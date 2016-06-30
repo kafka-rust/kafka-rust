@@ -48,7 +48,7 @@ pub enum Error {
 }
 
 /// Various errors reported by a remote Kafka server.
-/// See also [Kafka Errors](https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol#AGuideToTheKafkaProtocol-ErrorCodes)
+/// See also [Kafka Errors](http://kafka.apache.org/protocol.html)
 #[derive(Debug, Copy, Clone)]
 pub enum KafkaCode {
     /// An unexpected server error
