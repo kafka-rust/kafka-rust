@@ -51,6 +51,8 @@ pub const DEFAULT_FETCH_MAX_BYTES_PER_PARTITION: i32 = 32 * 1024;
 /// The default value for `KafkaClient::set_fetch_crc_validation(..)`
 pub const DEFAULT_FETCH_CRC_VALIDATION: bool = true;
 
+/// The default value for `KafkaClient::set_group_offset_storage(..)`
+pub const DEFAULT_GROUP_OFFSET_STORAGE: GroupOffsetStorage = GroupOffsetStorage::Zookeeper;
 
 /// Client struct keeping track of brokers and topic metadata.
 ///
@@ -81,6 +83,13 @@ struct ClientConfig {
     fetch_min_bytes: i32,
     fetch_max_bytes_per_partition: i32,
     fetch_crc_validation: bool,
+    // ~ the version of the API to use for the corresponding kafka
+    // calls; note that this might have an effect on the storage type
+    // kafka will then use (zookeeper or __consumer_offsets).  it is
+    // important to use version for both of them which target the same
+    // storage type.
+    offset_fetch_version: protocol::OffsetFetchVersion,
+    offset_commit_version: protocol::OffsetCommitVersion,
 }
 
 #[derive(Debug)]
@@ -169,6 +178,36 @@ impl FetchOffset {
 }
 
 // --------------------------------------------------------------------
+
+/// Defines the availale storage types to utilize when fetching or
+/// comitting group offsets.  See also `KafkaClient::set_group_offset_storage`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum GroupOffsetStorage {
+    /// Zookeeper based storage (available as of kafka 0.8.1)
+    Zookeeper,
+    /// Kafka based storage (available as of Kafka 0.8.2). This is the
+    /// prefered method for groups to store their offsets at.
+    Kafka,
+}
+
+impl GroupOffsetStorage {
+    fn offset_fetch_version(&self) -> protocol::OffsetFetchVersion {
+        match *self {
+            GroupOffsetStorage::Zookeeper => protocol::OffsetFetchVersion::V0,
+            GroupOffsetStorage::Kafka => protocol::OffsetFetchVersion::V1,
+        }
+    }
+    fn offset_commit_version(&self) -> protocol::OffsetCommitVersion {
+        match *self {
+            GroupOffsetStorage::Zookeeper => protocol::OffsetCommitVersion::V0,
+            // ~ if we knew we'll be communicating with a kafka 0.9+
+            // broker we could set the commit-version to V2; however,
+            // since we still want to support Kafka 0.8.2 versions,
+            // we'll go with the less efficient but safe option V1.
+            GroupOffsetStorage::Kafka => protocol::OffsetCommitVersion::V1,
+        }
+    }
+}
 
 /// Data point identifying a topic partition to fetch a group's offset
 /// for.  See `KafkaClient::fetch_group_offsets`.
@@ -344,6 +383,8 @@ impl KafkaClient {
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
+                offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
+                offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
             },
             conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
             state: state::ClientState::new(),
@@ -396,6 +437,8 @@ impl KafkaClient {
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
+                offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
+                offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
             },
             conn_pool: ConnectionPool::new_with_security(DEFAULT_SO_TIMEOUT_SECS, Some(security)),
             state: state::ClientState::new(),
@@ -534,6 +577,39 @@ impl KafkaClient {
     #[inline]
     pub fn fetch_crc_validation(&self) -> bool {
         self.config.fetch_crc_validation
+    }
+
+    /// Specifies the group offset storage to address when fetching or
+    /// committing group offsets.
+    ///
+    /// In addition to Zookeeper, Kafka 0.8.2 brokers or later offer a
+    /// more performant (and scalable) way to manage group offset
+    /// directly by itself. Note that the remote storages are separate
+    /// and independent on each other. Hence, you typically want
+    /// consistently hard-code your choice in your program.
+    ///
+    /// Unless you have a 0.8.1 broker or want to participate in a
+    /// group which is already based on Zookeeper, you generally want
+    /// to choose `GroupOffsetStorage::Kafka` here.
+    ///
+    /// See also `KafkaClient::fetch_group_offsets` and
+    /// `KafkaClient::commit_offsets`.
+    #[inline]
+    pub fn set_group_offset_storage(&mut self, storage: GroupOffsetStorage) {
+        self.config.offset_fetch_version = storage.offset_fetch_version();
+        self.config.offset_commit_version = storage.offset_commit_version();
+    }
+
+    /// Retrieves the current `KafkaClient::set_group_offset_storage`
+    /// settings.
+    pub fn group_offset_storage(&self) -> GroupOffsetStorage {
+        // ~ only protocol V0 is zookeeper
+        let zkv = GroupOffsetStorage::Zookeeper.offset_fetch_version();
+        if zkv == self.config.offset_fetch_version {
+            GroupOffsetStorage::Zookeeper
+        } else {
+            GroupOffsetStorage::Kafka
+        }
     }
 
     /// Provides a view onto the currently loaded metadata of known .
@@ -921,7 +997,7 @@ impl KafkaClient {
         where J: AsRef<CommitOffset<'a>>, I: IntoIterator<Item=J>
     {
         let mut req = protocol::OffsetCommitRequest::new(
-            protocol::OffsetCommitVersion::V0, // XXX configurable
+            self.config.offset_commit_version,
             group, self.state.next_correlation_id(), &self.config.client_id);
         for o in offsets {
             let o = o.as_ref();
@@ -977,7 +1053,7 @@ impl KafkaClient {
         where J: AsRef<FetchGroupOffset<'a>>, I: IntoIterator<Item=J>
     {
         let mut req = protocol::OffsetFetchRequest::new(
-            protocol::OffsetFetchVersion::V0, // XXX configurable
+            self.config.offset_fetch_version,
             group, self.state.next_correlation_id(), &self.config.client_id);
         for p in partitions {
             let p = p.as_ref();
@@ -994,7 +1070,6 @@ impl KafkaClient {
     ///
     /// # Examples
     ///
-    ///
     /// ```no_run
     /// use kafka::client::KafkaClient;
     ///
@@ -1006,7 +1081,7 @@ impl KafkaClient {
                                -> Result<Vec<TopicPartitionOffset>>
     {
         let mut req = protocol::OffsetFetchRequest::new(
-            protocol::OffsetFetchVersion::V0, // XXX configurable
+            self.config.offset_fetch_version,
             group, self.state.next_correlation_id(), &self.config.client_id);
         match self.state.partitions_for(topic) {
             None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
@@ -1049,7 +1124,8 @@ fn __commit_offsets(req: protocol::OffsetCommitRequest,
                     config: &ClientConfig)
                     -> Result<()> {
     let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
-    debug!("committing group offsets for '{}' to: {}", req.group, host);
+    debug!("committing group offsets (v{}) for '{}' to: {}",
+           req.header.api_version, req.group, host);
     __send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, req).map(|_| ())
     // XXX handle NotCoordinatorForGroupCode(16) by refreshing the
     // current group_coordinator and retring the fetch requests again
@@ -1063,7 +1139,8 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                          -> Result<Vec<TopicPartitionOffset>>
 {
     let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
-    debug!("fetching group offsets for '{}' from: {}", req.group, host);
+    debug!("fetching group offsets (v{}) for '{}' from: {}",
+           req.header.api_version, req.group, host);
     __send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, req).map(|r| r.get_offsets())
     // XXX handle NotCoordinatorForGroupCode(16) by refreshing the
     // current group_coordinator and retring the fetch requests again

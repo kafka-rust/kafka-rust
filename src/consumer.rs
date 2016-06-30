@@ -7,7 +7,7 @@
 //!
 //! # Example
 //! ```no_run
-//! use kafka::consumer::{Consumer, FetchOffset};
+//! use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 //!
 //! let mut consumer =
 //!    Consumer::from_hosts(vec!("localhost:9092".to_owned()),
@@ -15,6 +15,7 @@
 //!                              "my-topic".to_owned())
 //!       .with_partitions(&[0, 1])
 //!       .with_fallback_offset(FetchOffset::Earliest)
+//!       .with_offset_storage(GroupOffsetStorage::Kafka)
 //!       .create()
 //!       .unwrap();
 //! loop {
@@ -57,6 +58,7 @@ use client::fetch;
 // public re-exports
 pub use client::fetch::Message;
 pub use client::FetchOffset;
+pub use client::GroupOffsetStorage;
 
 #[cfg(feature = "security")]
 use client::SecurityConfig;
@@ -345,6 +347,10 @@ impl Consumer {
         let offsets = &self.state.consumed_offsets;
         debug!("commiting consumed offsets (topic: {} / group: {} / offsets: {:?}",
                topic, group, offsets);
+        // XXX handle GroupCoordinatorNotAvailableCode(15) and
+        // GroupLoadInProgressCode(14) errors by retrying N times (to
+        // be configurable) after a short timeout (timeout to be
+        // configurable)
         try!(client.commit_offsets(
             group,
             offsets.iter().map(|(&p, &o)| CommitOffset::new(topic, p, o))));
@@ -416,6 +422,10 @@ fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: 
     assert!(!partitions.is_empty());
 
     let topic = &config.topic;
+    // XXX handle GroupCoordinatorNotAvailableCode(15) and
+    // GroupLoadInProgressCode(14) by retrying n times (to be
+    // configurable) after a short timeout (timeout to be
+    // configurable)
     let tpos = try!(client.fetch_group_offsets(
         &config.group,
         partitions.iter().map(|&p_id | FetchGroupOffset::new(topic, p_id))));
@@ -618,6 +628,7 @@ pub struct Builder {
     retry_max_bytes_limit: i32,
     fetch_crc_validation: bool,
     security_config: Option<SecurityConfig>,
+    group_offset_storage: GroupOffsetStorage,
 }
 
 impl Builder {
@@ -635,12 +646,14 @@ impl Builder {
             partitions: Vec::new(),
             fallback_offset: None,
             security_config: None,
+            group_offset_storage: client::DEFAULT_GROUP_OFFSET_STORAGE,
         };
         if let Some(ref c) = b.client {
             b.fetch_max_wait_time = c.fetch_max_wait_time();
             b.fetch_min_bytes = c.fetch_min_bytes();
             b.fetch_max_bytes_per_partition = c.fetch_max_bytes_per_partition();
             b.fetch_crc_validation = c.fetch_crc_validation();
+            b.group_offset_storage = c.group_offset_storage();
         }
         b
     }
@@ -719,6 +732,12 @@ impl Builder {
         self
     }
 
+    /// See `KafkaClient::set_group_offset_storage`
+    pub fn with_offset_storage(mut self, storage: GroupOffsetStorage) -> Builder {
+        self.group_offset_storage = storage;
+        self
+    }
+
     /// Specifies the upper bound of data bytes to allow fetching from
     /// a kafka partition when retrying a fetch request due to a too
     /// big message in the partition.
@@ -774,6 +793,7 @@ impl Builder {
         client.set_fetch_max_wait_time(self.fetch_max_wait_time);
         client.set_fetch_min_bytes(self.fetch_min_bytes);
         client.set_fetch_max_bytes_per_partition(self.fetch_max_bytes_per_partition);
+        client.set_group_offset_storage(self.group_offset_storage);
 
         let config = Config {
             group: self.group,
