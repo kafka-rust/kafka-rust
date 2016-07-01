@@ -36,6 +36,8 @@ pub mod fetch {
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_SO_TIMEOUT_SECS: i32 = 120; // socket read, write timeout seconds
 
+const NOT_GROUP_COORDINATOR_RETRY_ATTEMPTS: isize = 2;
+
 /// The default value for `KafkaClient::set_compression(..)`
 pub const DEFAULT_COMPRESSION: Compression = Compression::NONE;
 
@@ -1055,15 +1057,17 @@ impl KafkaClient {
         let mut req = protocol::OffsetFetchRequest::new(
             self.config.offset_fetch_version,
             group, self.state.next_correlation_id(), &self.config.client_id);
+        let mut num = 0;
         for p in partitions {
             let p = p.as_ref();
             if self.state.contains_topic_partition(p.topic, p.partition) {
                 req.add(p.topic, p.partition);
+                num += 1;
             } else {
                 return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
-        __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
+        __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
     }
 
     /// Fetch offset for all partitions of a particular topic of a consumer group
@@ -1078,20 +1082,22 @@ impl KafkaClient {
     /// let offsets = client.fetch_group_topic_offsets("my-group", "my-topic").unwrap();
     /// ```
     pub fn fetch_group_topic_offsets(&mut self, group: &str, topic: &str)
-                               -> Result<Vec<TopicPartitionOffset>>
+                                     -> Result<Vec<TopicPartitionOffset>>
     {
         let mut req = protocol::OffsetFetchRequest::new(
             self.config.offset_fetch_version,
             group, self.state.next_correlation_id(), &self.config.client_id);
+        let num;
         match self.state.partitions_for(topic) {
             None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
             Some(tp) => {
+                num = tp.len();
                 for (id, _) in tp {
                     req.add(topic, id);
                 }
             }
         }
-        __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
+        __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
     }
 }
 
@@ -1110,7 +1116,10 @@ fn __get_group_coordinator<'a>(group: &str,
     }
     let correlation_id = state.next_correlation_id();
     let req = protocol::GroupCoordinatorRequest::new(group, correlation_id, &config.client_id);
-    // XXX make this work even if load_metadata has not been called yet
+    // ~ idealy we make make this work even if load_metadata has not
+    // been called yet; if there are not connections available we can
+    // try connecting to the user specified bootstrap server similar
+    // to the way load_metadata works.
     let conn = conn_pool.get_conn_any().expect("available connection");
     debug!("determining group coordinator for group '{}' on: {:?}", group, conn);
     let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, req)
@@ -1122,28 +1131,112 @@ fn __commit_offsets(req: protocol::OffsetCommitRequest,
                     state: &mut state::ClientState,
                     conn_pool: &mut ConnectionPool,
                     config: &ClientConfig)
-                    -> Result<()> {
-    let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
-    debug!("committing group offsets (v{}) for '{}' to: {}",
-           req.header.api_version, req.group, host);
-    __send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, req).map(|_| ())
-    // XXX handle NotCoordinatorForGroupCode(16) by refreshing the
-    // current group_coordinator and retring the fetch requests again
-    // XXX handle errors for individual partitions
+                    -> Result<()>
+{
+    // ~ handle the NotCoordinatorForGroupCode(16) error by
+    // refreshing the current group_coordinator and retrying
+    let mut attempt = 1;
+    loop {
+        let retry = {
+            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
+            debug!("committing group offsets (v{}) for '{}' to: {}",
+                   req.header.api_version, req.group, host);
+            let tps = try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, &req))
+                .topic_partitions;
+            // ~ figure out whether to fail, retry, or return with success
+            let mut retry = false;
+            for tp in tps {
+                for p in tp.partitions {
+                    match p.to_error() {
+                        None => {},
+                        Some(KafkaCode::NotCoordinatorForConsumerCode) => {
+                            retry = true;
+                            break;
+                        }
+                        Some(code) => {
+                            // ~ immediately abort with the error
+                            return Err(Error::Kafka(code));
+                        }
+                    }
+                }
+            }
+            retry
+        };
+        if !retry {
+            break
+        } else if attempt < NOT_GROUP_COORDINATOR_RETRY_ATTEMPTS {
+            debug!("resetting group coordinator for group '{}'", req.group);
+            state.remove_group_coordinator(&req.group);
+            attempt += 1;
+        } else {
+            return Err(Error::Kafka(KafkaCode::NotCoordinatorForConsumerCode));
+        }
+    }
+    Ok(())
 }
 
+// ~ 'num_partitions' is merely a hint to pre-allocation inside this method
 fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
+                         num_partitions: usize,
                          state: &mut state::ClientState,
                          conn_pool: &mut ConnectionPool,
                          config: &ClientConfig)
-                         -> Result<Vec<TopicPartitionOffset>>
+                                     -> Result<Vec<TopicPartitionOffset>>
 {
-    let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
-    debug!("fetching group offsets (v{}) for '{}' from: {}",
-           req.header.api_version, req.group, host);
-    __send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, req).map(|r| r.get_offsets())
-    // XXX handle NotCoordinatorForGroupCode(16) by refreshing the
-    // current group_coordinator and retring the fetch requests again
+    // ~ handle the NotCoordinatorForGroupCode(16) error by
+    // refreshing the current group_coordinator and retrying
+    let mut attempt = 1;
+    loop {
+        let r = {
+            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
+            debug!("fetching group offsets (v{}) for '{}' from: {}",
+                   req.header.api_version, req.group, host);
+            try!(__send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, &req))
+        };
+
+        // ~ before passing the response directly to the client see
+        // what we can do in case there are any errors
+        let mut retry = false;
+        let mut v = Vec::with_capacity(num_partitions);
+        for tp in r.topic_partitions {
+            for p in tp.partitions {
+                let mut o = p.get_offsets(tp.topic.clone());
+                match o.offset {
+                    Ok(_) => {
+                        v.push(o);
+                    }
+                    Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)) => {
+                        // ~ occurs only on protocol v0 when no offset available
+                        // for the group in question; we'll align the behavior
+                        // with protocol v1.
+                        o.offset = Ok(-1);
+                        v.push(o);
+                    }
+                    Err(Error::Kafka(KafkaCode::NotCoordinatorForConsumerCode)) => {
+                        retry = true;
+                        break;
+                    }
+                    Err(e) => {
+                        // ~ immeditaly abort with the error
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        if !retry {
+            // ~ return on success
+            return Ok(v);
+        }
+
+        // ~ got here? wrong group coordinator. retry the request.
+        if attempt < NOT_GROUP_COORDINATOR_RETRY_ATTEMPTS {
+            debug!("resetting group coordinator for group '{}'", req.group);
+            state.remove_group_coordinator(&req.group);
+            attempt += 1;
+        } else {
+            return Err(Error::Kafka(KafkaCode::NotCoordinatorForConsumerCode));
+        }
+    }
 }
 
 /// ~ carries out the given fetch requests and returns the response

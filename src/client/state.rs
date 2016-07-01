@@ -344,6 +344,12 @@ impl ClientState {
             .map(|b| &b.host[..])
     }
 
+    /// ~ Removes the current coordinator - if any - for the specified
+    /// group.
+    pub fn remove_group_coordinator(&mut self, group: &str) {
+        self.group_coordinators.remove(group);
+    }
+
     /// ~ Updates the coordinator for the specified group and returns
     /// the coordinator host as if `group_coordinator` would have
     /// been called subsequently.

@@ -1,4 +1,5 @@
 use std::io::{Read, Write};
+use std::mem;
 
 use codecs::{ToByte, FromByte};
 use crc::crc32;
@@ -55,47 +56,44 @@ pub trait ResponseParser {
 
 // --------------------------------------------------------------------
 
+impl KafkaCode {
+    fn from_protocol(n: i16) -> Option<KafkaCode> {
+        if n == 0 {
+            return None;
+        }
+        if n >= KafkaCode::OffsetOutOfRange as i16 && n <= KafkaCode::UnsupportedVersion as i16 {
+            return Some(unsafe { mem::transmute(n as i8) });
+        }
+        Some(KafkaCode::Unknown)
+    }
+}
+
+#[test]
+fn test_kafka_code_from_protocol() {
+    use std::i16;
+
+    macro_rules! assert_kafka_code {
+        ($kcode:path, $n:expr) => {
+            assert!(if let Some($kcode) = KafkaCode::from_protocol($n) { true } else { false })
+        }
+    };
+
+    assert!(if let None = KafkaCode::from_protocol(0) { true } else { false });
+    assert_kafka_code!(KafkaCode::OffsetOutOfRange, KafkaCode::OffsetOutOfRange as i16);
+    assert_kafka_code!(KafkaCode::IllegalGenerationCode, KafkaCode::IllegalGenerationCode as i16);
+    assert_kafka_code!(KafkaCode::UnsupportedVersion, KafkaCode::UnsupportedVersion as i16);
+    assert_kafka_code!(KafkaCode::Unknown, KafkaCode::Unknown as i16);
+    // ~ test some un mapped non-zero codes; should all map to "unknown"
+    assert_kafka_code!(KafkaCode::Unknown, i16::MAX);
+    assert_kafka_code!(KafkaCode::Unknown, i16::MIN);
+    assert_kafka_code!(KafkaCode::Unknown, -100);
+    assert_kafka_code!(KafkaCode::Unknown, 100);
+}
+
 // a (sub-) module private method for error
 impl Error {
     fn from_protocol(n: i16) -> Option<Error> {
-        match n {
-            0 => None,
-            1 => Some(Error::Kafka(KafkaCode::OffsetOutOfRange)),
-            2 => Some(Error::Kafka(KafkaCode::CorruptMessage)),
-            3 => Some(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
-            4 => Some(Error::Kafka(KafkaCode::InvalidMessageSize)),
-            5 => Some(Error::Kafka(KafkaCode::LeaderNotAvailable)),
-            6 => Some(Error::Kafka(KafkaCode::NotLeaderForPartition)),
-            7 => Some(Error::Kafka(KafkaCode::RequestTimedOut)),
-            8 => Some(Error::Kafka(KafkaCode::BrokerNotAvailable)),
-            9 => Some(Error::Kafka(KafkaCode::ReplicaNotAvailable)),
-            10 => Some(Error::Kafka(KafkaCode::MessageSizeTooLarge)),
-            11 => Some(Error::Kafka(KafkaCode::StaleControllerEpochCode)),
-            12 => Some(Error::Kafka(KafkaCode::OffsetMetadataTooLargeCode)),
-            14 => Some(Error::Kafka(KafkaCode::OffsetsLoadInProgressCode)),
-            15 => Some(Error::Kafka(KafkaCode::ConsumerCoordinatorNotAvailableCode)),
-            16 => Some(Error::Kafka(KafkaCode::NotCoordinatorForConsumerCode)),
-            17 => Some(Error::Kafka(KafkaCode::InvalidTopicCode)),
-            18 => Some(Error::Kafka(KafkaCode::RecordListTooLargeCode)),
-            19 => Some(Error::Kafka(KafkaCode::NotEnoughReplicasCode)),
-            20 => Some(Error::Kafka(KafkaCode::NotEnoughReplicasAfterAppendCode)),
-            21 => Some(Error::Kafka(KafkaCode::InvalidRequiredAcksCode)),
-            22 => Some(Error::Kafka(KafkaCode::IllegalGenerationCode)),
-            23 => Some(Error::Kafka(KafkaCode::InconsistentGroupProtocolCode)),
-            24 => Some(Error::Kafka(KafkaCode::InvalidGroupIdCode)),
-            25 => Some(Error::Kafka(KafkaCode::UnknownMemberIdCode)),
-            26 => Some(Error::Kafka(KafkaCode::InvalidSessionTimeoutCode)),
-            27 => Some(Error::Kafka(KafkaCode::RebalanceInProgressCode)),
-            28 => Some(Error::Kafka(KafkaCode::InvalidCommitOffsetSizeCode)),
-            29 => Some(Error::Kafka(KafkaCode::TopicAuthorizationFailedCode)),
-            30 => Some(Error::Kafka(KafkaCode::GroupAuthorizationFailedCode)),
-            31 => Some(Error::Kafka(KafkaCode::ClusterAuthorizationFailedCode)),
-            32 => Some(Error::Kafka(KafkaCode::InvalidTimestamp)),
-            33 => Some(Error::Kafka(KafkaCode::UnsupportedSaslMechanism)),
-            34 => Some(Error::Kafka(KafkaCode::IllegalSaslState)),
-            35 => Some(Error::Kafka(KafkaCode::UnsupportedVersion)),
-            _ => Some(Error::Kafka(KafkaCode::Unknown)),
-        }
+        KafkaCode::from_protocol(n).map(Error::Kafka)
     }
 }
 

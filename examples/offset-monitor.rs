@@ -69,7 +69,7 @@ fn monitor(cfg: Config) -> Result<(), Error> {
     {
         use std::fmt::Write;
 
-        let _ = write!(out_buf, "{:>8}", "time");
+        let _ = write!(out_buf, "{:>8} ", "time");
         for i in 0..num_partitions {
             fmt_buf.clear();
             let _ = write!(fmt_buf, "p-{}", i);
@@ -103,7 +103,7 @@ fn monitor(cfg: Config) -> Result<(), Error> {
             use std::fmt::Write;
 
             out_buf.clear();
-            let _ = write!(out_buf, "{}", t.strftime("%H:%M:%S").unwrap());
+            let _ = write!(out_buf, "{} ", t.strftime("%H:%M:%S").unwrap());
             for o in &*offs {
                 let _ = write!(out_buf, " {:>10}", o.latest);
                 if lag {

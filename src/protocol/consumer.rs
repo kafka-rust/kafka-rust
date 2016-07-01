@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 
 use codecs::{self, ToByte, FromByte};
-use error::{Error, Result};
+use error::{self, Error, Result};
 use utils::TopicPartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
@@ -184,24 +184,6 @@ pub struct PartitionOffsetFetchResponse {
     pub error: i16
 }
 
-impl OffsetFetchResponse {
-    pub fn get_offsets(&self) -> Vec<TopicPartitionOffset> {
-        self.topic_partitions
-            .iter()
-            .flat_map(|ref tp| tp.get_offsets(tp.topic.clone()))
-            .collect()
-    }
-}
-
-impl TopicPartitionOffsetFetchResponse {
-    pub fn get_offsets(&self, topic: String) -> Vec<TopicPartitionOffset> {
-        self.partitions
-            .iter()
-            .map(|ref p| p.get_offsets(topic.clone()))
-            .collect()
-    }
-}
-
 impl PartitionOffsetFetchResponse {
     pub fn get_offsets(&self, topic: String) -> TopicPartitionOffset {
         TopicPartitionOffset {
@@ -218,7 +200,6 @@ impl PartitionOffsetFetchResponse {
 impl FromByte for OffsetFetchResponse {
     type R = OffsetFetchResponse;
 
-    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.header.decode(buffer),
@@ -230,7 +211,6 @@ impl FromByte for OffsetFetchResponse {
 impl FromByte for TopicPartitionOffsetFetchResponse {
     type R = TopicPartitionOffsetFetchResponse;
 
-    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.topic.decode(buffer),
@@ -242,7 +222,6 @@ impl FromByte for TopicPartitionOffsetFetchResponse {
 impl FromByte for PartitionOffsetFetchResponse {
     type R = PartitionOffsetFetchResponse;
 
-    #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.partition.decode(buffer),
@@ -390,18 +369,6 @@ pub struct OffsetCommitResponse {
     pub topic_partitions: Vec<TopicPartitionOffsetCommitResponse>
 }
 
-#[derive(Default, Debug)]
-pub struct TopicPartitionOffsetCommitResponse {
-    pub topic: String,
-    pub partitions: Vec<PartitionOffsetCommitResponse>
-}
-
-#[derive(Default, Debug)]
-pub struct PartitionOffsetCommitResponse {
-    pub partition: i32,
-    pub error: i16
-}
-
 impl FromByte for OffsetCommitResponse {
     type R = OffsetCommitResponse;
 
@@ -412,6 +379,12 @@ impl FromByte for OffsetCommitResponse {
     }
 }
 
+#[derive(Default, Debug)]
+pub struct TopicPartitionOffsetCommitResponse {
+    pub topic: String,
+    pub partitions: Vec<PartitionOffsetCommitResponse>
+}
+
 impl FromByte for TopicPartitionOffsetCommitResponse {
     type R = TopicPartitionOffsetCommitResponse;
 
@@ -419,6 +392,18 @@ impl FromByte for TopicPartitionOffsetCommitResponse {
         try_multi!(
             self.topic.decode(buffer),
             self.partitions.decode(buffer))
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct PartitionOffsetCommitResponse {
+    pub partition: i32,
+    pub error: i16
+}
+
+impl PartitionOffsetCommitResponse {
+    pub fn to_error(&self) -> Option<error::KafkaCode> {
+        error::KafkaCode::from_protocol(self.error)
     }
 }
 
