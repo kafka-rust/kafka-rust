@@ -8,6 +8,8 @@ use std::collections::hash_map::HashMap;
 use std::io::Cursor;
 use std::iter::Iterator;
 use std::mem;
+use std::thread;
+use std::time::Duration;
 
 #[cfg(feature = "security")]
 use openssl::ssl::SslContext;
@@ -36,8 +38,6 @@ pub mod fetch {
 const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_SO_TIMEOUT_SECS: i32 = 120; // socket read, write timeout seconds
 
-const NOT_GROUP_COORDINATOR_RETRY_ATTEMPTS: isize = 2;
-
 /// The default value for `KafkaClient::set_compression(..)`
 pub const DEFAULT_COMPRESSION: Compression = Compression::NONE;
 
@@ -55,6 +55,13 @@ pub const DEFAULT_FETCH_CRC_VALIDATION: bool = true;
 
 /// The default value for `KafkaClient::set_group_offset_storage(..)`
 pub const DEFAULT_GROUP_OFFSET_STORAGE: GroupOffsetStorage = GroupOffsetStorage::Zookeeper;
+
+/// The default value for `KafkaClient::set_retry_backoff_time(..)`
+pub const DEFAULT_RETRY_BACKOFF_TIME: u32 = 100;
+
+/// The default value for `KafkaClient::set_retry_max_attempts(..)`
+// the default value: re-attempt an repeatable operation for up to approx. two minutes
+pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME;
 
 /// Client struct keeping track of brokers and topic metadata.
 ///
@@ -92,6 +99,13 @@ struct ClientConfig {
     // storage type.
     offset_fetch_version: protocol::OffsetFetchVersion,
     offset_commit_version: protocol::OffsetCommitVersion,
+    // ~ the number of millis to wait before retrying a failed
+    // operation like refreshing group coordinators; this avoids
+    // operation retries in a tight loop.
+    retry_backoff_time: u32,
+    // ~ the number of repeated retry attempts; prevents endless
+    // repetition of a retry attempt
+    retry_max_attempts: u32,
 }
 
 #[derive(Debug)]
@@ -387,6 +401,8 @@ impl KafkaClient {
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
                 offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
                 offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
+                retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
+                retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
             state: state::ClientState::new(),
@@ -441,6 +457,8 @@ impl KafkaClient {
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
                 offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
                 offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
+                retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
+                retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: ConnectionPool::new_with_security(DEFAULT_SO_TIMEOUT_SECS, Some(security)),
             state: state::ClientState::new(),
@@ -612,6 +630,35 @@ impl KafkaClient {
         } else {
             GroupOffsetStorage::Kafka
         }
+    }
+
+    /// Specifies the number of milliseconds to wait before retrying a
+    /// failed, repeatable operation against Kafka.  This avoids
+    /// retrying such operations in a tight loop.
+    #[inline]
+    pub fn set_retry_backoff_time(&mut self, millis: u32) {
+        self.config.retry_backoff_time = millis;
+    }
+
+    /// Retrieves the current `KafkaClient::set_retry_backoff_time`
+    /// setting.
+    pub fn retry_backoff_time(&self) -> u32 {
+        self.config.retry_backoff_time
+    }
+
+    /// Specifies the upper limit of retry attempts for failed,
+    /// repeatable operations against kafka.  This avoids retrying
+    /// them forever.
+    #[inline]
+    pub fn set_retry_max_attempts(&mut self, attempts: u32) {
+        self.config.retry_max_attempts = attempts;
+    }
+
+    /// Retrieves the current `KafkaClient::set_retry_max_attempts`
+    /// setting.
+    #[inline]
+    pub fn retry_max_attempts(&self) -> u32 {
+        self.config.retry_max_attempts
     }
 
     /// Provides a view onto the currently loaded metadata of known .
@@ -1116,15 +1163,36 @@ fn __get_group_coordinator<'a>(group: &str,
     }
     let correlation_id = state.next_correlation_id();
     let req = protocol::GroupCoordinatorRequest::new(group, correlation_id, &config.client_id);
-    // ~ idealy we make make this work even if load_metadata has not
-    // been called yet; if there are not connections available we can
-    // try connecting to the user specified bootstrap server similar
-    // to the way load_metadata works.
-    let conn = conn_pool.get_conn_any().expect("available connection");
-    debug!("determining group coordinator for group '{}' on: {:?}", group, conn);
-    let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, req)
-                 .and_then(protocol::GroupCoordinatorResponse::to_result));
-    Ok(state.set_group_coordinator(group, &r))
+    let mut attempt = 1;
+    loop {
+        // ~ idealy we make make this work even if load_metadata has not
+        // been called yet; if there are not connections available we can
+        // try connecting to the user specified bootstrap server similar
+        // to the way load_metadata works.
+        let conn = conn_pool.get_conn_any().expect("available connection");
+        debug!("get_group_coordinator: determining for group '{}' on: {:?}", group, conn);
+        let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req));
+        let retry_code;
+        match r.to_result() {
+            Ok(r) => {
+                return Ok(state.set_group_coordinator(group, &r));
+            }
+            Err(Error::Kafka(e@KafkaCode::ConsumerCoordinatorNotAvailableCode)) => {
+                retry_code = e;
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+        if attempt < config.retry_max_attempts {
+            debug!("get_group_coordinator: will retry request (c: {}) due to: {:?}",
+                   req.header.correlation_id, retry_code);
+            attempt += 1;
+            __retry_sleep(config);
+        } else {
+            return Err(Error::Kafka(retry_code));
+        }
+    }
 }
 
 fn __commit_offsets(req: protocol::OffsetCommitRequest,
@@ -1133,72 +1201,75 @@ fn __commit_offsets(req: protocol::OffsetCommitRequest,
                     config: &ClientConfig)
                     -> Result<()>
 {
-    // ~ handle the NotCoordinatorForGroupCode(16) error by
-    // refreshing the current group_coordinator and retrying
     let mut attempt = 1;
     loop {
-        let retry = {
+        let tps = {
             let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
-            debug!("committing group offsets (v{}) for '{}' to: {}",
+            debug!("commit_offsets: committing on protocol v{} for '{}' to: {}",
                    req.header.api_version, req.group, host);
-            let tps = try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, &req))
-                .topic_partitions;
-            // ~ figure out whether to fail, retry, or return with success
-            let mut retry = false;
-            for tp in tps {
-                for p in tp.partitions {
-                    match p.to_error() {
-                        None => {},
-                        Some(KafkaCode::NotCoordinatorForConsumerCode) => {
-                            retry = true;
-                            break;
-                        }
-                        Some(code) => {
-                            // ~ immediately abort with the error
-                            return Err(Error::Kafka(code));
-                        }
+            try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, &req))
+                .topic_partitions
+        };
+
+        let mut retry_code = None;
+
+        'rproc: for tp in tps {
+            for p in tp.partitions {
+                match p.to_error() {
+                    None => {},
+                    Some(e@KafkaCode::OffsetsLoadInProgressCode) => {
+                        retry_code = Some(e);
+                        break 'rproc;
+                    }
+                    Some(e@KafkaCode::NotCoordinatorForConsumerCode) => {
+                        debug!("commit_offsets: resetting group coordinator for group '{}'",
+                               req.group);
+                        state.remove_group_coordinator(&req.group);
+                        retry_code = Some(e);
+                        break 'rproc;
+                    }
+                    Some(code) => {
+                        // ~ immediately abort with the error
+                        return Err(Error::Kafka(code));
                     }
                 }
             }
-            retry
-        };
-        if !retry {
-            break
-        } else if attempt < NOT_GROUP_COORDINATOR_RETRY_ATTEMPTS {
-            debug!("resetting group coordinator for group '{}'", req.group);
-            state.remove_group_coordinator(&req.group);
-            attempt += 1;
-        } else {
-            return Err(Error::Kafka(KafkaCode::NotCoordinatorForConsumerCode));
+        }
+        match retry_code {
+            Some(e) => {
+                if attempt < config.retry_max_attempts {
+                    debug!("commit_offsets: will retry request (c: {}) due to: {:?}",
+                           req.header.correlation_id, e);
+                    attempt += 1;
+                    __retry_sleep(config);
+                }
+            }
+            None => {
+                return Ok(());
+            }
         }
     }
-    Ok(())
 }
 
 // ~ 'num_partitions' is merely a hint to pre-allocation inside this method
-fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
-                         num_partitions: usize,
-                         state: &mut state::ClientState,
-                         conn_pool: &mut ConnectionPool,
-                         config: &ClientConfig)
-                                     -> Result<Vec<TopicPartitionOffset>>
+fn __fetch_group_offsets(
+    req: protocol::OffsetFetchRequest, num_partitions: usize,
+    state: &mut state::ClientState, conn_pool: &mut ConnectionPool,
+    config: &ClientConfig) -> Result<Vec<TopicPartitionOffset>>
 {
-    // ~ handle the NotCoordinatorForGroupCode(16) error by
-    // refreshing the current group_coordinator and retrying
     let mut attempt = 1;
     loop {
         let r = {
             let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
-            debug!("fetching group offsets (v{}) for '{}' from: {}",
+            debug!("fetch_group_offsets: fetching on protocol v{} for '{}' from: {}",
                    req.header.api_version, req.group, host);
             try!(__send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, &req))
         };
 
-        // ~ before passing the response directly to the client see
-        // what we can do in case there are any errors
-        let mut retry = false;
+        let mut retry_code = None;
         let mut v = Vec::with_capacity(num_partitions);
-        for tp in r.topic_partitions {
+
+        'rproc: for tp in r.topic_partitions {
             for p in tp.partitions {
                 let mut o = p.get_offsets(tp.topic.clone());
                 match o.offset {
@@ -1212,9 +1283,16 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                         o.offset = Ok(-1);
                         v.push(o);
                     }
-                    Err(Error::Kafka(KafkaCode::NotCoordinatorForConsumerCode)) => {
-                        retry = true;
-                        break;
+                    Err(Error::Kafka(e@KafkaCode::OffsetsLoadInProgressCode)) => {
+                        retry_code = Some(e);
+                        break 'rproc;
+                    }
+                    Err(Error::Kafka(e@KafkaCode::NotCoordinatorForConsumerCode)) => {
+                        debug!("fetch_group_offsets: resetting group coordinator for group '{}'",
+                               req.group);
+                        state.remove_group_coordinator(&req.group);
+                        retry_code = Some(e);
+                        break 'rproc;
                     }
                     Err(e) => {
                         // ~ immeditaly abort with the error
@@ -1223,18 +1301,22 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                 }
             }
         }
-        if !retry {
-            // ~ return on success
-            return Ok(v);
-        }
-
-        // ~ got here? wrong group coordinator. retry the request.
-        if attempt < NOT_GROUP_COORDINATOR_RETRY_ATTEMPTS {
-            debug!("resetting group coordinator for group '{}'", req.group);
-            state.remove_group_coordinator(&req.group);
-            attempt += 1;
-        } else {
-            return Err(Error::Kafka(KafkaCode::NotCoordinatorForConsumerCode));
+        // ~ have we processed the result successfully or shall we
+        // retry once more?
+        match retry_code {
+            Some(e) => {
+                if attempt < config.retry_max_attempts {
+                    debug!("fetch_group_offsets: will retry request (c: {}) due to: {:?}",
+                           req.header.correlation_id, e);
+                    attempt += 1;
+                    __retry_sleep(config)
+                } else {
+                    return Err(Error::Kafka(e));
+                }
+            }
+            None => {
+                return Ok(v);
+            }
         }
     }
 }
@@ -1375,4 +1457,12 @@ fn __get_response_size(conn: &mut KafkaConnection) -> Result<i32> {
     let mut buf = [0u8; 4];
     try!(conn.read_exact(&mut buf));
     i32::decode_new(&mut Cursor::new(&buf))
+}
+
+/// Suspends the calling thread for the configured "retry" time. This
+/// method should be called _only_ as part of a retry attempt.
+fn __retry_sleep(cfg: &ClientConfig) {
+    if cfg.retry_backoff_time > 0 {
+        thread::sleep(Duration::from_millis(cfg.retry_backoff_time as u64))
+    }
 }

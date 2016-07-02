@@ -347,10 +347,6 @@ impl Consumer {
         let offsets = &self.state.consumed_offsets;
         debug!("commiting consumed offsets (topic: {} / group: {} / offsets: {:?}",
                topic, group, offsets);
-        // XXX handle GroupCoordinatorNotAvailableCode(15) and
-        // GroupLoadInProgressCode(14) errors by retrying N times (to
-        // be configurable) after a short timeout (timeout to be
-        // configurable)
         try!(client.commit_offsets(
             group,
             offsets.iter().map(|(&p, &o)| CommitOffset::new(topic, p, o))));
@@ -422,10 +418,6 @@ fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: 
     assert!(!partitions.is_empty());
 
     let topic = &config.topic;
-    // XXX handle GroupCoordinatorNotAvailableCode(15) and
-    // GroupLoadInProgressCode(14) by retrying n times (to be
-    // configurable) after a short timeout (timeout to be
-    // configurable)
     let tpos = try!(client.fetch_group_offsets(
         &config.group,
         partitions.iter().map(|&p_id | FetchGroupOffset::new(topic, p_id))));
