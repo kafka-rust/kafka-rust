@@ -14,8 +14,8 @@ use std::time as stdtime;
 use kafka::client::{KafkaClient, FetchOffset, GroupOffsetStorage};
 
 /// A very simple offset monitor for a particular topic able to show
-/// the lag for a particular ocnsumer group. Dumps of the offset/lag
-/// of the monitored topic/group to stdout.
+/// the lag for a particular consumer group. Dumps the offset/lag of
+/// the monitored topic/group to stdout every few seconds.
 fn main() {
     env_logger::init().unwrap();
 
