@@ -96,8 +96,10 @@ pub struct PartitionOffsetFetchRequest {
 }
 
 impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
-    pub fn new(version: OffsetFetchVersion,
-               group: &'b str, correlation_id: i32, client_id: &'a str)
+    pub fn new(group: &'b str,
+               version: OffsetFetchVersion,
+               correlation_id: i32,
+               client_id: &'a str)
                -> OffsetFetchRequest<'a, 'b, 'c>
     {
         OffsetFetchRequest {
@@ -278,8 +280,10 @@ pub struct PartitionOffsetCommitRequest<'a> {
 }
 
 impl<'a, 'b> OffsetCommitRequest<'a, 'b> {
-    pub fn new(version: OffsetCommitVersion,
-               group: &'b str, correlation_id: i32, client_id: &'a str)
+    pub fn new(group: &'b str,
+               version: OffsetCommitVersion,
+               correlation_id: i32,
+               client_id: &'a str)
                -> OffsetCommitRequest<'a, 'b>
     {
         OffsetCommitRequest{

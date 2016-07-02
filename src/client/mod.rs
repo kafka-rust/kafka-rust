@@ -1047,8 +1047,8 @@ impl KafkaClient {
         where J: AsRef<CommitOffset<'a>>, I: IntoIterator<Item=J>
     {
         let mut req = protocol::OffsetCommitRequest::new(
-            self.config.offset_commit_version,
-            group, self.state.next_correlation_id(), &self.config.client_id);
+            group, self.config.offset_commit_version,
+            self.state.next_correlation_id(), &self.config.client_id);
         for o in offsets {
             let o = o.as_ref();
             if self.state.contains_topic_partition(o.topic, o.partition) {
@@ -1103,8 +1103,8 @@ impl KafkaClient {
         where J: AsRef<FetchGroupOffset<'a>>, I: IntoIterator<Item=J>
     {
         let mut req = protocol::OffsetFetchRequest::new(
-            self.config.offset_fetch_version,
-            group, self.state.next_correlation_id(), &self.config.client_id);
+            group, self.config.offset_fetch_version,
+            self.state.next_correlation_id(), &self.config.client_id);
         let mut num = 0;
         for p in partitions {
             let p = p.as_ref();
@@ -1133,8 +1133,8 @@ impl KafkaClient {
                                      -> Result<Vec<TopicPartitionOffset>>
     {
         let mut req = protocol::OffsetFetchRequest::new(
-            self.config.offset_fetch_version,
-            group, self.state.next_correlation_id(), &self.config.client_id);
+            group, self.config.offset_fetch_version,
+            self.state.next_correlation_id(), &self.config.client_id);
         let num;
         match self.state.partitions_for(topic) {
             None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
