@@ -13,7 +13,7 @@ license = "MIT"
 
 [dependencies]
 byteorder = "0.5"
-crc = "1.2"
+crc = "1.3"
 log = "0.3"
 ref_slice = "1.0"
 fnv = "1.0"
