@@ -357,16 +357,17 @@ impl ClientState {
         &'a mut self, group: &str, gc: &protocol::GroupCoordinatorResponse)
         -> &'a str
     {
-        debug!("setting group coordinator for group '{}' to: {:?}", group, gc);
+        debug!("set_group_coordinator: registering coordinator for '{}': {:?}",
+               group, gc);
 
-        let broker_host = format!("{}:{}", gc.coordinator_host, gc.coordinator_port);
+        let group_host = format!("{}:{}", gc.host, gc.port);
         // ~ try to find an already existing broker
         let mut broker_ref = BrokerRef::new(UNKNOWN_BROKER_INDEX);
         for (i, broker) in (0u32..).zip(self.brokers.iter()) {
-            if broker.host == broker_host {
-                if gc.coordinator_id != broker.node_id {
-                    warn!("found group_coordinator_id({}) != broker_node_id({}) for the same host({})",
-                          gc.coordinator_id, broker.node_id, broker.host);
+            if gc.broker_id == broker.node_id {
+                if group_host != broker.host {
+                    warn!("set_group_coordinator: coord_host({}) != broker_host({}) for broker_id({})!",
+                          group_host, broker.host, broker.node_id);
                 }
                 broker_ref._index = i;
                 break;
@@ -376,8 +377,8 @@ impl ClientState {
         if broker_ref._index == UNKNOWN_BROKER_INDEX {
             broker_ref._index = self.brokers.len() as u32;
             self.brokers.push(Broker {
-                node_id: gc.coordinator_id,
-                host: broker_host,
+                node_id: gc.broker_id,
+                host: group_host,
             });
         }
         if let Some(br) = self.group_coordinators.get_mut(group) {

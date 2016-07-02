@@ -1170,7 +1170,7 @@ fn __get_group_coordinator<'a>(group: &str,
         // try connecting to the user specified bootstrap server similar
         // to the way load_metadata works.
         let conn = conn_pool.get_conn_any().expect("available connection");
-        debug!("get_group_coordinator: determining for group '{}' on: {:?}", group, conn);
+        debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
         let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req));
         let retry_code;
         match r.to_result() {

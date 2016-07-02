@@ -39,9 +39,9 @@ impl<'a, 'b> ToByte for GroupCoordinatorRequest<'a, 'b> {
 pub struct GroupCoordinatorResponse {
     pub header: HeaderResponse,
     pub error: i16,
-    pub coordinator_id: i32,
-    pub coordinator_port: i32,
-    pub coordinator_host: String,
+    pub broker_id: i32,
+    pub port: i32,
+    pub host: String,
 }
 
 impl GroupCoordinatorResponse {
@@ -60,9 +60,9 @@ impl FromByte for GroupCoordinatorResponse {
         try_multi!(
             self.header.decode(buffer),
             self.error.decode(buffer),
-            self.coordinator_id.decode(buffer),
-            self.coordinator_host.decode(buffer),
-            self.coordinator_port.decode(buffer))
+            self.broker_id.decode(buffer),
+            self.host.decode(buffer),
+            self.port.decode(buffer))
     }
 }
 
