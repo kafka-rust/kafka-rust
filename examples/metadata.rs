@@ -1,4 +1,5 @@
 extern crate kafka;
+extern crate env_logger;
 
 use std::env;
 use kafka::client::KafkaClient;
@@ -7,6 +8,8 @@ const DEFAULT_BROKER: &'static str = "localhost:9092";
 
 /// Demonstrates accessing metadata using KafkaClient.
 fn main() {
+    env_logger::init().unwrap();
+
     let mut brokers = env::args().skip(1).collect::<Vec<_>>();
     if brokers.is_empty() {
         brokers.push(DEFAULT_BROKER.to_owned());

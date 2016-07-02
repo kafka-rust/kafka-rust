@@ -1,10 +1,13 @@
 extern crate kafka;
+extern crate env_logger;
 
 use kafka::client::{KafkaClient, FetchPartition};
 
 /// This program demonstrates the low level api for fetching messages.
 /// Please look at examles/consume.rs for an easier to use API.
 fn main() {
+    env_logger::init().unwrap();
+
     let broker = "localhost:9092";
     let topic = "my-topic";
     let partition = 0;

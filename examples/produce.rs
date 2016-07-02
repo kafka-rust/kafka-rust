@@ -1,4 +1,5 @@
 extern crate kafka;
+extern crate env_logger;
 
 use kafka::producer::{Producer, Record};
 use kafka::error::Error as KafkaError;
@@ -7,6 +8,8 @@ use kafka::error::Error as KafkaError;
 /// `Producer`.  This is a convenient higher-level client that will
 /// fit most use cases.
 fn main() {
+    env_logger::init().unwrap();
+
     let broker = "localhost:9092";
     let topic = "my-topic";
 
