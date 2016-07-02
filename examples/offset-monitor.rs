@@ -63,7 +63,7 @@ fn monitor(cfg: Config) -> Result<(), Error> {
     let mut stdout = stdout();
 
     // ~ shall we produce the lag of the specified group?
-    let lag = !cfg.group.is_empty();
+    let show_lag = !cfg.group.is_empty();
 
     // ~ print a header
     {
@@ -74,7 +74,7 @@ fn monitor(cfg: Config) -> Result<(), Error> {
             fmt_buf.clear();
             let _ = write!(fmt_buf, "p-{}", i);
             let _ = write!(out_buf, " {:>10}", fmt_buf);
-            if lag {
+            if show_lag {
                 let _ = write!(out_buf, " {:6}", "(lag)");
             }
         }
@@ -90,7 +90,7 @@ fn monitor(cfg: Config) -> Result<(), Error> {
             let v = l.offset.unwrap_or(-1);
             offs.get_mut(l.partition as usize).expect("available partition").latest = v;
         }
-        if lag {
+        if show_lag {
             // ~ group offsets
             let groups = try!(client.fetch_group_topic_offsets(&cfg.group, &cfg.topic));
             for g in groups {
@@ -106,12 +106,17 @@ fn monitor(cfg: Config) -> Result<(), Error> {
             let _ = write!(out_buf, "{} ", t.strftime("%H:%M:%S").unwrap());
             for o in &*offs {
                 let _ = write!(out_buf, " {:>10}", o.latest);
-                if lag {
+                if show_lag {
                     fmt_buf.clear();
                     if o.group < 0 {
                         let _ = write!(fmt_buf, "()");
                     } else {
-                        let _ = write!(fmt_buf, "({:<})", o.latest - o.group);
+                        let lag = if cfg.commited_not_consumed {
+                            o.latest - o.group
+                        } else {
+                            o.latest - o.group - 1
+                        };
+                        let _ = write!(fmt_buf, "({:<})", lag);
                     }
                     let _ = write!(out_buf, " {:6}", fmt_buf);
                 }
@@ -133,6 +138,7 @@ struct Config {
     group: String,
     offset_storage: GroupOffsetStorage,
     period: stdtime::Duration,
+    commited_not_consumed: bool,
 }
 
 impl Config {
@@ -145,6 +151,10 @@ impl Config {
         opts.optopt("", "group", "Specify the group to monitor", "GROUP");
         opts.optopt("", "offsets", "Specify offset store [zookeeper, kafka]", "STORE");
         opts.optopt("", "sleep", "Specify the sleep time", "SECS");
+        opts.optflag("", "committed-not-yet-consumed",
+                     "Assume commited group offsets specify \
+                      messages the group will start consuming \
+                      (including those at these offsets)");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -183,6 +193,7 @@ impl Config {
                 .unwrap_or_else(|| String::new()),
             offset_storage: offset_storage,
             period: period,
+            commited_not_consumed: m.opt_present("committed-not-yet-consumed"),
         })
     }
 }
