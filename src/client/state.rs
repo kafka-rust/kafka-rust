@@ -23,6 +23,9 @@ pub struct ClientState {
 
     // ~ a mapping of topic to information about its partitions
     topic_partitions: HashMap<String, TopicPartitions>,
+
+    // ~ a mapping of groups to their coordinators
+    group_coordinators: HashMap<String, BrokerRef>,
 }
 
 // --------------------------------------------------------------------
@@ -63,7 +66,7 @@ const UNKNOWN_BROKER_INDEX: u32 = u32::MAX;
 /// through an index, thereby being able to share broker data without
 /// having to fallback to `Rc` or `Arc` or otherwise fighting the
 /// borrowck.
-// ~ The value `UNKNOWN_BROKER_INDEX` is artificial and represents a
+// ~ The value `UNKNOWN_BROKER_INDEX` is artificial and represents an
 // index to an unknown broker (aka the null value.) Code indexing
 // `self.brokers` using a `BrokerRef` _must_ check against this
 // constant and/or treat it conditionally.
@@ -76,6 +79,10 @@ impl BrokerRef {
     // ~ private constructor on purpose
     fn new(index: u32) -> Self {
         BrokerRef { _index: index }
+    }
+
+    fn index(&self) -> usize {
+        self._index as usize
     }
 
     fn set(&mut self, other: BrokerRef) {
@@ -149,7 +156,7 @@ impl TopicPartition {
     }
 
     pub fn broker<'a>(&self, state: &'a ClientState) -> Option<&'a Broker> {
-        state.brokers.get(self.broker._index as usize)
+        state.brokers.get(self.broker.index())
     }
 }
 
@@ -194,6 +201,7 @@ impl ClientState {
             correlation: 0,
             brokers: Vec::new(),
             topic_partitions: HashMap::new(),
+            group_coordinators: HashMap::new(),
         }
     }
 
@@ -203,6 +211,10 @@ impl ClientState {
 
     pub fn contains_topic(&self, topic: &str) -> bool {
         self.topic_partitions.contains_key(topic)
+    }
+
+    pub fn contains_topic_partition(&self, topic: &str, partition_id: i32) -> bool {
+        self.topic_partitions.get(topic).map(|tp| tp.partition(partition_id)).is_some()
     }
 
     pub fn topic_names(&self) -> TopicNames {
@@ -303,7 +315,7 @@ impl ClientState {
                     // ~ verify our information of the already tracked
                     // broker is up-to-date
                     let bref = *e.get();
-                    let b = &mut self.brokers[bref._index as usize];
+                    let b = &mut self.brokers[bref.index()];
                     if b.host != broker_host {
                         b.host = broker_host;
                     }
@@ -321,6 +333,61 @@ impl ClientState {
             }
         }
         brokers
+    }
+
+    /// ~ Retrieves the host:port of the coordinator for the specified
+    /// group - if any.
+    pub fn group_coordinator<'a>(&'a self, group: &str) -> Option<&'a str> {
+        self.group_coordinators
+            .get(group)
+            .and_then(|b| self.brokers.get(b.index()))
+            .map(|b| &b.host[..])
+    }
+
+    /// ~ Removes the current coordinator - if any - for the specified
+    /// group.
+    pub fn remove_group_coordinator(&mut self, group: &str) {
+        self.group_coordinators.remove(group);
+    }
+
+    /// ~ Updates the coordinator for the specified group and returns
+    /// the coordinator host as if `group_coordinator` would have
+    /// been called subsequently.
+    pub fn set_group_coordinator<'a>(
+        &'a mut self, group: &str, gc: &protocol::GroupCoordinatorResponse)
+        -> &'a str
+    {
+        debug!("set_group_coordinator: registering coordinator for '{}': {:?}",
+               group, gc);
+
+        let group_host = format!("{}:{}", gc.host, gc.port);
+        // ~ try to find an already existing broker
+        let mut broker_ref = BrokerRef::new(UNKNOWN_BROKER_INDEX);
+        for (i, broker) in (0u32..).zip(self.brokers.iter()) {
+            if gc.broker_id == broker.node_id {
+                if group_host != broker.host {
+                    warn!("set_group_coordinator: coord_host({}) != broker_host({}) for broker_id({})!",
+                          group_host, broker.host, broker.node_id);
+                }
+                broker_ref._index = i;
+                break;
+            }
+        }
+        // ~ if not found, add it to the list of known brokers
+        if broker_ref._index == UNKNOWN_BROKER_INDEX {
+            broker_ref._index = self.brokers.len() as u32;
+            self.brokers.push(Broker {
+                node_id: gc.broker_id,
+                host: group_host,
+            });
+        }
+        if let Some(br) = self.group_coordinators.get_mut(group) {
+            if br._index != broker_ref._index {
+                br._index = broker_ref._index;
+            }
+        }
+        self.group_coordinators.insert(group.to_owned(), broker_ref);
+        &self.brokers[broker_ref.index()].host
     }
 }
 

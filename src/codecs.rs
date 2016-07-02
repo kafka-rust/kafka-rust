@@ -78,12 +78,7 @@ fn test_string_too_long() {
 
 impl <V: ToByte> ToByte for [V] {
     fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        let l = try_usize_to_int!(self.len(), i32);
-        try!(buffer.write_i32::<BigEndian>(l));
-        for e in self {
-            try!(e.encode(buffer));
-        }
-        Ok(())
+        encode_as_array(buffer, self, |buffer, x| x.encode(buffer))
     }
 }
 
@@ -101,14 +96,25 @@ pub struct AsStrings<'a, T: 'a>(pub &'a [T]);
 
 impl<'a, T: AsRef<str> + 'a> ToByte for AsStrings<'a, T> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        let &AsStrings(xs) = self;
-        let l = try_usize_to_int!(xs.len(), i32);
-        try!(buffer.write_i32::<BigEndian>(l));
-        for x in xs {
-            try!(x.as_ref().encode(buffer));
-        }
-        Ok(())
+        encode_as_array(buffer, self.0, |buffer, x| {
+            x.as_ref().encode(buffer)
+        })
     }
+}
+
+/// ~ Renders the length of `xs` to `buffer` as the start of a
+/// protocol array and then for each element of `xs` invokes `f`
+/// assuming that function will render the element to the buffer.
+pub fn encode_as_array<T, F, W>(buffer: &mut W, xs: &[T], mut f: F)
+                                -> Result<()>
+    where F: FnMut(&mut W, &T) -> Result<()>, W: Write
+{
+    let l = try_usize_to_int!(xs.len(), i32);
+    try!(buffer.write_i32::<BigEndian>(l));
+    for x in xs {
+        try!(f(buffer, x));
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------------

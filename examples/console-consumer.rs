@@ -3,8 +3,9 @@ extern crate getopts;
 extern crate env_logger;
 
 use std::{env, io, fmt, process};
+use std::ascii::AsciiExt;
 
-use kafka::consumer::{Consumer, FetchOffset};
+use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
 /// This is a very simple command line application reading from a
 /// specific kafka topic and dumping the messages to standard output.
@@ -32,6 +33,7 @@ fn process(cfg: Config) -> Result<(), Error> {
              .with_fetch_max_bytes_per_partition(100_000)
              .with_fallback_offset(FetchOffset::Earliest)
              .with_retry_max_bytes_limit(1_000_000)
+             .with_offset_storage(cfg.offset_storage)
              .create());
 
     let do_commit = !cfg.no_commit;
@@ -82,6 +84,7 @@ struct Config {
     group: String,
     topic: String,
     no_commit: bool,
+    offset_storage: GroupOffsetStorage,
 }
 
 impl Config {
@@ -93,6 +96,7 @@ impl Config {
         opts.optopt("", "topic", "Specify target topic", "NAME");
         opts.optopt("", "group", "Specify the group_id file", "NAME");
         opts.optflag("", "no-commit", "Do not commit consumed messages");
+        opts.optopt("", "offsets", "Specify the offset store [zookeeper, kafka]", "STORE");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -101,6 +105,17 @@ impl Config {
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
             return Err(Error::Literal(opts.usage(&brief)));
+        }
+
+        let mut offset_storage = GroupOffsetStorage::Zookeeper;
+        if let Some(s) = m.opt_str("offsets") {
+            if s.eq_ignore_ascii_case("zookeeper") {
+                offset_storage = GroupOffsetStorage::Zookeeper;
+            } else if s.eq_ignore_ascii_case("kafka") {
+                offset_storage = GroupOffsetStorage::Kafka;
+            } else {
+                return Err(Error::Literal(format!("unknown offset store: {}", s)));
+            }
         }
         Ok(Config {
             brokers: m.opt_str("brokers")
@@ -113,6 +128,7 @@ impl Config {
             topic: m.opt_str("topic")
                 .unwrap_or_else(|| "my-topic".to_owned()),
             no_commit: m.opt_present("no-commit"),
+            offset_storage: offset_storage,
         })
    }
 }

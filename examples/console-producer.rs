@@ -1,5 +1,6 @@
 extern crate kafka;
 extern crate getopts;
+extern crate env_logger;
 
 use std::{env, fmt, process};
 use std::fs::File;
@@ -21,6 +22,8 @@ const ACK_TIMEOUT: i32 = 100;
 /// Alternatively, messages can be read from an input file and sent do
 /// kafka in batches (the typical use-case).
 fn main() {
+    env_logger::init().unwrap();
+
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -101,8 +104,8 @@ fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config
             continue; // ~ skip empty lines
         }
         // ~ directly send to kafka
-        let r = try!(producer.send(&rec));
-        let _ = write!(stderr, "debug: {:?}\n", r);
+        try!(producer.send(&rec));
+        let _ = write!(stderr, "Sent: {}", *rec.value);
     }
     Ok(())
 }

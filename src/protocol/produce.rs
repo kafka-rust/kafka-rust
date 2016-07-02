@@ -12,7 +12,7 @@ use utils::TopicPartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
-use super::tocrc;
+use super::to_crc;
 
 /// The magic byte (a.k.a version) we use for sent messages.
 const MESSAGE_MAGIC_BYTE: i8 = 0;
@@ -207,7 +207,7 @@ impl<'a> MessageProduceRequest<'a> {
         try!(self.value.encode(buffer));
 
         // compute the crc and store it back in the reserved space
-        crc = tocrc(&buffer[(crc_pos + 4)..]) as i32;
+        crc = to_crc(&buffer[(crc_pos + 4)..]) as i32;
         try!(crc.encode(&mut &mut buffer[crc_pos .. crc_pos + 4]));
 
         // compute the size and store it back in the reserved space
@@ -271,7 +271,7 @@ impl PartitionProduceResponse {
         TopicPartitionOffset {
             topic: topic,
             partition: self.partition,
-            offset: match Error::from_protocol_error(self.error) {
+            offset: match Error::from_protocol(self.error) {
                 None => Ok(self.offset),
                 Some(e) => Err(e),
             }

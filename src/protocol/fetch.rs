@@ -19,7 +19,7 @@ use compression::snappy::SnappyReader;
 
 use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
 use super::zreader::ZReader;
-use super::tocrc;
+use super::to_crc;
 
 pub type PartitionHasher = BuildHasherDefault<FnvHasher>;
 
@@ -268,7 +268,7 @@ impl<'a> Partition<'a> {
         let proffs = preqs.and_then(|preqs| preqs.get(partition))
             .map(|preq| preq.offset)
             .unwrap_or(0);
-        let error = Error::from_protocol_error(try!(r.read_i16()));
+        let error = Error::from_protocol(try!(r.read_i16()));
         // we need to parse the rest even if there was an error to
         // consume the input stream (zreader)
         let highwatermark = try!(r.read_i64());
@@ -442,7 +442,7 @@ impl<'a> ProtocolMessage<'a> {
 
         // ~ optionally validate the crc checksum
         let msg_crc = try!(r.read_i32());
-        if validate_crc && tocrc(r.rest()) as i32 != msg_crc {
+        if validate_crc && to_crc(r.rest()) as i32 != msg_crc {
             return Err(Error::Kafka(KafkaCode::CorruptMessage));
         }
         // ~ we support parsing only messages with the "zero"

@@ -1,4 +1,5 @@
 extern crate kafka;
+extern crate env_logger;
 
 use kafka::consumer::{Consumer, FetchOffset};
 use kafka::error::Error as KafkaError;
@@ -8,6 +9,8 @@ use kafka::error::Error as KafkaError;
 /// that messages must be marked and commited as consumed to ensure
 /// only once delivery.
 fn main() {
+    env_logger::init().unwrap();
+
     let broker = "localhost:9092".to_owned();
     let topic = "my-topic".to_owned();
     let group = "my-group".to_owned();

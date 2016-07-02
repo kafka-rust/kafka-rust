@@ -8,6 +8,8 @@ use std::collections::hash_map::HashMap;
 use std::io::Cursor;
 use std::iter::Iterator;
 use std::mem;
+use std::thread;
+use std::time::Duration;
 
 #[cfg(feature = "security")]
 use openssl::ssl::SslContext;
@@ -51,10 +53,20 @@ pub const DEFAULT_FETCH_MAX_BYTES_PER_PARTITION: i32 = 32 * 1024;
 /// The default value for `KafkaClient::set_fetch_crc_validation(..)`
 pub const DEFAULT_FETCH_CRC_VALIDATION: bool = true;
 
+/// The default value for `KafkaClient::set_group_offset_storage(..)`
+pub const DEFAULT_GROUP_OFFSET_STORAGE: GroupOffsetStorage = GroupOffsetStorage::Zookeeper;
+
+/// The default value for `KafkaClient::set_retry_backoff_time(..)`
+pub const DEFAULT_RETRY_BACKOFF_TIME: u32 = 100;
+
+/// The default value for `KafkaClient::set_retry_max_attempts(..)`
+// the default value: re-attempt a repeatable operation for
+// approximetaly up to two minutes
+pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME;
 
 /// Client struct keeping track of brokers and topic metadata.
 ///
-/// Implements methods described by the [Kafka Protocol](https://cwiki.apache.org/confluence/display/KAFKA/A+Guide+To+The+Kafka+Protocol).
+/// Implements methods described by the [Kafka Protocol](http://kafka.apache.org/protocol.html).
 ///
 /// You will have to load metadata before making any other request.
 #[derive(Debug)]
@@ -81,6 +93,20 @@ struct ClientConfig {
     fetch_min_bytes: i32,
     fetch_max_bytes_per_partition: i32,
     fetch_crc_validation: bool,
+    // ~ the version of the API to use for the corresponding kafka
+    // calls; note that this might have an effect on the storage type
+    // kafka will then use (zookeeper or __consumer_offsets).  it is
+    // important to use version for both of them which target the same
+    // storage type.
+    offset_fetch_version: protocol::OffsetFetchVersion,
+    offset_commit_version: protocol::OffsetCommitVersion,
+    // ~ the number of millis to wait before retrying a failed
+    // operation like refreshing group coordinators; this avoids
+    // operation retries in a tight loop.
+    retry_backoff_time: u32,
+    // ~ the number of repeated retry attempts; prevents endless
+    // repetition of a retry attempt
+    retry_max_attempts: u32,
 }
 
 #[derive(Debug)]
@@ -127,6 +153,10 @@ impl ConnectionPool {
         Ok(self.conns.get_mut(host).unwrap())
     }
 
+    fn get_conn_any<'a>(&'a mut self) -> Option<&'a mut KafkaConnection> {
+        self.conns.iter_mut().next().map(|(_, conn)| conn)
+    }
+
     #[cfg(not(feature = "security"))]
     fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
         KafkaConnection::new(host, self.timeout)
@@ -165,6 +195,36 @@ impl FetchOffset {
 }
 
 // --------------------------------------------------------------------
+
+/// Defines the availale storage types to utilize when fetching or
+/// comitting group offsets.  See also `KafkaClient::set_group_offset_storage`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum GroupOffsetStorage {
+    /// Zookeeper based storage (available as of kafka 0.8.1)
+    Zookeeper,
+    /// Kafka based storage (available as of Kafka 0.8.2). This is the
+    /// prefered method for groups to store their offsets at.
+    Kafka,
+}
+
+impl GroupOffsetStorage {
+    fn offset_fetch_version(&self) -> protocol::OffsetFetchVersion {
+        match *self {
+            GroupOffsetStorage::Zookeeper => protocol::OffsetFetchVersion::V0,
+            GroupOffsetStorage::Kafka => protocol::OffsetFetchVersion::V1,
+        }
+    }
+    fn offset_commit_version(&self) -> protocol::OffsetCommitVersion {
+        match *self {
+            GroupOffsetStorage::Zookeeper => protocol::OffsetCommitVersion::V0,
+            // ~ if we knew we'll be communicating with a kafka 0.9+
+            // broker we could set the commit-version to V2; however,
+            // since we still want to support Kafka 0.8.2 versions,
+            // we'll go with the less efficient but safe option V1.
+            GroupOffsetStorage::Kafka => protocol::OffsetCommitVersion::V1,
+        }
+    }
+}
 
 /// Data point identifying a topic partition to fetch a group's offset
 /// for.  See `KafkaClient::fetch_group_offsets`.
@@ -340,6 +400,10 @@ impl KafkaClient {
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
+                offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
+                offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
+                retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
+                retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
             state: state::ClientState::new(),
@@ -392,6 +456,10 @@ impl KafkaClient {
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
+                offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
+                offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
+                retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
+                retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: ConnectionPool::new_with_security(DEFAULT_SO_TIMEOUT_SECS, Some(security)),
             state: state::ClientState::new(),
@@ -532,6 +600,68 @@ impl KafkaClient {
         self.config.fetch_crc_validation
     }
 
+    /// Specifies the group offset storage to address when fetching or
+    /// committing group offsets.
+    ///
+    /// In addition to Zookeeper, Kafka 0.8.2 brokers or later offer a
+    /// more performant (and scalable) way to manage group offset
+    /// directly by itself. Note that the remote storages are separate
+    /// and independent on each other. Hence, you typically want
+    /// consistently hard-code your choice in your program.
+    ///
+    /// Unless you have a 0.8.1 broker or want to participate in a
+    /// group which is already based on Zookeeper, you generally want
+    /// to choose `GroupOffsetStorage::Kafka` here.
+    ///
+    /// See also `KafkaClient::fetch_group_offsets` and
+    /// `KafkaClient::commit_offsets`.
+    #[inline]
+    pub fn set_group_offset_storage(&mut self, storage: GroupOffsetStorage) {
+        self.config.offset_fetch_version = storage.offset_fetch_version();
+        self.config.offset_commit_version = storage.offset_commit_version();
+    }
+
+    /// Retrieves the current `KafkaClient::set_group_offset_storage`
+    /// settings.
+    pub fn group_offset_storage(&self) -> GroupOffsetStorage {
+        // ~ only protocol V0 is zookeeper
+        let zkv = GroupOffsetStorage::Zookeeper.offset_fetch_version();
+        if zkv == self.config.offset_fetch_version {
+            GroupOffsetStorage::Zookeeper
+        } else {
+            GroupOffsetStorage::Kafka
+        }
+    }
+
+    /// Specifies the number of milliseconds to wait before retrying a
+    /// failed, repeatable operation against Kafka.  This avoids
+    /// retrying such operations in a tight loop.
+    #[inline]
+    pub fn set_retry_backoff_time(&mut self, millis: u32) {
+        self.config.retry_backoff_time = millis;
+    }
+
+    /// Retrieves the current `KafkaClient::set_retry_backoff_time`
+    /// setting.
+    pub fn retry_backoff_time(&self) -> u32 {
+        self.config.retry_backoff_time
+    }
+
+    /// Specifies the upper limit of retry attempts for failed,
+    /// repeatable operations against kafka.  This avoids retrying
+    /// them forever.
+    #[inline]
+    pub fn set_retry_max_attempts(&mut self, attempts: u32) {
+        self.config.retry_max_attempts = attempts;
+    }
+
+    /// Retrieves the current `KafkaClient::set_retry_max_attempts`
+    /// setting.
+    #[inline]
+    pub fn retry_max_attempts(&self) -> u32 {
+        self.config.retry_max_attempts
+    }
+
     /// Provides a view onto the currently loaded metadata of known .
     ///
     /// # Examples
@@ -617,17 +747,17 @@ impl KafkaClient {
     fn fetch_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<protocol::MetadataResponse> {
         let correlation = self.state.next_correlation_id();
         for host in &self.config.hosts {
-            debug!("Attempting to fetch metadata from {}", host);
+            debug!("fetch_metadata: requesting metadata from {}", host);
             match self.conn_pool.get_conn(host) {
                 Ok(conn) => {
                     let req = protocol::MetadataRequest::new(correlation, &self.config.client_id, topics);
                     match __send_request(conn, req) {
                         Ok(_) => return __get_response::<protocol::MetadataResponse>(conn),
-                        Err(e) => debug!("Failed to request metadata from {}: {}", host, e),
+                        Err(e) => debug!("fetch_metadata: failed to request metadata from {}: {}", host, e),
                     }
                 }
                 Err(e) => {
-                    debug!("Failed to connect to {}: {}", host, e);
+                    debug!("fetch_metadata: failed to connect to {}: {}", host, e);
                 }
             }
         }
@@ -675,7 +805,7 @@ impl KafkaClient {
         // Call each broker with the request formed earlier
         let mut res: HashMap<String, Vec<PartitionOffset>> = HashMap::with_capacity(n_topics);
         for (host, req) in reqs {
-            let resp = try!(__send_receive::<protocol::OffsetRequest, protocol::OffsetResponse>(&mut self.conn_pool, &host, req));
+            let resp = try!(__send_receive::<_, protocol::OffsetResponse>(&mut self.conn_pool, &host, req));
             for tp in resp.topic_partitions {
                 let e = res.entry(tp.topic).or_insert(vec!());
                 for p in tp.partitions {
@@ -916,21 +1046,18 @@ impl KafkaClient {
     pub fn commit_offsets<'a, J, I>(&mut self, group: &str, offsets: I) -> Result<()>
         where J: AsRef<CommitOffset<'a>>, I: IntoIterator<Item=J>
     {
-        let state = &mut self.state;
-        let correlation = state.next_correlation_id();
-
-        // Map topic and partition to the corresponding broker
-        let config = &self.config;
-        let mut reqs: HashMap<&str, protocol::OffsetCommitRequest> = HashMap:: new();
-        for tp in offsets {
-            let tp = tp.as_ref();
-            if let Some(broker) = state.find_broker(&tp.topic, tp.partition) {
-                reqs.entry(broker)
-                    .or_insert(protocol::OffsetCommitRequest::new(group, correlation, &config.client_id))
-                    .add(tp.topic, tp.partition, tp.offset, "");
+        let mut req = protocol::OffsetCommitRequest::new(
+            group, self.config.offset_commit_version,
+            self.state.next_correlation_id(), &self.config.client_id);
+        for o in offsets {
+            let o = o.as_ref();
+            if self.state.contains_topic_partition(o.topic, o.partition) {
+                req.add(o.topic, o.partition, o.offset, "");
+            } else {
+                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
-        __commit_offsets(&mut self.conn_pool, reqs)
+        __commit_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
     }
 
     /// Commit offset of a particular topic partition on behalf of a
@@ -975,25 +1102,25 @@ impl KafkaClient {
                                          -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<FetchGroupOffset<'a>>, I: IntoIterator<Item=J>
     {
-        let correlation = self.state.next_correlation_id();
-
-        // Map topic and partition to the corresponding broker
-        let mut reqs: HashMap<&str, protocol::OffsetFetchRequest> = HashMap:: new();
-        for tp in partitions {
-            let tp = tp.as_ref();
-            if let Some(broker) = self.state.find_broker(tp.topic, tp.partition) {
-                reqs.entry(broker)
-                    .or_insert(protocol::OffsetFetchRequest::new(group, correlation, &self.config.client_id))
-                    .add(tp.topic, tp.partition);
+        let mut req = protocol::OffsetFetchRequest::new(
+            group, self.config.offset_fetch_version,
+            self.state.next_correlation_id(), &self.config.client_id);
+        let mut num = 0;
+        for p in partitions {
+            let p = p.as_ref();
+            if self.state.contains_topic_partition(p.topic, p.partition) {
+                req.add(p.topic, p.partition);
+                num += 1;
+            } else {
+                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
-        __fetch_group_offsets(&mut self.conn_pool, reqs)
+        __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
     }
 
     /// Fetch offset for all partitions of a particular topic of a consumer group
     ///
     /// # Examples
-    ///
     ///
     /// ```no_run
     /// use kafka::client::KafkaClient;
@@ -1003,40 +1130,196 @@ impl KafkaClient {
     /// let offsets = client.fetch_group_topic_offsets("my-group", "my-topic").unwrap();
     /// ```
     pub fn fetch_group_topic_offsets(&mut self, group: &str, topic: &str)
-                               -> Result<Vec<TopicPartitionOffset>>
+                                     -> Result<Vec<TopicPartitionOffset>>
     {
-        let tps: Vec<_> =
-            match self.state.partitions_for(topic) {
-                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
-                Some(tp) => tp.iter().map(|(id, _)| FetchGroupOffset::new(topic, id)).collect(),
-            };
-        self.fetch_group_offsets(group, tps)
+        let mut req = protocol::OffsetFetchRequest::new(
+            group, self.config.offset_fetch_version,
+            self.state.next_correlation_id(), &self.config.client_id);
+        let num;
+        match self.state.partitions_for(topic) {
+            None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+            Some(tp) => {
+                num = tp.len();
+                for (id, _) in tp {
+                    req.add(topic, id);
+                }
+            }
+        }
+        __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
     }
 }
 
-fn __commit_offsets(conn_pool: &mut ConnectionPool,
-                    reqs: HashMap<&str, protocol::OffsetCommitRequest>)
-                    -> Result<()> {
-    // Call each broker with the request formed earlier
-    for (host, req) in reqs {
-        try!(__send_receive::<protocol::OffsetCommitRequest, protocol::OffsetCommitResponse>(conn_pool, host, req));
+fn __get_group_coordinator<'a>(group: &str,
+                               state: &'a mut state::ClientState,
+                               conn_pool: &mut ConnectionPool,
+                               config: &ClientConfig)
+                               -> Result<&'a str>
+{
+    if let Some(host) = state.group_coordinator(group) {
+        // ~ decouple the lifetimes to make borrowck happy;
+        // this is actually safe since we're immediatelly
+        // returning this, so the follow up code is not
+        // affected here
+        return Ok(unsafe { mem::transmute(host) });
     }
-    Ok(())
-}
-
-fn __fetch_group_offsets(conn_pool: &mut ConnectionPool,
-                               reqs: HashMap<&str, protocol::OffsetFetchRequest>)
-                               -> Result<Vec<TopicPartitionOffset>> {
-    // Call each broker with the request formed earlier
-    let mut res = vec!();
-    for (host, req) in reqs {
-        let resp = try!(__send_receive::<protocol::OffsetFetchRequest, protocol::OffsetFetchResponse>(conn_pool, host, req));
-        let o = resp.get_offsets();
-        for tpo in o {
-            res.push(tpo);
+    let correlation_id = state.next_correlation_id();
+    let req = protocol::GroupCoordinatorRequest::new(group, correlation_id, &config.client_id);
+    let mut attempt = 1;
+    loop {
+        // ~ idealy we make make this work even if load_metadata has not
+        // been called yet; if there are not connections available we can
+        // try connecting to the user specified bootstrap server similar
+        // to the way load_metadata works.
+        let conn = conn_pool.get_conn_any().expect("available connection");
+        debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
+        let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req));
+        let retry_code;
+        match r.to_result() {
+            Ok(r) => {
+                return Ok(state.set_group_coordinator(group, &r));
+            }
+            Err(Error::Kafka(e@KafkaCode::GroupCoordinatorNotAvailable)) => {
+                retry_code = e;
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+        if attempt < config.retry_max_attempts {
+            debug!("get_group_coordinator: will retry request (c: {}) due to: {:?}",
+                   req.header.correlation_id, retry_code);
+            attempt += 1;
+            __retry_sleep(config);
+        } else {
+            return Err(Error::Kafka(retry_code));
         }
     }
-    Ok(res)
+}
+
+fn __commit_offsets(req: protocol::OffsetCommitRequest,
+                    state: &mut state::ClientState,
+                    conn_pool: &mut ConnectionPool,
+                    config: &ClientConfig)
+                    -> Result<()>
+{
+    let mut attempt = 1;
+    loop {
+        let tps = {
+            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
+            debug!("commit_offsets: committing on protocol v{} for '{}' to: {}",
+                   req.header.api_version, req.group, host);
+            try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, &req))
+                .topic_partitions
+        };
+
+        let mut retry_code = None;
+
+        'rproc: for tp in tps {
+            for p in tp.partitions {
+                match p.to_error() {
+                    None => {},
+                    Some(e@KafkaCode::GroupLoadInProgress) => {
+                        retry_code = Some(e);
+                        break 'rproc;
+                    }
+                    Some(e@KafkaCode::NotCoordinatorForGroup) => {
+                        debug!("commit_offsets: resetting group coordinator for '{}'",
+                               req.group);
+                        state.remove_group_coordinator(&req.group);
+                        retry_code = Some(e);
+                        break 'rproc;
+                    }
+                    Some(code) => {
+                        // ~ immediately abort with the error
+                        return Err(Error::Kafka(code));
+                    }
+                }
+            }
+        }
+        match retry_code {
+            Some(e) => {
+                if attempt < config.retry_max_attempts {
+                    debug!("commit_offsets: will retry request (c: {}) due to: {:?}",
+                           req.header.correlation_id, e);
+                    attempt += 1;
+                    __retry_sleep(config);
+                }
+            }
+            None => {
+                return Ok(());
+            }
+        }
+    }
+}
+
+// ~ 'num_partitions' is merely a hint to pre-allocation inside this method
+fn __fetch_group_offsets(
+    req: protocol::OffsetFetchRequest, num_partitions: usize,
+    state: &mut state::ClientState, conn_pool: &mut ConnectionPool,
+    config: &ClientConfig) -> Result<Vec<TopicPartitionOffset>>
+{
+    let mut attempt = 1;
+    loop {
+        let r = {
+            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
+            debug!("fetch_group_offsets: fetching on protocol v{} for '{}' from: {}",
+                   req.header.api_version, req.group, host);
+            try!(__send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, &req))
+        };
+
+        let mut retry_code = None;
+        let mut v = Vec::with_capacity(num_partitions);
+
+        'rproc: for tp in r.topic_partitions {
+            for p in tp.partitions {
+                let mut o = p.get_offsets(tp.topic.clone());
+                match o.offset {
+                    Ok(_) => {
+                        v.push(o);
+                    }
+                    Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)) => {
+                        // ~ occurs only on protocol v0 when no offset available
+                        // for the group in question; we'll align the behavior
+                        // with protocol v1.
+                        o.offset = Ok(-1);
+                        v.push(o);
+                    }
+                    Err(Error::Kafka(e@KafkaCode::GroupLoadInProgress)) => {
+                        retry_code = Some(e);
+                        break 'rproc;
+                    }
+                    Err(Error::Kafka(e@KafkaCode::NotCoordinatorForGroup)) => {
+                        debug!("fetch_group_offsets: resetting group coordinator for '{}'",
+                               req.group);
+                        state.remove_group_coordinator(&req.group);
+                        retry_code = Some(e);
+                        break 'rproc;
+                    }
+                    Err(e) => {
+                        // ~ immeditaly abort with the error
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        // ~ have we processed the result successfully or shall we
+        // retry once more?
+        match retry_code {
+            Some(e) => {
+                if attempt < config.retry_max_attempts {
+                    debug!("fetch_group_offsets: will retry request (c: {}) due to: {:?}",
+                           req.header.correlation_id, e);
+                    attempt += 1;
+                    __retry_sleep(config)
+                } else {
+                    return Err(Error::Kafka(e));
+                }
+            }
+            None => {
+                return Ok(v);
+            }
+        }
+    }
 }
 
 /// ~ carries out the given fetch requests and returns the response
@@ -1073,7 +1356,7 @@ fn __produce_messages(conn_pool: &mut ConnectionPool,
     } else {
         let mut res: Vec<TopicPartitionOffset> = vec![];
         for (host, req) in reqs {
-            let resp = try!(__send_receive::<protocol::ProduceRequest, protocol::ProduceResponse>(conn_pool, &host, req));
+            let resp = try!(__send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, req));
             for tpo in resp.get_response() {
                 res.push(tpo);
             }
@@ -1082,23 +1365,30 @@ fn __produce_messages(conn_pool: &mut ConnectionPool,
     }
 }
 
-fn __send_receive<T: ToByte, V: FromByte>(conn_pool: &mut ConnectionPool, host: &str, req: T)
-                                        -> Result<V::R>
+fn __send_receive<T, V>(conn_pool: &mut ConnectionPool, host: &str, req: T)
+                        -> Result<V::R>
+    where T: ToByte, V: FromByte
 {
-    let mut conn = try!(conn_pool.get_conn(host));
-    try!(__send_request(&mut conn, req));
-    __get_response::<V>(&mut conn)
+    __send_receive_conn::<T, V>(try!(conn_pool.get_conn(host)), req)
 }
 
-fn __send_noack<T: ToByte, V: FromByte>(conn_pool: &mut ConnectionPool, host: &str, req: T)
-                                        -> Result<usize>
+fn __send_receive_conn<T, V>(conn: &mut KafkaConnection, req: T) -> Result<V::R>
+    where T: ToByte, V: FromByte
+{
+    try!(__send_request(conn, req));
+    __get_response::<V>(conn)
+}
+
+fn __send_noack<T, V>(conn_pool: &mut ConnectionPool, host: &str, req: T)
+                      -> Result<usize>
+    where T: ToByte, V: FromByte
 {
     let mut conn = try!(conn_pool.get_conn(&host));
     __send_request(&mut conn, req)
 }
 
 fn __send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
-                           -> Result<usize>
+                             -> Result<usize>
 {
     // ~ buffer to receive data to be sent
     let mut buffer = Vec::with_capacity(4);
@@ -1117,7 +1407,6 @@ fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
                              -> Result<T::R>
 {
     let size = try!(__get_response_size(conn));
-
     let resp = try!(conn.read_exact_alloc(size as u64));
 
     // {
@@ -1169,4 +1458,12 @@ fn __get_response_size(conn: &mut KafkaConnection) -> Result<i32> {
     let mut buf = [0u8; 4];
     try!(conn.read_exact(&mut buf));
     i32::decode_new(&mut Cursor::new(&buf))
+}
+
+/// Suspends the calling thread for the configured "retry" time. This
+/// method should be called _only_ as part of a retry attempt.
+fn __retry_sleep(cfg: &ClientConfig) {
+    if cfg.retry_backoff_time > 0 {
+        thread::sleep(Duration::from_millis(cfg.retry_backoff_time as u64))
+    }
 }
