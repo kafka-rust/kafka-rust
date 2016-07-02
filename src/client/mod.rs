@@ -1177,7 +1177,7 @@ fn __get_group_coordinator<'a>(group: &str,
             Ok(r) => {
                 return Ok(state.set_group_coordinator(group, &r));
             }
-            Err(Error::Kafka(e@KafkaCode::ConsumerCoordinatorNotAvailableCode)) => {
+            Err(Error::Kafka(e@KafkaCode::GroupCoordinatorNotAvailable)) => {
                 retry_code = e;
             }
             Err(e) => {
@@ -1217,12 +1217,12 @@ fn __commit_offsets(req: protocol::OffsetCommitRequest,
             for p in tp.partitions {
                 match p.to_error() {
                     None => {},
-                    Some(e@KafkaCode::OffsetsLoadInProgressCode) => {
+                    Some(e@KafkaCode::GroupLoadInProgress) => {
                         retry_code = Some(e);
                         break 'rproc;
                     }
-                    Some(e@KafkaCode::NotCoordinatorForConsumerCode) => {
-                        debug!("commit_offsets: resetting group coordinator for group '{}'",
+                    Some(e@KafkaCode::NotCoordinatorForGroup) => {
+                        debug!("commit_offsets: resetting group coordinator for '{}'",
                                req.group);
                         state.remove_group_coordinator(&req.group);
                         retry_code = Some(e);
@@ -1283,12 +1283,12 @@ fn __fetch_group_offsets(
                         o.offset = Ok(-1);
                         v.push(o);
                     }
-                    Err(Error::Kafka(e@KafkaCode::OffsetsLoadInProgressCode)) => {
+                    Err(Error::Kafka(e@KafkaCode::GroupLoadInProgress)) => {
                         retry_code = Some(e);
                         break 'rproc;
                     }
-                    Err(Error::Kafka(e@KafkaCode::NotCoordinatorForConsumerCode)) => {
-                        debug!("fetch_group_offsets: resetting group coordinator for group '{}'",
+                    Err(Error::Kafka(e@KafkaCode::NotCoordinatorForGroup)) => {
+                        debug!("fetch_group_offsets: resetting group coordinator for '{}'",
                                req.group);
                         state.remove_group_coordinator(&req.group);
                         retry_code = Some(e);

@@ -49,7 +49,6 @@ pub enum Error {
 
 /// Various errors reported by a remote Kafka server.
 /// See also [Kafka Errors](http://kafka.apache.org/protocol.html)
-// XXX drop the "Code" suffix from the names
 #[derive(Debug, Copy, Clone)]
 pub enum KafkaCode {
     /// An unexpected server error
@@ -86,10 +85,10 @@ pub enum KafkaCode {
     /// client attempt to produce a message larger than this maximum.
     MessageSizeTooLarge = 10,
     /// Internal error code for broker-to-broker communication.
-    StaleControllerEpochCode = 11,
+    StaleControllerEpoch = 11,
     /// If you specify a string larger than configured maximum for
     /// offset metadata
-    OffsetMetadataTooLargeCode = 12,
+    OffsetMetadataTooLarge = 12,
     /// The server disconnected before a response was received.
     NetworkException = 13,
     /// The broker returns this error code for an offset fetch request
@@ -97,65 +96,65 @@ pub enum KafkaCode {
     /// offsets topic partition), or in response to group membership
     /// requests (such as heartbeats) when group metadata is being
     /// loaded by the coordinator.
-    OffsetsLoadInProgressCode = 14,
+    GroupLoadInProgress = 14,
     /// The broker returns this error code for group coordinator
     /// requests, offset commits, and most group management requests
     /// if the offsets topic has not yet been created, or if the group
     /// coordinator is not active.
-    ConsumerCoordinatorNotAvailableCode = 15,
+    GroupCoordinatorNotAvailable = 15,
     /// The broker returns this error code if it receives an offset
     /// fetch or commit request for a group that it is not a
     /// coordinator for.
-    NotCoordinatorForConsumerCode = 16,
+    NotCoordinatorForGroup = 16,
     /// For a request which attempts to access an invalid topic
     /// (e.g. one which has an illegal name), or if an attempt is made
     /// to write to an internal topic (such as the consumer offsets
     /// topic).
-    InvalidTopicCode = 17,
+    InvalidTopic = 17,
     /// If a message batch in a produce request exceeds the maximum
     /// configured segment size.
-    RecordListTooLargeCode = 18,
+    RecordListTooLarge = 18,
     /// Returned from a produce request when the number of in-sync
     /// replicas is lower than the configured minimum and requiredAcks is
     /// -1.
-    NotEnoughReplicasCode = 19,
+    NotEnoughReplicas = 19,
     /// Returned from a produce request when the message was written
     /// to the log, but with fewer in-sync replicas than required.
-    NotEnoughReplicasAfterAppendCode = 20,
+    NotEnoughReplicasAfterAppend = 20,
     /// Returned from a produce request if the requested requiredAcks is
     /// invalid (anything other than -1, 1, or 0).
-    InvalidRequiredAcksCode = 21,
+    InvalidRequiredAcks = 21,
     /// Returned from group membership requests (such as heartbeats) when
     /// the generation id provided in the request is not the current
     /// generation.
-    IllegalGenerationCode = 22,
+    IllegalGeneration = 22,
     /// Returned in join group when the member provides a protocol type or
     /// set of protocols which is not compatible with the current group.
-    InconsistentGroupProtocolCode = 23,
+    InconsistentGroupProtocol = 23,
     /// Returned in join group when the groupId is empty or null.
-    InvalidGroupIdCode = 24,
+    InvalidGroupId = 24,
     /// Returned from group requests (offset commits/fetches, heartbeats,
     /// etc) when the memberId is not in the current generation.
-    UnknownMemberIdCode = 25,
+    UnknownMemberId = 25,
     /// Return in join group when the requested session timeout is outside
     /// of the allowed range on the broker
-    InvalidSessionTimeoutCode = 26,
+    InvalidSessionTimeout = 26,
     /// Returned in heartbeat requests when the coordinator has begun
     /// rebalancing the group. This indicates to the client that it
     /// should rejoin the group.
-    RebalanceInProgressCode = 27,
+    RebalanceInProgress = 27,
     /// This error indicates that an offset commit was rejected because of
     /// oversize metadata.
-    InvalidCommitOffsetSizeCode = 28,
+    InvalidCommitOffsetSize = 28,
     /// Returned by the broker when the client is not authorized to access
     /// the requested topic.
-    TopicAuthorizationFailedCode = 29,
+    TopicAuthorizationFailed = 29,
     /// Returned by the broker when the client is not authorized to access
     /// a particular groupId.
-    GroupAuthorizationFailedCode = 30,
+    GroupAuthorizationFailed = 30,
     /// Returned by the broker when the client is not authorized to use an
     /// inter-broker or administrative API.
-    ClusterAuthorizationFailedCode = 31,
+    ClusterAuthorizationFailed = 31,
     /// The timestamp of the message is out of acceptable range.
     InvalidTimestamp = 32,
     /// The broker does not support the requested SASL mechanism.
