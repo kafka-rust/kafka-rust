@@ -80,7 +80,7 @@ fn test_kafka_code_from_protocol() {
 
     assert!(if let None = KafkaCode::from_protocol(0) { true } else { false });
     assert_kafka_code!(KafkaCode::OffsetOutOfRange, KafkaCode::OffsetOutOfRange as i16);
-    assert_kafka_code!(KafkaCode::IllegalGenerationCode, KafkaCode::IllegalGenerationCode as i16);
+    assert_kafka_code!(KafkaCode::IllegalGeneration, KafkaCode::IllegalGeneration as i16);
     assert_kafka_code!(KafkaCode::UnsupportedVersion, KafkaCode::UnsupportedVersion as i16);
     assert_kafka_code!(KafkaCode::Unknown, KafkaCode::Unknown as i16);
     // ~ test some un mapped non-zero codes; should all map to "unknown"
