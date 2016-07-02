@@ -60,7 +60,8 @@ pub const DEFAULT_GROUP_OFFSET_STORAGE: GroupOffsetStorage = GroupOffsetStorage:
 pub const DEFAULT_RETRY_BACKOFF_TIME: u32 = 100;
 
 /// The default value for `KafkaClient::set_retry_max_attempts(..)`
-// the default value: re-attempt an repeatable operation for up to approx. two minutes
+// the default value: re-attempt a repeatable operation for
+// approximetaly up to two minutes
 pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME;
 
 /// Client struct keeping track of brokers and topic metadata.
