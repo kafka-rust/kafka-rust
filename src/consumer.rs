@@ -74,6 +74,9 @@ type SecurityConfig = ();
 /// The default value for `Builder::with_retry_max_bytes_limit`.
 pub const DEFAULT_RETRY_MAX_BYTES_LIMIT: i32 = 0;
 
+/// The default value for `Builder::with_fallback_offset`.
+pub const DEFAULT_FALLBACK_OFFSET: FetchOffset = FetchOffset::Latest;
+
 type PartitionHasher = BuildHasherDefault<FnvHasher>;
 
 /// The Kafka Consumer
@@ -117,7 +120,7 @@ struct Config {
     group: String,
     topic: String,
     partitions: Vec<i32>,
-    fallback_offset: Option<FetchOffset>,
+    fallback_offset: FetchOffset,
     retry_max_bytes_limit: i32,
 }
 
@@ -477,15 +480,8 @@ fn load_fetch_states(config: &Config,
     if consumed_offsets.is_empty() {
         // ~ if there are no offsets on behalf of the consumer
         // group - if any - we can directly use fallback offsets.
-        let fo = match config.fallback_offset {
-            None => {
-                debug!("load_fetch_states: cannot determine \
-                        fetch offset; no fallback_offset configured");
-                return Err(Error::Kafka(KafkaCode::Unknown));
-            }
-            Some(fo) => fo,
-        };
-        let offs = try!(load_partition_offsets(client, &config.topic, fo));
+        let offs = try!(load_partition_offsets(
+            client, &config.topic, config.fallback_offset));
         for p in partitions {
             fetch_offsets.insert(*p, FetchState {
                 offset: *offs.get(p).unwrap_or(&-1),
@@ -506,8 +502,8 @@ fn load_fetch_states(config: &Config,
                 Some(&co) if co >= e_off && co < l_off => co + 1,
                 _ => {
                     match config.fallback_offset {
-                        Some(FetchOffset::Latest) => l_off,
-                        Some(FetchOffset::Earliest) => e_off,
+                        FetchOffset::Latest => l_off,
+                        FetchOffset::Earliest => e_off,
                         _ => {
                             debug!("cannot determine fetch offset \
                                     (group: {} / topic: {} / partition: {})",
@@ -651,7 +647,7 @@ pub struct Builder {
     group: String,
     topic: String,
     partitions: Vec<i32>,
-    fallback_offset: Option<FetchOffset>, // XXX default to "Latest" (drop the Option)
+    fallback_offset: FetchOffset,
     fetch_max_wait_time: i32,
     fetch_min_bytes: i32,
     fetch_max_bytes_per_partition: i32,
@@ -674,7 +670,7 @@ impl Builder {
             group: "".to_owned(),
             topic: "".to_owned(),
             partitions: Vec::new(),
-            fallback_offset: None,
+            fallback_offset: DEFAULT_FALLBACK_OFFSET,
             security_config: None,
             group_offset_storage: client::DEFAULT_GROUP_OFFSET_STORAGE,
         };
@@ -733,8 +729,8 @@ impl Builder {
     /// (thereby staring to consume only newly arriving messages.)
     /// The "fallback offset" here corresponds to `time` in
     /// `KafkaClient::fetch_offsets`.
-    pub fn with_fallback_offset(mut self, fallback_offset_time: FetchOffset) -> Builder {
-        self.fallback_offset = Some(fallback_offset_time);
+    pub fn with_fallback_offset(mut self, fallback_offset: FetchOffset) -> Builder {
+        self.fallback_offset = fallback_offset;
         self
     }
 

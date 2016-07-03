@@ -2,10 +2,11 @@ extern crate kafka;
 extern crate getopts;
 extern crate env_logger;
 
-use std::{env, io, fmt, process};
+use std::{env, fmt, process};
+use std::io::{self, Write};
 use std::ascii::AsciiExt;
 
-use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
+use kafka::consumer::{Consumer, GroupOffsetStorage};
 
 /// This is a very simple command line application reading from a
 /// specific kafka topic and dumping the messages to standard output.
@@ -29,20 +30,29 @@ fn process(cfg: Config) -> Result<(), Error> {
     let mut c =
         try!(Consumer::from_hosts(cfg.brokers, cfg.topic)
              .with_group(cfg.group)
-             .with_fetch_max_wait_time(100)
+             .with_fetch_max_wait_time(1000)
              .with_fetch_min_bytes(1_000)
              .with_fetch_max_bytes_per_partition(100_000)
-             .with_fallback_offset(FetchOffset::Latest)
              .with_retry_max_bytes_limit(1_000_000)
              .with_offset_storage(cfg.offset_storage)
              .create());
+
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    let mut buf = Vec::with_capacity(1024);
 
     let do_commit = !cfg.no_commit;
     loop {
         for ms in try!(c.poll()).iter() {
             for m in ms.messages() {
-                let s = String::from_utf8_lossy(m.value);
-                println!("{}:{}@{}: {}", ms.topic(), ms.partition(), m.offset, s.trim());
+                // ~ clear the output buffer
+                unsafe { buf.set_len(0) };
+                // ~ format the message for output
+                let _ = write!(buf, "{}:{}@{}:\n", ms.topic(), ms.partition(), m.offset);
+                buf.extend_from_slice(m.value);
+                buf.push(b'\n');
+                // ~ write to output channel
+                try!(stdout.write_all(&buf));
             }
             c.consume_messageset(ms);
         }
