@@ -2,7 +2,8 @@ extern crate kafka;
 extern crate getopts;
 extern crate env_logger;
 
-use std::{env, io, fmt, process};
+use std::{env, fmt, process};
+use std::io::{self, Write};
 use std::ascii::AsciiExt;
 
 use kafka::consumer::{Consumer, GroupOffsetStorage};
@@ -36,12 +37,22 @@ fn process(cfg: Config) -> Result<(), Error> {
              .with_offset_storage(cfg.offset_storage)
              .create());
 
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    let mut buf = Vec::with_capacity(1024);
+
     let do_commit = !cfg.no_commit;
     loop {
         for ms in try!(c.poll()).iter() {
             for m in ms.messages() {
-                let s = String::from_utf8_lossy(m.value);
-                println!("{}:{}@{}: {}", ms.topic(), ms.partition(), m.offset, s.trim());
+                // ~ clear the output buffer
+                unsafe { buf.set_len(0) };
+                // ~ format the message for output
+                let _ = write!(buf, "{}:{}@{}:\n", ms.topic(), ms.partition(), m.offset);
+                buf.extend_from_slice(m.value);
+                buf.push(b'\n');
+                // ~ write to output channel
+                try!(stdout.write_all(&buf));
             }
             c.consume_messageset(ms);
         }
