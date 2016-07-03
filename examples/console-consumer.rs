@@ -27,11 +27,12 @@ fn main() {
 
 fn process(cfg: Config) -> Result<(), Error> {
     let mut c =
-        try!(Consumer::from_hosts(cfg.brokers, cfg.group, cfg.topic)
+        try!(Consumer::from_hosts(cfg.brokers, cfg.topic)
+             .with_group(cfg.group)
              .with_fetch_max_wait_time(100)
              .with_fetch_min_bytes(1_000)
              .with_fetch_max_bytes_per_partition(100_000)
-             .with_fallback_offset(FetchOffset::Earliest)
+             .with_fallback_offset(FetchOffset::Latest)
              .with_retry_max_bytes_limit(1_000_000)
              .with_offset_storage(cfg.offset_storage)
              .create());
@@ -94,7 +95,7 @@ impl Config {
         opts.optflag("h", "help", "Print this help screen");
         opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
         opts.optopt("", "topic", "Specify target topic", "NAME");
-        opts.optopt("", "group", "Specify the group_id file", "NAME");
+        opts.optopt("", "group", "Specify the consumer group", "NAME");
         opts.optflag("", "no-commit", "Do not commit consumed messages");
         opts.optopt("", "offsets", "Specify the offset store [zookeeper, kafka]", "STORE");
 
@@ -124,7 +125,7 @@ impl Config {
                 .map(|s| s.trim().to_owned())
                 .collect(),
             group: m.opt_str("group")
-                .unwrap_or_else(|| "my-group".to_owned()),
+                .unwrap_or_else(|| String::new()),
             topic: m.opt_str("topic")
                 .unwrap_or_else(|| "my-topic".to_owned()),
             no_commit: m.opt_present("no-commit"),
