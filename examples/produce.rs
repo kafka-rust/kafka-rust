@@ -1,7 +1,7 @@
 extern crate kafka;
 extern crate env_logger;
 
-use kafka::producer::{Producer, Record};
+use kafka::producer::{Producer, Record, RequiredAcks};
 use kafka::error::Error as KafkaError;
 
 /// This program demonstrates sending single message through a
@@ -33,7 +33,7 @@ fn produce_message<'a, 'b>(data: &'a [u8], topic: &'b str, brokers: Vec<String>)
              // ~ give the brokers one second time to ack the message
              .with_ack_timeout(1000)
              // ~ require only one broker to ack the message
-             .with_required_acks(1)
+             .with_required_acks(RequiredAcks::One)
              // ~ build the producer with the above settings
              .create());
 

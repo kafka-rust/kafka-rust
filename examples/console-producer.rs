@@ -7,11 +7,11 @@ use std::fs::File;
 use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
 use std::ops::{Deref, DerefMut};
 
-use kafka::client::{KafkaClient, Compression};
+use kafka::client::{KafkaClient, Compression, RequiredAcks};
 use kafka::producer::{AsBytes, Producer, Record};
 
 // how many brokers do we require to acknowledge the send messages
-const REQUIRED_ACKS: i16 = 1;
+const REQUIRED_ACKS: RequiredAcks = RequiredAcks::One;
 // how long do we allow wainting for the acknowledgement
 const ACK_TIMEOUT: i32 = 100;
 
