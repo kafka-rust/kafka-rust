@@ -11,10 +11,10 @@
 //!
 //! let mut consumer =
 //!    Consumer::from_hosts(vec!("localhost:9092".to_owned()),
-//!                              "my-group".to_owned(),
 //!                              "my-topic".to_owned())
 //!       .with_partitions(&[0, 1])
 //!       .with_fallback_offset(FetchOffset::Earliest)
+//!       .with_group("my-group".to_owned())
 //!       .with_offset_storage(GroupOffsetStorage::Kafka)
 //!       .create()
 //!       .unwrap();
@@ -33,15 +33,20 @@
 //! client code to process.  The returned data are `MessageSet`s - at
 //! most one for each partition of the consumed topic.
 //!
-//! The consumer helps in keeping track of already consumed messages
-//! by maintaining a map of the consumed offsets.  Messages can be
-//! told "consumed" either through `consume_message` or
-//! `consume_messages` methods.  Once these consumed messages are
-//! committed to Kafka using `commit_consumed`, the consumer will
-//! start fetching messages from here after restart. Since committing
-//! is a certain overhead, it is up to the client to decide the
-//! frequency of the commits.  The consumer will *not* commit any
-//! messages to Kafka automatically.
+//! If the consumer is configured for a non-empty group, it helps in
+//! keeping track of already consumed messages by maintaining a map of
+//! the consumed offsets.  Messages can be told "consumed" either
+//! through `consume_message` or `consume_messages` methods.  Once
+//! these consumed messages are committed to Kafka using
+//! `commit_consumed`, the consumer will start fetching messages from
+//! here even after restart.  Since committing is a certain overhead,
+//! it is up to the client to decide the frequency of the commits.
+//! The consumer will *not* commit any messages to Kafka
+//! automatically.
+//!
+//! The configuration of a group is optional.  If the consumer has no
+//! group configured, it will behave as if it had one, only that
+//! commiting consumed message offsets resolves into a void operation.
 
 use std::collections::hash_map::{HashMap, Entry};
 use std::collections::VecDeque;
@@ -118,24 +123,20 @@ struct Config {
 
 // XXX 1) Support multiple topics
 // XXX 2) Issue IO in a separate (background) thread and pre-fetch messagesets
+// XXX 3) Allow returning to a previous offset (aka seeking)
 
 impl Consumer {
 
-    /// Starts building a consumer for the given topic on behalf of
-    /// the given group using the given kafka client.
-    pub fn from_client(client: KafkaClient, group: String, topic: String) -> Builder {
-        Builder::new(Some(client), Vec::new())
-            .with_group(group)
-            .with_topic(topic)
+    /// Starts building a consumer for the given topic using the given
+    /// kafka client.
+    pub fn from_client(client: KafkaClient, topic: String) -> Builder {
+        Builder::new(Some(client), Vec::new()).with_topic(topic)
     }
 
-    /// Starts building a consumer for the given topic on behalf of
-    /// the given group bootstraping internally a new kafka client
-    /// from the given kafka hosts.
-    pub fn from_hosts(hosts: Vec<String>, group: String, topic: String) -> Builder {
-        Builder::new(None, hosts)
-            .with_group(group)
-            .with_topic(topic)
+    /// Starts building a consumer for the given topic bootstraping
+    /// internally a new kafka client from the given kafka hosts.
+    pub fn from_hosts(hosts: Vec<String>, topic: String) -> Builder {
+        Builder::new(None, hosts).with_topic(topic)
     }
 
     /// Destroys this consumer returning back the underlying kafka client.
@@ -153,6 +154,12 @@ impl Consumer {
     /// single partition.
     pub fn single_partition_consumer(&self) -> bool {
         self.state.fetch_offsets.len() == 1
+    }
+
+    /// Retrieves the group on which behalf this consumer is acting.
+    /// The empty group name specifies a group-less consumer.
+    pub fn group(&self) -> &str {
+        &self.config.group
     }
 
     // ~ returns (number partitions queried, fecth responses)
@@ -289,8 +296,7 @@ impl Consumer {
 
     /// Retrieves the offset of the last "consumed" message in the
     /// specified partition. Results in `None` if there is no such
-    /// "consumed" message for this consumer's group in the underlying
-    /// topic.
+    /// "consumed" message for this consumer yet.
     pub fn last_consumed_message(&self, partition: i32) -> Option<i64> {
         self.state.consumed_offsets.get(&partition).cloned()
     }
@@ -332,20 +338,24 @@ impl Consumer {
     }
 
     /// Persists the so-far "marked as consumed" messages (on behalf
-    /// of this consumer's group for the underlying topic.)
+    /// of this consumer's group for the underlying topic - if any.)
     ///
-    /// See also `Consumer::consume_message` and `Consumer::consume_messetset`.
-    // XXX offer an async version as well
+    /// See also `Consumer::consume_message` and
+    /// `Consumer::consume_messetset`.
     pub fn commit_consumed(&mut self) -> Result<()> {
-        if !self.state.consumed_offsets_dirty {
-            debug!("no new consumed offsets to commit.");
+        if self.config.group.is_empty() {
+            debug!("commit_consumed: ignoring commit request since no group defined");
             return Ok(());
         }
-
+        if !self.state.consumed_offsets_dirty {
+            debug!("commit_consumed: no new consumed offsets to commit");
+            return Ok(());
+        }
         let client = &mut self.client;
         let (group, topic) = (&self.config.group, &self.config.topic);
         let offsets = &self.state.consumed_offsets;
-        debug!("commiting consumed offsets (topic: {} / group: {} / offsets: {:?}",
+        debug!("commit_consumed: commiting consumed offsets \
+                (topic: {} / group: {} / offsets: {:?}",
                topic, group, offsets);
         try!(client.commit_offsets(
             group,
@@ -417,13 +427,17 @@ fn load_consumed_offsets(config: &Config, client: &mut KafkaClient, partitions: 
 {
     assert!(!partitions.is_empty());
 
+    let mut offs = HashMap::with_capacity_and_hasher(
+        partitions.len(), PartitionHasher::default());
+    // ~ no group, no persisted consumed offsets
+    if config.group.is_empty() {
+        return Ok(offs);
+    }
+    // ~ otherwise try load them for the group
     let topic = &config.topic;
     let tpos = try!(client.fetch_group_offsets(
         &config.group,
-        partitions.iter().map(|&p_id | FetchGroupOffset::new(topic, p_id))));
-
-    let mut offs = HashMap::with_capacity_and_hasher(partitions.len(),
-                                                     PartitionHasher::default());
+        partitions.iter().map(|&p_id| FetchGroupOffset::new(topic, p_id))));
     for tpo in tpos {
         match tpo.offset {
             Ok(o) if o != -1 => {
@@ -456,31 +470,55 @@ fn load_fetch_states(config: &Config,
 
     let max_bytes = client.fetch_max_bytes_per_partition();
 
-    // fetch the earliest and latest available offsets
-    let latest = try!(load_partition_offsets(client, &config.topic, FetchOffset::Latest));
-    let earliest = try!(load_partition_offsets(client, &config.topic, FetchOffset::Earliest));
+    let mut fetch_offsets = HashMap::with_capacity_and_hasher(
+        partitions.len(), PartitionHasher::default());
 
-    // ~ for each partition if we have a consumed_offset verify it is
-    // in the earliest/latest range and use that consumed_offset+1 as
-    // the fetch_message.
-    let mut fetch_offsets = HashMap::default();
-    for p in partitions {
-        let (&l_off, &e_off) = (latest.get(p).unwrap_or(&-1), earliest.get(p).unwrap_or(&-1));
-        let offset = match consumed_offsets.get(p) {
-            Some(&co) if co >= e_off && co < l_off => co + 1,
-            _ => {
-                match config.fallback_offset {
-                    Some(FetchOffset::Latest) => l_off,
-                    Some(FetchOffset::Earliest) => e_off,
-                    _ => {
-                        debug!("cannot determine fetch offset (group: {} / topic: {} / partition: {})",
-                               &config.group, &config.topic, p);
-                        return Err(Error::Kafka(KafkaCode::Unknown));
+
+    if consumed_offsets.is_empty() {
+        // ~ if there are no offsets on behalf of the consumer
+        // group - if any - we can directly use fallback offsets.
+        let fo = match config.fallback_offset {
+            None => {
+                debug!("load_fetch_states: cannot determine \
+                        fetch offset; no fallback_offset configured");
+                return Err(Error::Kafka(KafkaCode::Unknown));
+            }
+            Some(fo) => fo,
+        };
+        let offs = try!(load_partition_offsets(client, &config.topic, fo));
+        for p in partitions {
+            fetch_offsets.insert(*p, FetchState {
+                offset: *offs.get(p).unwrap_or(&-1),
+                max_bytes: max_bytes
+            });
+        }
+    } else {
+        // fetch the earliest and latest available offsets
+        let latest = try!(load_partition_offsets(client, &config.topic, FetchOffset::Latest));
+        let earliest = try!(load_partition_offsets(client, &config.topic, FetchOffset::Earliest));
+
+        // ~ for each partition if we have a consumed_offset verify it is
+        // in the earliest/latest range and use that consumed_offset+1 as
+        // the fetch_message.
+        for p in partitions {
+            let (&l_off, &e_off) = (latest.get(p).unwrap_or(&-1), earliest.get(p).unwrap_or(&-1));
+            let offset = match consumed_offsets.get(p) {
+                Some(&co) if co >= e_off && co < l_off => co + 1,
+                _ => {
+                    match config.fallback_offset {
+                        Some(FetchOffset::Latest) => l_off,
+                        Some(FetchOffset::Earliest) => e_off,
+                        _ => {
+                            debug!("cannot determine fetch offset \
+                                    (group: {} / topic: {} / partition: {})",
+                                   &config.group, &config.topic, p);
+                            return Err(Error::Kafka(KafkaCode::Unknown));
+                        }
                     }
                 }
-            }
-        };
-        fetch_offsets.insert(*p, FetchState{ offset: offset, max_bytes: max_bytes });
+            };
+            fetch_offsets.insert(*p, FetchState{ offset: offset, max_bytes: max_bytes });
+        }
     }
     Ok(fetch_offsets)
 }
@@ -613,7 +651,7 @@ pub struct Builder {
     group: String,
     topic: String,
     partitions: Vec<i32>,
-    fallback_offset: Option<FetchOffset>,
+    fallback_offset: Option<FetchOffset>, // XXX default to "Latest" (drop the Option)
     fetch_max_wait_time: i32,
     fetch_min_bytes: i32,
     fetch_max_bytes_per_partition: i32,
@@ -650,16 +688,19 @@ impl Builder {
         b
     }
 
-    /// Specifies the group on whose behalf to maintain consumed
-    /// message offsets.
-    fn with_group(mut self, group: String) -> Builder {
-        self.group = group;
-        self
-    }
-
     /// Specifies the topic to consume.
     fn with_topic(mut self, topic: String) -> Builder {
         self.topic = topic;
+        self
+    }
+
+    /// Specifies the group on whose behalf to maintain consumed
+    /// message offsets.
+    ///
+    /// The group is allowed to be the empty string, in which case the
+    /// resulting consumer will be group-less.
+    pub fn with_group(mut self, group: String) -> Builder {
+        self.group = group;
         self
     }
 
@@ -681,20 +722,17 @@ impl Builder {
     }
 
     /// Specifies the offset to use when none was committed for the
-    /// underlying group yet.
+    /// underlying group yet or the consumer has no group configured.
     ///
     /// Running the underlying group for the first time against a
-    /// topic results in the question where to start reading from the
-    /// topic, since it might already contain a lot of messages.
-    /// Common strategies are starting at the earliest available
-    /// message (thereby consuming whatever is currently in the topic)
-    /// or at the latest one (thereby staring to consume only newly
-    /// arriving messages.)  The parameter here corresponds to `time`
-    /// in `KafkaClient::fetch_offsets`.
-    ///
-    /// Unless this method is called and there is no offset committed
-    /// for the underlying group yet, this consumer will _not_ retrieve
-    /// any messages from the underlying topic.
+    /// topic or running the consumer without a group results in the
+    /// question where to start reading from the topic, since it might
+    /// already contain a lot of messages.  Common strategies are
+    /// starting at the earliest available message (thereby consuming
+    /// whatever is currently in the topic) or at the latest one
+    /// (thereby staring to consume only newly arriving messages.)
+    /// The "fallback offset" here corresponds to `time` in
+    /// `KafkaClient::fetch_offsets`.
     pub fn with_fallback_offset(mut self, fallback_offset_time: FetchOffset) -> Builder {
         self.fallback_offset = Some(fallback_offset_time);
         self
