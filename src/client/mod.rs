@@ -278,6 +278,27 @@ impl<'a> AsRef<CommitOffset<'a>> for CommitOffset<'a> {
 
 // --------------------------------------------------------------------
 
+/// Possible choices on acknowledgement requirements when
+/// producing/sending messages to Kafka. See
+/// `KafkaClient::produce_messages`.
+#[derive(Debug, Copy, Clone)]
+pub enum RequiredAcks {
+    /// Indicates to the receiving Kafka broker not to acknowlegde
+    /// messages sent to it at all. Sending messages with this
+    /// acknowledgement requirement translates into a fire-and-forget
+    /// scenario which - of course - is very fast but not reliable.
+    None = 0,
+    /// Requires the receiving Kafka broker to wait until the sent
+    /// messages are written to local disk.  Such messages can be
+    /// regarded as acknowledged by one broker in the cluster.
+    One = 1,
+    /// Requires the sent messages to be acknowledged by all in-sync
+    /// replicas of the targeted topic partitions.
+    All = -1,
+}
+
+// --------------------------------------------------------------------
+
 /// Message data to be sent/produced to a particular topic partition.
 /// See `KafkaClient::produce_messages` and `Producer::send`.
 #[derive(Debug)]
@@ -954,22 +975,13 @@ impl KafkaClient {
     /// Send a message to Kafka
     ///
     /// `required_acks` - indicates how many acknowledgements the
-    /// servers should receive before responding to the request. If it
-    /// is 0 the server will not send any response (this is the only
-    /// case where the server will not reply to a request).  If it is
-    /// 1, the server will wait the data is written to the local log
-    /// before sending a response. If it is -1 the server will block
-    /// until the message is committed by all in sync replicas before
-    /// sending a response. For any number > 1 the server will block
-    /// waiting for this number of acknowledgements to occur (but the
-    /// server will never wait for more acknowledgements than there
-    /// are in-sync replicas).
+    /// servers should receive before responding to the request
     ///
-    /// `ack_timeout` - This provides a maximum time in milliseconds
-    /// the server can await the receipt of the number of
-    /// acknowledgements in `required_acks`
+    /// `ack_timeout` - provides a maximum time in milliseconds the
+    /// server can await the receipt of the number of acknowledgements
+    /// in `required_acks`
     ///
-    /// `input` - A set of `ProduceMessage`s
+    /// `input` - the set of `ProduceMessage`s to send
     ///
     /// Note: Unlike the higher-level `Producer` API, this method will
     /// *not* automatically determine the partition to deliver the
@@ -982,13 +994,13 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
-    /// use kafka::client::{KafkaClient, ProduceMessage};
+    /// use kafka::client::{KafkaClient, ProduceMessage, RequiredAcks};
     ///
     /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
     /// let req = vec![ProduceMessage::new("my-topic", 0, None, Some("a".as_bytes())),
     ///                ProduceMessage::new("my-topic-2", 0, None, Some("b".as_bytes()))];
-    /// println!("{:?}", client.produce_messages(1, 100, req));
+    /// println!("{:?}", client.produce_messages(RequiredAcks::One, 100, req));
     /// ```
     ///
     /// The return value will contain a vector of topic, partition,
@@ -997,10 +1009,12 @@ impl KafkaClient {
     // XXX rework signaling an error; note that we need to either return the
     // messages which kafka failed to accept or otherwise tell the client about them
 
-    pub fn produce_messages<'a, 'b, I, J>(&mut self, required_acks: i16, ack_timeout: i32, messages: I)
-                                       -> Result<Vec<TopicPartitionOffset>>
+    pub fn produce_messages<'a, 'b, I, J>(&mut self, ack: RequiredAcks, ack_timeout: i32, messages: I)
+                                          -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
+        let required_acks = ack as i16;
+
         let state = &mut self.state;
         let correlation = state.next_correlation_id();
 

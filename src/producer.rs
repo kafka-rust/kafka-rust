@@ -14,12 +14,12 @@
 //! # Example
 //! ```no_run
 //! use std::fmt::Write;
-//! use kafka::producer::{Producer, Record};
+//! use kafka::producer::{Producer, Record, RequiredAcks};
 //!
 //! let mut producer =
 //!     Producer::from_hosts(vec!("localhost:9092".to_owned()))
 //!         .with_ack_timeout(1000)
-//!         .with_required_acks(1)
+//!         .with_required_acks(RequiredAcks::One)
 //!         .create()
 //!         .unwrap();
 //!
@@ -65,6 +65,7 @@ use std::hash::{Hasher, SipHasher, BuildHasher, BuildHasherDefault};
 use client::{self, KafkaClient};
 // public re-exports
 pub use client::Compression;
+pub use client::RequiredAcks;
 use error::Result;
 use utils::TopicPartitionOffset;
 
@@ -76,11 +77,11 @@ use client::SecurityConfig;
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
 
-/// The default value for `Builder::with_ack_timeout`.
+/// The default value for `Builder::with_acks_timeout`.
 pub const DEFAULT_ACK_TIMEOUT: i32 = 30 * 1000;
 
 /// The default value for `Builder::with_required_acks`.
-pub const DEFAULT_REQUIRED_ACKS: i16 = 1;
+pub const DEFAULT_REQUIRED_ACKS: RequiredAcks = RequiredAcks::One;
 
 // --------------------------------------------------------------------
 
@@ -219,7 +220,7 @@ struct Config {
     ack_timeout: i32,
     /// The number of acks to request. See
     /// `KafkaClient::produce_messages`.
-    required_acks: i16,
+    required_acks: RequiredAcks,
 }
 
 impl Producer {
@@ -317,7 +318,7 @@ pub struct Builder<P = DefaultPartitioner> {
     hosts: Vec<String>,
     compression: Compression,
     ack_timeout: i32,
-    required_acks: i16,
+    required_acks: RequiredAcks,
     partitioner: P,
     security_config: Option<SecurityConfig>,
 }
@@ -365,17 +366,11 @@ impl Builder {
     }
 
     /// Sets how many acknowledgements the kafka brokers should
-    /// receive before responding to sent messages.  If it is 0 the
-    /// servers will not send any response.  If it is 1, the server
-    /// will wait the data is written to the local server log before
-    /// sending a replying.  If it is -1 the servers will block until
-    /// the messages are committed by all in sync replicas before
-    /// replaying.  For any number `> 1` the servers will block
-    /// waiting for this number of acknowledgements to occur (but the
-    /// servers will never wait for more acknowledgements than there
-    /// are in-sync replicas).
-    pub fn with_required_acks(mut self, required_acks: i16) -> Self {
-        self.required_acks = required_acks;
+    /// receive before responding to sent messages.
+    ///
+    /// See `RequiredAcks`.
+    pub fn with_required_acks(mut self, acks: RequiredAcks) -> Self {
+        self.required_acks = acks;
         self
     }
 }
