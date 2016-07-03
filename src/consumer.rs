@@ -475,8 +475,8 @@ fn load_fetch_states(config: &Config,
 
 
     if consumed_offsets.is_empty() {
-        // ~ if there are offsets on behalf of the consumer group we
-        // can directly use fallback offsets.
+        // ~ if there are no offsets on behalf of the consumer
+        // group - if any - we can directly use fallback offsets.
         let fo = match config.fallback_offset {
             None => {
                 debug!("load_fetch_states: cannot determine \
