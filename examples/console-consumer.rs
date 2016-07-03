@@ -29,10 +29,9 @@ fn process(cfg: Config) -> Result<(), Error> {
     let mut c =
         try!(Consumer::from_hosts(cfg.brokers, cfg.topic)
              .with_group(cfg.group)
-             .with_fetch_max_wait_time(100)
+             .with_fetch_max_wait_time(1000)
              .with_fetch_min_bytes(1_000)
              .with_fetch_max_bytes_per_partition(100_000)
-             .with_fallback_offset(FetchOffset::Latest)
              .with_retry_max_bytes_limit(1_000_000)
              .with_offset_storage(cfg.offset_storage)
              .create());
