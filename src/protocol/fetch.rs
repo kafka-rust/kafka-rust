@@ -384,7 +384,7 @@ impl<'a> MessageSet<'a> {
                 Ok((offset, pmsg)) => {
                     // handle compression (denoted by the last 2 bits
                     // of the attr field)
-                    match pmsg.attr & 0x03 {
+                    match pmsg.attr & 0x07 {
                         c if c == Compression::NONE as i8 => {
                             // skip messages with a lower offset
                             // than the request one
