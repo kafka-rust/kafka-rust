@@ -6,7 +6,7 @@ extern crate time;
 use std::ascii::AsciiExt;
 use std::env;
 use std::fmt;
-use std::io::{self, stdout, Write};
+use std::io::{self, stdout, Write, BufWriter};
 use std::process;
 use std::thread;
 use std::time as stdtime;
@@ -21,14 +21,14 @@ fn main() {
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
-        Err(e) =>{
-            println!("{}", e);
+        Err(e) => {
+            println!("error: {}", e);
             process::exit(1);
         }
     };
 
-    if let Err(e) = monitor(cfg) {
-        println!("{}", e);
+    if let Err(e) = run(cfg) {
+        println!("error: {}", e);
         process::exit(1);
     }
 }
@@ -45,10 +45,29 @@ impl Default for Offsets {
     }
 }
 
-fn monitor(cfg: Config) -> Result<(), Error> {
+fn run(cfg: Config) -> Result<(), Error> {
     let mut client = KafkaClient::new(cfg.brokers);
     client.set_group_offset_storage(cfg.offset_storage);
     try!(client.load_metadata_all());
+
+    let mut stdout = stdout();
+
+    if cfg.topic.is_empty() {
+        let ts = client.topics();
+        let num_topics = ts.len();
+        if num_topics == 0 {
+            return Err(Error::Literal("no topics available".to_owned()));
+        }
+        let mut names: Vec<&str> = Vec::with_capacity(ts.len());
+        names.extend(ts.names());
+        names.sort();
+
+        let mut buf = BufWriter::with_capacity(4096, stdout);
+        for name in names {
+            try!(write!(buf, "topic: {}\n", name));
+        }
+        return Err(Error::Literal("choose a topic".to_owned()));
+    }
 
     let num_partitions = match client.topics().partitions(&cfg.topic) {
         None => return Err(Error::Literal(format!("no such topic: {}", &cfg.topic))),
@@ -59,8 +78,6 @@ fn monitor(cfg: Config) -> Result<(), Error> {
 
     let mut fmt_buf = String::with_capacity(16);
     let mut out_buf = String::with_capacity(128);
-
-    let mut stdout = stdout();
 
     // ~ shall we produce the lag of the specified group?
     let show_lag = !cfg.group.is_empty();
@@ -188,7 +205,7 @@ impl Config {
                 .map(|s| s.trim().to_owned())
                 .collect(),
             topic: m.opt_str("topic")
-                .unwrap_or_else(|| "my-topic".to_owned()),
+                .unwrap_or_else(|| String::new()),
             group: m.opt_str("group")
                 .unwrap_or_else(|| String::new()),
             offset_storage: offset_storage,
