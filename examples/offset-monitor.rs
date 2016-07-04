@@ -95,6 +95,12 @@ fn run(cfg: Config) -> Result<(), Error> {
                 let _ = write!(out_buf, " {:6}", "(lag)");
             }
         }
+        if cfg.summary {
+            let _ = write!(out_buf, " {:>12}", "summary");
+            if show_lag {
+                let _ = write!(out_buf, " {:8}", "(lag)");
+            }
+        }
         out_buf.push('\n');
         let _ = stdout.write_all(out_buf.as_bytes());
     }
@@ -119,28 +125,55 @@ fn run(cfg: Config) -> Result<(), Error> {
         {
             use std::fmt::Write;
 
+            let mut total_latest = 0;
+            let mut total_lag = 0;
+
             out_buf.clear();
             let _ = write!(out_buf, "{} ", t.strftime("%H:%M:%S").unwrap());
             for o in &*offs {
+                total_latest += o.latest;
                 let _ = write!(out_buf, " {:>10}", o.latest);
                 if show_lag {
                     fmt_buf.clear();
                     if o.group < 0 {
                         let _ = write!(fmt_buf, "()");
+                        total_lag = -1;
                     } else {
-                        let lag = if cfg.commited_not_consumed {
+                        let mut lag = if cfg.commited_not_consumed {
                             o.latest - o.group
                         } else {
                             o.latest - o.group - 1
                         };
+                        if lag < 0 {
+                            // ~ it's quite likely that we fetch group offsets which
+                            // are a bit ahead of the topic's latest offset since we
+                            // issued the fetch-latest-offset request earlier than
+                            // the request for the group-offsets
+                            lag = 0;
+                        }
+                        if total_lag >= 0 {
+                            total_lag += lag;
+                        }
                         let _ = write!(fmt_buf, "({:<})", lag);
                     }
                     let _ = write!(out_buf, " {:6}", fmt_buf);
                 }
             }
-            out_buf.push('\n');
+            if cfg.summary {
+                let _ = write!(out_buf, " {:12}", total_latest);
+                if show_lag {
+                    fmt_buf.clear();
+                    if total_lag >= 0 {
+                        let _ = write!(fmt_buf, "({:<})", total_lag);
+                    } else {
+                        let _ = write!(fmt_buf, "()");
+                    }
+                    let _ = write!(out_buf, " {:8}", fmt_buf);
+                }
+            }
         }
         // ~ write the output
+        out_buf.push('\n');
         let _ = stdout.write_all(out_buf.as_bytes());
 
         thread::sleep(cfg.period);
@@ -156,6 +189,7 @@ struct Config {
     offset_storage: GroupOffsetStorage,
     period: stdtime::Duration,
     commited_not_consumed: bool,
+    summary: bool,
 }
 
 impl Config {
@@ -168,6 +202,7 @@ impl Config {
         opts.optopt("", "group", "Specify the group to monitor", "GROUP");
         opts.optopt("", "offsets", "Specify offset store [zookeeper, kafka]", "STORE");
         opts.optopt("", "sleep", "Specify the sleep time", "SECS");
+        opts.optflag("", "summary", "Print a summary for the topic");
         opts.optflag("", "committed-not-yet-consumed",
                      "Assume commited group offsets specify \
                       messages the group will start consuming \
@@ -211,6 +246,7 @@ impl Config {
             offset_storage: offset_storage,
             period: period,
             commited_not_consumed: m.opt_present("committed-not-yet-consumed"),
+            summary: m.opt_present("summary"),
         })
     }
 }
