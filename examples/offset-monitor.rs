@@ -145,10 +145,10 @@ fn run(cfg: Config) -> Result<(), Error> {
                             o.latest - o.group - 1
                         };
                         if lag < 0 {
-                            // ~ it's quite likely that we fetch group offsets which
-                            // are a bit ahead of the topic's latest offset since we
-                            // issued the fetch-latest-offset request earlier than
-                            // the request for the group-offsets
+                            // ~ it's quite likely that we fetched group offsets
+                            // which are a bit ahead of the topic's latest offset
+                            // since we issued the fetch-latest-offset request
+                            // earlier than the request for the group-offsets
                             lag = 0;
                         }
                         if total_lag >= 0 {
