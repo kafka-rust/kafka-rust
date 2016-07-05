@@ -36,7 +36,8 @@ impl<'a> Topics<'a> {
         TopicIter::new(self.state)
     }
 
-    /// A conveniece method to return an iterator the topics' names.
+    /// A conveniece method to return an iterator over the topics'
+    /// names.
     #[inline]
     pub fn names(&'a self) -> TopicNames<'a> {
         self.state.topic_names()
