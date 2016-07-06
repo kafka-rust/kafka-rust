@@ -108,7 +108,7 @@ impl Config {
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
         opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
-        opts.optopt("", "topic", "Specify topics (comma separated)", "NAMES");
+        opts.optopt("", "topics", "Specify topics (comma separated)", "NAMES");
         opts.optopt("", "group", "Specify the consumer group", "NAME");
         opts.optflag("", "no-commit", "Do not commit consumed messages");
         opts.optopt("", "offsets", "Specify the offset store [zookeeper, kafka]", "STORE");
@@ -122,6 +122,23 @@ impl Config {
             return Err(Error::Literal(opts.usage(&brief)));
         }
 
+        macro_rules! required_list {
+            ($name:expr) => {{
+                let opt = $name;
+                let xs: Vec<_> = match m.opt_str(opt) {
+                    None => return Err(Error::Literal(format!("Required option --{} missing", opt))),
+                    Some(s) => s.split(',').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect(),
+                };
+                if xs.is_empty() {
+                    return Err(Error::Literal(format!("Invalid --{} specified!", opt)));
+                }
+                xs
+            }}
+        };
+
+        let brokers = required_list!("brokers");
+        let topics = required_list!("topics");
+
         let mut offset_storage = GroupOffsetStorage::Zookeeper;
         if let Some(s) = m.opt_str("offsets") {
             if s.eq_ignore_ascii_case("zookeeper") {
@@ -133,18 +150,9 @@ impl Config {
             }
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
-                .unwrap_or_else(|| "localhost:9092".to_owned())
-                .split(',')
-                .map(|s| s.trim().to_owned())
-                .collect(),
-            group: m.opt_str("group")
-                .unwrap_or_else(|| String::new()),
-            topics: m.opt_str("topic")
-                .unwrap_or_else(|| String::new())
-                .split(',')
-                .map(|s| s.trim().to_owned())
-                .collect(),
+            brokers: brokers,
+            group: m.opt_str("group").unwrap_or_else(|| String::new()),
+            topics: topics,
             no_commit: m.opt_present("no-commit"),
             offset_storage: offset_storage,
         })
