@@ -41,7 +41,7 @@ fn consume_messages(group: String, topic: String, brokers: Vec<String>)
             for m in ms.messages() {
                 println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
             }
-            con.consume_messageset(ms);
+            let _ = con.consume_messageset(ms);
         }
         try!(con.commit_consumed());
     }

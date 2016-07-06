@@ -1,18 +1,19 @@
-//! Kafka Consumer - A higher-level API for consuming a kafka topic.
+//! Kafka Consumer - A higher-level API for consuming kafka topics.
 //!
-//! A consumer for a single Kafka topic on behalf of a specified group
-//! providing help in offset management.  The consumer can be
-//! optionally advised to consume only particular partitions of the
-//! underlying topic.
+//! A consumer for Kafka topics on behalf of a specified group
+//! providing help in offset management.  The consumer requires at
+//! least one topic for consumption and allows consuming multiple
+//! topics at the same time. Further, clients can restrict the
+//! consumer to only specific topic partitions as demonstrated in the
+//! following example.
 //!
 //! # Example
 //! ```no_run
 //! use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 //!
 //! let mut consumer =
-//!    Consumer::from_hosts(vec!("localhost:9092".to_owned()),
-//!                              "my-topic".to_owned())
-//!       .with_partitions(&[0, 1])
+//!    Consumer::from_hosts(vec!("localhost:9092".to_owned()))
+//!       .with_topic_partitions("my-topic".to_owned(), &[0, 1])
 //!       .with_fallback_offset(FetchOffset::Earliest)
 //!       .with_group("my-group".to_owned())
 //!       .with_offset_storage(GroupOffsetStorage::Kafka)
@@ -29,9 +30,21 @@
 //! }
 //! ```
 //!
-//! A `.poll()` will ask for the next available "chunk of data" for
-//! client code to process.  The returned data are `MessageSet`s - at
-//! most one for each partition of the consumed topic.
+//! Please refer to the documentation of the individual "with" methods
+//! used to set up the consumer. These contain further information or
+//! links to such.
+//!
+//! A call to `.poll()` on the consumer will ask for the next
+//! available "chunk of data" for client code to process.  The
+//! returned data are `MessageSet`s - at most one for each partition
+//! of the consumed topics. Individual messages are embedded in the
+//! retrieved messagesets and can be processed using the `messages()`
+//! iterator.  Due to this embedding, individual messsages's lifetime
+//! is bound to the `MessageSet` they are part of. Typically, client
+//! code access the raw data/bytes, parses it into custom data types
+//! and passes that for further processing within the application.
+//! Altough unconvenient, this helps in reducing the number of
+//! allocations within the pipeline of processing incoming messages.
 //!
 //! If the consumer is configured for a non-empty group, it helps in
 //! keeping track of already consumed messages by maintaining a map of
