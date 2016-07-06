@@ -75,6 +75,7 @@ pub use client::GroupOffsetStorage;
 pub use self::builder::Builder;
 
 mod assignment;
+mod config;
 mod state;
 mod builder;
 
@@ -84,20 +85,13 @@ pub const DEFAULT_RETRY_MAX_BYTES_LIMIT: i32 = 0;
 /// The default value for `Builder::with_fallback_offset`.
 pub const DEFAULT_FALLBACK_OFFSET: FetchOffset = FetchOffset::Latest;
 
-#[derive(Debug)]
-pub struct Config {
-    pub group: String,
-    pub fallback_offset: FetchOffset,
-    pub retry_max_bytes_limit: i32,
-}
-
 /// The Kafka Consumer
 ///
 /// See module level documentation.
 pub struct Consumer {
     client: KafkaClient,
     state: state::State,
-    config: Config,
+    config: config::Config,
 }
 
 // XXX 1) Allow returning to a previous offset (aka seeking)

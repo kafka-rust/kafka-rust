@@ -10,7 +10,7 @@ use client::metadata::Topics;
 use error::{Error, Result, KafkaCode};
 
 use super::assignment::{Assignment, AssignmentRef, Assignments};
-use super::Config;
+use super::config::Config;
 
 pub type PartitionHasher = BuildHasherDefault<FnvHasher>;
 

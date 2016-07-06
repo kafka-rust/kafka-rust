@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use client::{self, KafkaClient, FetchOffset, GroupOffsetStorage};
 use error::{Error, Result};
 
-use super::{Config, Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
+use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
+use super::config::Config;
 use super::state::State;
 use super::assignment;
 
