@@ -27,15 +27,19 @@ fn main() {
 }
 
 fn process(cfg: Config) -> Result<(), Error> {
-    let mut c =
-        try!(Consumer::from_hosts(cfg.brokers, cfg.topic)
-             .with_group(cfg.group)
-             .with_fetch_max_wait_time(1000)
-             .with_fetch_min_bytes(1_000)
-             .with_fetch_max_bytes_per_partition(100_000)
-             .with_retry_max_bytes_limit(1_000_000)
-             .with_offset_storage(cfg.offset_storage)
-             .create());
+    let mut c = {
+        let mut cb = Consumer::from_hosts(cfg.brokers)
+            .with_group(cfg.group)
+            .with_fetch_max_wait_time(1000)
+            .with_fetch_min_bytes(1_000)
+            .with_fetch_max_bytes_per_partition(100_000)
+            .with_retry_max_bytes_limit(1_000_000)
+            .with_offset_storage(cfg.offset_storage);
+        for topic in cfg.topics {
+            cb = cb.with_topic(topic);
+        }
+        try!(cb.create())
+    };
 
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
@@ -54,7 +58,7 @@ fn process(cfg: Config) -> Result<(), Error> {
                 // ~ write to output channel
                 try!(stdout.write_all(&buf));
             }
-            c.consume_messageset(ms);
+            let _ = c.consume_messageset(ms);
         }
         if do_commit {
             try!(c.commit_consumed());
@@ -93,7 +97,7 @@ impl From<io::Error> for Error {
 struct Config {
     brokers: Vec<String>,
     group: String,
-    topic: String,
+    topics: Vec<String>,
     no_commit: bool,
     offset_storage: GroupOffsetStorage,
 }
@@ -104,7 +108,7 @@ impl Config {
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
         opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
-        opts.optopt("", "topic", "Specify target topic", "NAME");
+        opts.optopt("", "topic", "Specify topics (comma separated)", "NAMES");
         opts.optopt("", "group", "Specify the consumer group", "NAME");
         opts.optflag("", "no-commit", "Do not commit consumed messages");
         opts.optopt("", "offsets", "Specify the offset store [zookeeper, kafka]", "STORE");
@@ -136,8 +140,11 @@ impl Config {
                 .collect(),
             group: m.opt_str("group")
                 .unwrap_or_else(|| String::new()),
-            topic: m.opt_str("topic")
-                .unwrap_or_else(|| "my-topic".to_owned()),
+            topics: m.opt_str("topic")
+                .unwrap_or_else(|| String::new())
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .collect(),
             no_commit: m.opt_present("no-commit"),
             offset_storage: offset_storage,
         })

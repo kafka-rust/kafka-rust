@@ -45,6 +45,8 @@ pub enum Error {
     StringDecodeError,
     /// Unable to reach any host
     NoHostReachable,
+    /// Unable to set up `Consumer` due to missing topic assignments
+    NoTopicsAssigned,
 }
 
 /// Various errors reported by a remote Kafka server.
@@ -204,6 +206,7 @@ impl Clone for Error {
             &Error::CodecError => Error::CodecError,
             &Error::StringDecodeError => Error::StringDecodeError,
             &Error::NoHostReachable => Error::NoHostReachable,
+            &Error::NoTopicsAssigned => Error::NoTopicsAssigned,
         }
     }
 }
@@ -223,6 +226,7 @@ impl error::Error for Error {
             Error::CodecError => "Encoding/Decoding error",
             Error::StringDecodeError => "String decoding error",
             Error::NoHostReachable => "No host reachable",
+            Error::NoTopicsAssigned => "No topic assigned",
         }
     }
 
@@ -248,7 +252,8 @@ impl fmt::Display for Error {
             Error::UnexpectedEOF => write!(f, "Unexpected EOF"),
             Error::CodecError => write!(f, "Encoding/Decoding Error"),
             Error::StringDecodeError => write!(f, "String decoding error"),
-            Error::NoHostReachable => write!(f, "No Host Reachable"),
+            Error::NoHostReachable => write!(f, "No host reachable"),
+            Error::NoTopicsAssigned => write!(f, "No topic assigned"),
         }
     }
 }
