@@ -13,6 +13,7 @@ pub struct Assignment {
     /// ~ list of partitions to consumer, empty if consuming all
     /// available partitions
     /// ~ kept in ascending order
+    /// ~ no duplicates
     partitions: Vec<i32>, 
     /// ~ the indirect reference to this assignment through the
     /// hosting config instance
@@ -64,6 +65,7 @@ pub fn from_map(src: HashMap<String, Vec<i32>>) -> Assignments {
     let mut xs = Vec::with_capacity(src.len());
     for (topic, mut partitions) in src {
         partitions.sort();
+        partitions.dedup();
         xs.push(Assignment {
             topic: topic,
             partitions: partitions,

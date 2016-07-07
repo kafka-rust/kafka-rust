@@ -131,7 +131,8 @@ fn determine_partitions<'a>(assignment: &'a Assignment, metadata: Topics)
     let avail_partitions = match metadata.partitions(topic) {
         // ~ fail if the underlying topic is unkonwn to the given client
         None => {
-            debug!("no such topic: {} (all metadata: {:?})", topic, metadata);
+            debug!("determine_partitions: no such topic: {} (all metadata: {:?})",
+                   topic, metadata);
             return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
         }
         Some(tp) => tp,
@@ -150,15 +151,13 @@ fn determine_partitions<'a>(assignment: &'a Assignment, metadata: Topics)
         for &p in req_partitions {
             match avail_partitions.partition(p) {
                 None => {
-                    debug!("no such partition: {} (all metadata for {}: {:?})",
-                           p, topic, avail_partitions);
+                    debug!("determine_partitions: no such partition: \"{}:{}\" \
+                            (all metadata: {:?})", topic, p, metadata);
                     return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(_) => ps.push(p),
             };
         }
-        ps.sort();
-        ps.dedup();
         ps
     };
     Ok(Subscription { assignment: assignment, partitions: ps })
@@ -237,7 +236,8 @@ fn load_fetch_states(
         for s in subscriptions {
             match offsets.get(s.assignment.topic()) {
                 None => {
-                    debug!("load_fetch_states: failed to load fallback offsets for: {}", s.assignment.topic());
+                    debug!("load_fetch_states: failed to load fallback offsets for: {}",
+                           s.assignment.topic());
                     return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(offsets) => {
