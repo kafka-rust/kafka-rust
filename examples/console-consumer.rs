@@ -112,9 +112,10 @@ impl Config {
         opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
         opts.optopt("", "topics", "Specify topics (comma separated)", "NAMES");
         opts.optopt("", "group", "Specify the consumer group", "NAME");
-        opts.optflag("", "no-commit", "Do not commit consumed messages");
-        opts.optopt("", "offsets", "Specify the offset store [zookeeper, kafka]", "STORE");
-        opts.optflag("", "earliest", "Fall back to the earliest offset");
+        opts.optflag("", "no-commit", "Do not commit group offsets");
+        opts.optopt("", "storage", "Specify the offset store [zookeeper, kafka]", "STORE");
+        opts.optflag("", "earliest", "Fall back to the earliest offset \
+                                      (when no group offset available)");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -143,7 +144,7 @@ impl Config {
         let topics = required_list!("topics");
 
         let mut offset_storage = GroupOffsetStorage::Zookeeper;
-        if let Some(s) = m.opt_str("offsets") {
+        if let Some(s) = m.opt_str("storage") {
             if s.eq_ignore_ascii_case("zookeeper") {
                 offset_storage = GroupOffsetStorage::Zookeeper;
             } else if s.eq_ignore_ascii_case("kafka") {
