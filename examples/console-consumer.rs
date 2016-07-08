@@ -6,7 +6,7 @@ use std::{env, fmt, process};
 use std::io::{self, Write};
 use std::ascii::AsciiExt;
 
-use kafka::consumer::{Consumer, GroupOffsetStorage};
+use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
 /// This is a very simple command line application reading from a
 /// specific kafka topic and dumping the messages to standard output.
@@ -30,6 +30,7 @@ fn process(cfg: Config) -> Result<(), Error> {
     let mut c = {
         let mut cb = Consumer::from_hosts(cfg.brokers)
             .with_group(cfg.group)
+            .with_fallback_offset(cfg.fallback_offset)
             .with_fetch_max_wait_time(1000)
             .with_fetch_min_bytes(1_000)
             .with_fetch_max_bytes_per_partition(100_000)
@@ -100,6 +101,7 @@ struct Config {
     topics: Vec<String>,
     no_commit: bool,
     offset_storage: GroupOffsetStorage,
+    fallback_offset: FetchOffset,
 }
 
 impl Config {
@@ -112,6 +114,7 @@ impl Config {
         opts.optopt("", "group", "Specify the consumer group", "NAME");
         opts.optflag("", "no-commit", "Do not commit consumed messages");
         opts.optopt("", "offsets", "Specify the offset store [zookeeper, kafka]", "STORE");
+        opts.optflag("", "earliest", "Fall back to the earliest offset");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -155,6 +158,11 @@ impl Config {
             topics: topics,
             no_commit: m.opt_present("no-commit"),
             offset_storage: offset_storage,
+            fallback_offset: if m.opt_present("earliest") {
+                FetchOffset::Earliest
+            } else {
+                FetchOffset::Latest
+            },
         })
    }
 }
