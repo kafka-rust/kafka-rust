@@ -15,9 +15,6 @@ pub struct Assignment {
     /// ~ kept in ascending order
     /// ~ no duplicates
     partitions: Vec<i32>, 
-    /// ~ the indirect reference to this assignment through the
-    /// hosting config instance
-    _ref: AssignmentRef,
 }
 
 impl Assignment {
@@ -27,10 +24,6 @@ impl Assignment {
 
     pub fn partitions(&self) -> &[i32] {
         &self.partitions
-    }
-
-    pub fn _ref(&self) -> AssignmentRef {
-        self._ref
     }
 }
 
@@ -69,13 +62,10 @@ pub fn from_map(src: HashMap<String, Vec<i32>>) -> Assignments {
         xs.push(Assignment {
             topic: topic,
             partitions: partitions,
-            _ref: AssignmentRef(u32::MAX), // ~ something invalid
         });
     }
+    // ~ sort by topic such has we can apply binary search by that
+    // attribute later
     xs.sort_by(|a, b| a.topic.cmp(&b.topic));
-    // ~ now that the order is set, update the `_refs`s
-    for (i, x) in xs.iter_mut().enumerate() {
-        x._ref = AssignmentRef(i as u32);
-    }
     Assignments(xs)
 }

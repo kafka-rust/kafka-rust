@@ -83,7 +83,7 @@ impl State {
             };
             let n = subscriptions.iter().map(|s| s.partitions.len()).fold(0, |acc, n| acc + n);
             let consumed = try!(load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n));
-            let fetch_next = try!(load_fetch_states(client, config, &subscriptions, &consumed, n));
+            let fetch_next = try!(load_fetch_states(client, config, &assignments, &subscriptions, &consumed, n));
             (consumed, fetch_next)
         };
         Ok(State {
@@ -205,7 +205,8 @@ fn load_consumed_offsets(
 /// subscriptions and the given consumed offsets.
 fn load_fetch_states(
     client: &mut KafkaClient, config: &Config,
-    subscriptions: &[Subscription], consumed_offsets: &HashMap<TopicPartition, i64, PartitionHasher>,
+    assignments: &Assignments, subscriptions: &[Subscription],
+    consumed_offsets: &HashMap<TopicPartition, i64, PartitionHasher>,
     result_capacity: usize)
     -> Result<HashMap<TopicPartition, FetchState, PartitionHasher>>
 {
@@ -234,6 +235,8 @@ fn load_fetch_states(
         let offsets = try!(load_partition_offsets(
             client, &subscription_topics, config.fallback_offset));
         for s in subscriptions {
+            let topic_ref = assignments.topic_ref(s.assignment.topic())
+                .expect("unassigned subscription");
             match offsets.get(s.assignment.topic()) {
                 None => {
                     debug!("load_fetch_states: failed to load fallback offsets for: {}",
@@ -244,7 +247,7 @@ fn load_fetch_states(
                     for p in &s.partitions {
                         fetch_offsets.insert(
                             TopicPartition {
-                                topic_ref: s.assignment._ref(),
+                                topic_ref: topic_ref,
                                 partition: *p,
                             },
                             FetchState {
@@ -259,16 +262,17 @@ fn load_fetch_states(
         // fetch the earliest and latest available offsets
         let latest = try!(load_partition_offsets(client, &subscription_topics, FetchOffset::Latest));
         let earliest = try!(load_partition_offsets(client, &subscription_topics, FetchOffset::Earliest));
-
         // ~ for each subscribed partition if we have a
         // consumed_offset verify it is in the earliest/latest range
         // and use that consumed_offset+1 as the fetch_message.
         for s in subscriptions {
+            let topic_ref = assignments.topic_ref(s.assignment.topic())
+                .expect("unassigned subscription");
             for p in &s.partitions {
                 let l_off = *latest.get(s.assignment.topic()).and_then(|ps| ps.get(p)).unwrap_or(&-1);
                 let e_off = *earliest.get(s.assignment.topic()).and_then(|ps| ps.get(p)).unwrap_or(&-1);
 
-                let tp = TopicPartition { topic_ref: s.assignment._ref(), partition: *p };
+                let tp = TopicPartition { topic_ref: topic_ref, partition: *p };
                 let offset = match consumed_offsets.get(&tp) {
                     Some(&co) if co >= e_off && co < l_off => co + 1,
                     _ => {
