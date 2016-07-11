@@ -1071,7 +1071,12 @@ impl KafkaClient {
                 return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
-        __commit_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
+        if req.topic_partitions.is_empty() {
+            debug!("commit_offsets: no offsets provided");
+            Ok(())
+        } else {
+            __commit_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
+        }
     }
 
     /// Commit offset of a particular topic partition on behalf of a

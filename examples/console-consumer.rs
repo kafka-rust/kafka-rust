@@ -6,7 +6,7 @@ use std::{env, fmt, process};
 use std::io::{self, Write};
 use std::ascii::AsciiExt;
 
-use kafka::consumer::{Consumer, GroupOffsetStorage};
+use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
 /// This is a very simple command line application reading from a
 /// specific kafka topic and dumping the messages to standard output.
@@ -27,15 +27,20 @@ fn main() {
 }
 
 fn process(cfg: Config) -> Result<(), Error> {
-    let mut c =
-        try!(Consumer::from_hosts(cfg.brokers, cfg.topic)
-             .with_group(cfg.group)
-             .with_fetch_max_wait_time(1000)
-             .with_fetch_min_bytes(1_000)
-             .with_fetch_max_bytes_per_partition(100_000)
-             .with_retry_max_bytes_limit(1_000_000)
-             .with_offset_storage(cfg.offset_storage)
-             .create());
+    let mut c = {
+        let mut cb = Consumer::from_hosts(cfg.brokers)
+            .with_group(cfg.group)
+            .with_fallback_offset(cfg.fallback_offset)
+            .with_fetch_max_wait_time(1000)
+            .with_fetch_min_bytes(1_000)
+            .with_fetch_max_bytes_per_partition(100_000)
+            .with_retry_max_bytes_limit(1_000_000)
+            .with_offset_storage(cfg.offset_storage);
+        for topic in cfg.topics {
+            cb = cb.with_topic(topic);
+        }
+        try!(cb.create())
+    };
 
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
@@ -54,7 +59,7 @@ fn process(cfg: Config) -> Result<(), Error> {
                 // ~ write to output channel
                 try!(stdout.write_all(&buf));
             }
-            c.consume_messageset(ms);
+            let _ = c.consume_messageset(ms);
         }
         if do_commit {
             try!(c.commit_consumed());
@@ -93,9 +98,10 @@ impl From<io::Error> for Error {
 struct Config {
     brokers: Vec<String>,
     group: String,
-    topic: String,
+    topics: Vec<String>,
     no_commit: bool,
     offset_storage: GroupOffsetStorage,
+    fallback_offset: FetchOffset,
 }
 
 impl Config {
@@ -104,10 +110,12 @@ impl Config {
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
         opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
-        opts.optopt("", "topic", "Specify target topic", "NAME");
+        opts.optopt("", "topics", "Specify topics (comma separated)", "NAMES");
         opts.optopt("", "group", "Specify the consumer group", "NAME");
-        opts.optflag("", "no-commit", "Do not commit consumed messages");
-        opts.optopt("", "offsets", "Specify the offset store [zookeeper, kafka]", "STORE");
+        opts.optflag("", "no-commit", "Do not commit group offsets");
+        opts.optopt("", "storage", "Specify the offset store [zookeeper, kafka]", "STORE");
+        opts.optflag("", "earliest", "Fall back to the earliest offset \
+                                      (when no group offset available)");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -118,8 +126,25 @@ impl Config {
             return Err(Error::Literal(opts.usage(&brief)));
         }
 
+        macro_rules! required_list {
+            ($name:expr) => {{
+                let opt = $name;
+                let xs: Vec<_> = match m.opt_str(opt) {
+                    None => return Err(Error::Literal(format!("Required option --{} missing", opt))),
+                    Some(s) => s.split(',').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect(),
+                };
+                if xs.is_empty() {
+                    return Err(Error::Literal(format!("Invalid --{} specified!", opt)));
+                }
+                xs
+            }}
+        };
+
+        let brokers = required_list!("brokers");
+        let topics = required_list!("topics");
+
         let mut offset_storage = GroupOffsetStorage::Zookeeper;
-        if let Some(s) = m.opt_str("offsets") {
+        if let Some(s) = m.opt_str("storage") {
             if s.eq_ignore_ascii_case("zookeeper") {
                 offset_storage = GroupOffsetStorage::Zookeeper;
             } else if s.eq_ignore_ascii_case("kafka") {
@@ -129,17 +154,16 @@ impl Config {
             }
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
-                .unwrap_or_else(|| "localhost:9092".to_owned())
-                .split(',')
-                .map(|s| s.trim().to_owned())
-                .collect(),
-            group: m.opt_str("group")
-                .unwrap_or_else(|| String::new()),
-            topic: m.opt_str("topic")
-                .unwrap_or_else(|| "my-topic".to_owned()),
+            brokers: brokers,
+            group: m.opt_str("group").unwrap_or_else(|| String::new()),
+            topics: topics,
             no_commit: m.opt_present("no-commit"),
             offset_storage: offset_storage,
+            fallback_offset: if m.opt_present("earliest") {
+                FetchOffset::Earliest
+            } else {
+                FetchOffset::Latest
+            },
         })
    }
 }

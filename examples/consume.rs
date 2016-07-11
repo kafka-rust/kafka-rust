@@ -23,7 +23,8 @@ fn main() {
 fn consume_messages(group: String, topic: String, brokers: Vec<String>)
                     -> Result<(), KafkaError>
 {
-    let mut con = try!(Consumer::from_hosts(brokers, topic)
+    let mut con = try!(Consumer::from_hosts(brokers)
+                       .with_topic(topic)
                        .with_group(group)
                        .with_fallback_offset(FetchOffset::Earliest)
                        .with_offset_storage(GroupOffsetStorage::Kafka)
@@ -40,7 +41,7 @@ fn consume_messages(group: String, topic: String, brokers: Vec<String>)
             for m in ms.messages() {
                 println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
             }
-            con.consume_messageset(ms);
+            let _ = con.consume_messageset(ms);
         }
         try!(con.commit_consumed());
     }
