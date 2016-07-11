@@ -279,7 +279,7 @@ impl Consumer {
         self.state.topic_ref(topic)
             .and_then(|tref| self.state.consumed_offsets.get(
                 &state::TopicPartition { topic_ref: tref, partition: partition }))
-            .cloned()
+            .map(|co| co.offset)
     }
 
     /// Marks the message at the specified offset in the specified
@@ -301,14 +301,13 @@ impl Consumer {
         let tp = state::TopicPartition {topic_ref: topic_ref, partition: partition };
         match self.state.consumed_offsets.entry(tp) {
             Entry::Vacant(v) => {
-                v.insert(offset);
-                self.state.consumed_offsets_dirty = true;
+                v.insert(state::ConsumedOffset { offset: offset, dirty: true });
             }
             Entry::Occupied(mut v) => {
                 let o = v.get_mut();
-                if offset > *o {
-                     *o = offset;
-                    self.state.consumed_offsets_dirty = true;
+                if offset > o.offset {
+                    o.offset = offset;
+                    o.dirty = true;
                 }
             }
         }
@@ -336,20 +335,22 @@ impl Consumer {
             debug!("commit_consumed: ignoring commit request since no group defined");
             return Ok(());
         }
-        if !self.state.consumed_offsets_dirty {
-            debug!("commit_consumed: no new consumed offsets to commit");
-            return Ok(());
-        }
-        debug!("commit_consumed: commiting consumed offsets (group: {} / offsets: {:?}",
+        debug!("commit_consumed: commiting dirty-only consumer offsets (group: {} / offsets: {:?}",
                self.config.group, self.state.consumed_offsets_debug());
         let (client, state) = (&mut self.client, &mut self.state);
         try!(client.commit_offsets(
             &self.config.group,
-            state.consumed_offsets.iter().map(|(tp, &o)| {
-                let topic = state.topic_name(tp.topic_ref);
-                CommitOffset::new(topic, tp.partition, o)
-            })));
-        state.consumed_offsets_dirty = false;
+            state.consumed_offsets.iter()
+                .filter(|&(_, o)| o.dirty)
+                .map(|(tp, o)| {
+                    let topic = state.topic_name(tp.topic_ref);
+                    CommitOffset::new(topic, tp.partition, o.offset)
+                })));
+        for (_, co) in &mut state.consumed_offsets {
+            if co.dirty {
+                co.dirty = false;
+            }
+        }
         Ok(())
     }
 }

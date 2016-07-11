@@ -31,6 +31,15 @@ pub struct TopicPartition {
     pub partition: i32,
 }
 
+#[derive(Debug)]
+pub struct ConsumedOffset {
+    /// ~ the consumed offset
+    pub offset: i64,
+    /// ~ true if the consumed offset is chnaged but not committed to
+    /// kafka yet
+    pub dirty: bool,
+}
+
 pub struct State {
     /// Contains the topic partitions the consumer is assigned to
     /// consume; this is a _read-only_ data structure
@@ -46,11 +55,7 @@ pub struct State {
 
     /// Contains the offsets of messages marked as "consumed" (to be
     /// committed)
-    pub consumed_offsets: HashMap<TopicPartition, i64, PartitionHasher>,
-
-    /// `true` iff the consumed_offsets contain data which needs to be
-    /// committed. Set to `false` after commit.
-    pub consumed_offsets_dirty: bool,
+    pub consumed_offsets: HashMap<TopicPartition, ConsumedOffset, PartitionHasher>,
 }
 
 impl<'a> fmt::Debug for State {
@@ -58,13 +63,11 @@ impl<'a> fmt::Debug for State {
         write!(f, "State {{ assignments: {:?}, \
                    fetch_offsets: {:?}, \
                    retry_partitions: {:?}, \
-                   consumed_offsets: {:?}, \
-                   consumed_offsets_dirty: {} }}",
+                   consumed_offsets: {:?} }}",
                self.assignments,
                self.fetch_offsets_debug(),
                TopicPartitionsDebug { state: self, tps: &self.retry_partitions },
-               self.consumed_offsets_debug(),
-               self.consumed_offsets_dirty)
+               self.consumed_offsets_debug())
     }
 }
 
@@ -91,7 +94,6 @@ impl State {
             fetch_offsets: fetch_offsets,
             retry_partitions: VecDeque::new(),
             consumed_offsets: consumed_offsets,
-            consumed_offsets_dirty: false,
         })
     }
 
@@ -109,7 +111,7 @@ impl State {
         OffsetsMapDebug { state: self, offsets: &self.fetch_offsets }
     }
 
-    pub fn consumed_offsets_debug<'a>(&'a self) -> OffsetsMapDebug<'a, i64> {
+    pub fn consumed_offsets_debug<'a>(&'a self) -> OffsetsMapDebug<'a, ConsumedOffset> {
         OffsetsMapDebug { state: self, offsets: &self.consumed_offsets }
     }
 }
@@ -168,7 +170,7 @@ fn determine_partitions<'a>(assignment: &'a Assignment, metadata: Topics)
 fn load_consumed_offsets(
     client: &mut KafkaClient, group: &str, assignments: &Assignments,
     subscriptions: &[Subscription], result_capacity: usize)
-    -> Result<HashMap<TopicPartition, i64, PartitionHasher>>
+    -> Result<HashMap<TopicPartition, ConsumedOffset, PartitionHasher>>
 {
     assert!(!subscriptions.is_empty());
     // ~ pre-allocate the right size
@@ -193,7 +195,10 @@ fn load_consumed_offsets(
                         topic_ref: assignments.topic_ref(&tpo.topic).expect("non-assigned topic"),
                         partition: tpo.partition,
                     },
-                    o);
+                    ConsumedOffset {
+                        offset: o,
+                        dirty: false,
+                    });
             }
             _ => {}
         }
@@ -206,7 +211,7 @@ fn load_consumed_offsets(
 fn load_fetch_states(
     client: &mut KafkaClient, config: &Config,
     assignments: &Assignments, subscriptions: &[Subscription],
-    consumed_offsets: &HashMap<TopicPartition, i64, PartitionHasher>,
+    consumed_offsets: &HashMap<TopicPartition, ConsumedOffset, PartitionHasher>,
     result_capacity: usize)
     -> Result<HashMap<TopicPartition, FetchState, PartitionHasher>>
 {
@@ -274,7 +279,7 @@ fn load_fetch_states(
 
                 let tp = TopicPartition { topic_ref: topic_ref, partition: *p };
                 let offset = match consumed_offsets.get(&tp) {
-                    Some(&co) if co >= e_off && co < l_off => co + 1,
+                    Some(co) if co.offset >= e_off && co.offset < l_off => co.offset + 1,
                     _ => {
                         match config.fallback_offset {
                             FetchOffset::Latest => l_off,
