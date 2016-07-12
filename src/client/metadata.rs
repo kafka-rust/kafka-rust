@@ -289,7 +289,7 @@ impl<'a> Partition<'a> {
     /// Retrieves the current leader broker of this partition - if
     /// any.  A partition with a leader is said to be "available".
     #[inline]
-    pub fn leader(&self) -> Option<&Broker> {
+    pub fn leader(&self) -> Option<&'a Broker> {
         self.partition.broker(self.state)
     }
 

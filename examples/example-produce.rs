@@ -53,7 +53,7 @@ fn produce_message<'a, 'b>(data: &'a [u8], topic: &'b str, brokers: Vec<String>)
         value: data,
     }));
 
-    // ~ we can achive exactly the same as above in a shorter way with
+    // ~ we can achieve exactly the same as above in a shorter way with
     // the following call
     try!(producer.send(&Record::from_value(topic, data)));
 
