@@ -19,7 +19,7 @@ expect the version number to grow quickly.)
 
 ```toml
 [dependencies]
-kafka = "0.3"
+kafka = "0.4"
 ```
 
 To build kafka-rust you'll need `libsnappy-dev` on your local machine.
@@ -92,7 +92,7 @@ submit a pull requests if you see something to be changed.  We'll be
 happy see `kafka-rust` improving over time.
 
 
-### [Creating a topic] (https://kafka.apache.org/08/quickstart.html)
+### [Creating a topic] (https://kafka.apache.org/documentation.html#quickstart)
 
 Note unless otherwise explicitely stated in the documentation, this
 library will ignore requests to topics which it doesn't know about.
