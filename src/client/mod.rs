@@ -1360,7 +1360,7 @@ fn __fetch_messages(conn_pool: &mut ConnectionPool,
     Ok(res)
 }
 
-/// ~ carries out the given produce requests and returns the reponse
+/// ~ carries out the given produce requests and returns the response
 fn __produce_messages(conn_pool: &mut ConnectionPool,
                       reqs: HashMap<&str, protocol::ProduceRequest>,
                       no_acks: bool)
@@ -1369,7 +1369,7 @@ fn __produce_messages(conn_pool: &mut ConnectionPool,
     // Call each broker with the request formed earlier
     if no_acks {
         for (host, req) in reqs {
-            try!(__send_noack::<protocol::ProduceRequest, protocol::ProduceResponse>(conn_pool, host, req));
+            try!(__send_noack::<_, protocol::ProduceResponse>(conn_pool, host, req));
         }
         Ok(vec!())
     } else {
