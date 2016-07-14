@@ -10,8 +10,6 @@ use std::ops::{Deref, DerefMut};
 use kafka::client::{KafkaClient, Compression, RequiredAcks};
 use kafka::producer::{AsBytes, Producer, Record};
 
-// how many brokers do we require to acknowledge the send messages
-const REQUIRED_ACKS: RequiredAcks = RequiredAcks::One;
 // how long do we allow wainting for the acknowledgement
 const ACK_TIMEOUT: i32 = 100;
 
@@ -62,7 +60,7 @@ fn produce(cfg: &Config) -> Result<(), Error> {
 fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<(), Error> {
     let mut producer = try!(Producer::from_client(client)
                             .with_ack_timeout(ACK_TIMEOUT)
-                            .with_required_acks(REQUIRED_ACKS)
+                            .with_required_acks(cfg.required_acks)
                             .create());
     if cfg.batch_size < 2 {
         produce_impl_nobatch(&mut producer, src, cfg)
@@ -195,11 +193,14 @@ struct Config {
     topic: String,
     input_file: Option<String>,
     compression: Compression,
+    required_acks: RequiredAcks,
     batch_size: usize,
 }
 
 impl Config {
     fn from_cmdline() -> Result<Config, Error> {
+        use std::ascii::AsciiExt;
+
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
@@ -207,6 +208,8 @@ impl Config {
         opts.optopt("", "topic", "Specify target topic", "NAME");
         opts.optopt("", "input", "Specify input file", "FILE");
         opts.optopt("", "compression", "Compress messages [NONE, GZIP, SNAPPY]", "TYPE");
+        opts.optopt("", "required-acks", "Specify amount of required broker acknowledgments \
+                                          [NONE, ONE, ALL]", "TYPE");
         opts.optopt("", "batch-size", "Send N message in one batch.", "N");
 
         let m = match opts.parse(&args[1..]) {
@@ -226,17 +229,21 @@ impl Config {
             topic: m.opt_str("topic")
                 .unwrap_or_else(|| "my-topic".to_owned()),
             input_file: m.opt_str("input"),
-            compression: {
-                let s = m.opt_str("compression")
-                    .unwrap_or_else(|| "NONE".to_owned());
-                match s.trim() {
-                    "none" | "NONE" => Compression::NONE,
-                    #[cfg(feature = "gzip")]
-                    "gzip" | "GZIP" => Compression::GZIP,
-                    #[cfg(feature = "snappy")]
-                    "snappy" | "SNAPPY" => Compression::SNAPPY,
-                    _ => return Err(Error::Literal(format!("Unsupported compression type: {}", s))),
-                }
+            compression: match m.opt_str("compression") {
+                None => Compression::NONE,
+                Some(ref s) if s.eq_ignore_ascii_case("none") => Compression::NONE,
+                #[cfg(feature = "gzip")]
+                Some(ref s) if s.eq_ignore_ascii_case("gzip") => Compression::GZIP,
+                #[cfg(feature = "snappy")]
+                Some(ref s) if s.eq_ignore_ascii_case("snappy") => Compression::SNAPPY,
+                Some(s) => return Err(Error::Literal(format!("Unsupported compression type: {}", s))),
+            },
+            required_acks: match m.opt_str("required-acks") {
+                None => RequiredAcks::One,
+                Some(ref s) if s.eq_ignore_ascii_case("none") => RequiredAcks::None,
+                Some(ref s) if s.eq_ignore_ascii_case("one") => RequiredAcks::One,
+                Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
+                Some(s) => return Err(Error::Literal(format!("Unknown --required-acks argument: {}", s))),
             },
             batch_size: {
                 match m.opt_str("batch-size") {

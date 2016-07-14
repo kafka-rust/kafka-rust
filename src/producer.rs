@@ -249,8 +249,14 @@ impl<P: Partitioner> Producer<P> {
               V: AsBytes
     {
         let mut rs = try!(self.send_all(ref_slice(rec)));
-        assert_eq!(1, rs.len());
-        rs.pop().unwrap().offset.map(|_| ())
+        if let RequiredAcks::None = self.config.required_acks {
+            // ~ with no required_acks we get no response and
+            // consider the send-data request blindly as successful
+            Ok(())
+        } else {
+            assert_eq!(1, rs.len());
+            rs.pop().unwrap().offset.map(|_| ())
+        }
     }
 
     /// Synchronously send all of the specified messages to Kafka.
