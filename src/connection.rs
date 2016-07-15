@@ -98,31 +98,30 @@ impl KafkaConnection {
         // following call to `read_exact` or discard the vector (in
         // the error case)
         unsafe { buffer.set_len(size) };
-        try!((&mut self.stream).read_exact(buffer.as_mut_slice()));
+        try!(self.read_exact(buffer.as_mut_slice()));
         Ok(buffer)
     }
 
-    fn from_stream(stream: KafkaStream, host: &str, timeout_secs: i32) -> KafkaConnection {
-        if timeout_secs > 0 {
-            let t = Some(Duration::from_secs(timeout_secs as u64));
-            stream.set_read_timeout(t).expect("Set connection read-timeout");
-            stream.set_write_timeout(t).expect("Set connection write-timeout");
-        }
-        KafkaConnection{host: host.to_owned(), stream: stream}
+    fn from_stream(stream: KafkaStream, host: &str, rw_timeout: Option<Duration>)
+                   -> Result<KafkaConnection>
+    {
+        try!(stream.set_read_timeout(rw_timeout));
+        try!(stream.set_write_timeout(rw_timeout));
+        Ok(KafkaConnection { host: host.to_owned(), stream: stream })
     }
 
     #[cfg(not(feature = "security"))]
-    pub fn new(host: &str, timeout_secs: i32) -> Result<KafkaConnection> {
-        Ok(KafkaConnection::from_stream(try!(TcpStream::connect(host)), host, timeout_secs))
+    pub fn new(host: &str, rw_timeout: Option<Duration>) -> Result<KafkaConnection> {
+        Ok(KafkaConnection::from_stream(try!(TcpStream::connect(host)), host, rw_timeout))
     }
 
     #[cfg(feature = "security")]
-    pub fn new(host: &str, timeout_secs: i32, security: Option<&SslContext>) -> Result<KafkaConnection> {
+    pub fn new(host: &str, rw_timeout: Option<Duration>, security: Option<&SslContext>) -> Result<KafkaConnection> {
         let stream = try!(TcpStream::connect(host));
         let stream = match security {
             Some(ctx) => KafkaStream::Ssl(try!(SslStream::connect(ctx, stream))),
             None => KafkaStream::Plain(stream),
         };
-        Ok(KafkaConnection::from_stream(stream, host, timeout_secs))
+        KafkaConnection::from_stream(stream, host, rw_timeout)
     }
 }

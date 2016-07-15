@@ -36,7 +36,14 @@ pub mod fetch {
 }
 
 const CLIENTID: &'static str = "kafka-rust";
-const DEFAULT_SO_TIMEOUT_SECS: i32 = 120; // socket read, write timeout seconds
+const DEFAULT_CONN_RW_TIMEOUT_SECS: u64 = 120;
+
+fn default_conn_rw_timeout() -> Option<Duration> {
+    match DEFAULT_CONN_RW_TIMEOUT_SECS {
+        0 => None,
+        n => Some(Duration::from_secs(n)),
+    }
+}
 
 /// The default value for `KafkaClient::set_compression(..)`
 pub const DEFAULT_COMPRESSION: Compression = Compression::NONE;
@@ -112,40 +119,42 @@ struct ClientConfig {
 #[derive(Debug)]
 struct ConnectionPool {
     conns: HashMap<String, KafkaConnection>,
-    timeout: i32,
+    rw_timeout: Option<Duration>,
     #[cfg(feature = "security")]
-    security_config: Option<SecurityConfig>
+    security_config: Option<SecurityConfig>,
 }
 
 impl ConnectionPool {
     #[cfg(not(feature = "security"))]
-    fn new(timeout: i32) -> ConnectionPool {
+    fn new(rw_timeout: Option<Duration>) -> ConnectionPool {
         ConnectionPool {
             conns: HashMap::new(),
-            timeout: timeout,
+            rw_timeout: rw_timeout,
         }
     }
 
     #[cfg(feature = "security")]
-    fn new(timeout: i32) -> ConnectionPool {
-        Self::new_with_security(timeout, None)
+    fn new(rw_timeout: Option<Duration>) -> ConnectionPool {
+        Self::new_with_security(rw_timeout, None)
     }
 
     #[cfg(feature = "security")]
-    fn new_with_security(timeout: i32, security: Option<SecurityConfig>) -> ConnectionPool {
+    fn new_with_security(rw_timeout: Option<Duration>, security: Option<SecurityConfig>)
+                         -> ConnectionPool
+    {
         ConnectionPool {
             conns: HashMap::new(),
-            timeout: timeout,
+            rw_timeout: rw_timeout,
             security_config: security,
         }
     }
 
     fn get_conn<'a>(&'a mut self, host: &str) -> Result<&'a mut KafkaConnection> {
         if let Some(conn) = self.conns.get_mut(host) {
-            // ~ decouple the lifetimes to make borrowck happy; this
-            // is actually safe since we're immediatelly returning
-            // this, so the follow up code is not affected here (this
-            // method is no longer recursive).
+            // ~ decouple the lifetimes to make the borrowck happy;
+            // this is safe since we're immediatelly returning the
+            // reference and the rest of the code in this method is
+            // not affected
             return Ok(unsafe { mem::transmute(conn) });
         }
         let conn = try!(self.new_conn(host));
@@ -164,7 +173,7 @@ impl ConnectionPool {
 
     #[cfg(feature = "security")]
     fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(host, self.timeout, self.security_config.as_ref().map(|c| &c.0))
+        KafkaConnection::new(host, self.rw_timeout, self.security_config.as_ref().map(|c| &c.0))
     }
 }
 
@@ -426,7 +435,7 @@ impl KafkaClient {
                 retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
-            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
+            conn_pool: ConnectionPool::new(default_conn_rw_timeout()),
             state: state::ClientState::new(),
         }
     }
@@ -482,7 +491,7 @@ impl KafkaClient {
                 retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
-            conn_pool: ConnectionPool::new_with_security(DEFAULT_SO_TIMEOUT_SECS, Some(security)),
+            conn_pool: ConnectionPool::new_with_security(default_conn_rw_timeout(), Some(security)),
             state: state::ClientState::new(),
         }
     }
