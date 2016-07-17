@@ -1,5 +1,13 @@
+//! Network related functionality for `KafkaClient`.
+//!
+//! This module is crate private and not exposed to the public except
+//! through re-exports of individual items from within
+//! `kafka::client`.
+
+use std::collections::HashMap;
 use std::fmt;
 use std::io::{Read, Write};
+use std::mem;
 use std::net::TcpStream;
 use std::time::Duration;
 
@@ -7,6 +15,87 @@ use std::time::Duration;
 use openssl::ssl::{SslContext, SslStream};
 
 use error::Result;
+
+// --------------------------------------------------------------------
+
+/// Security relevant configuration options for KafkaClient.
+// This will be expanded in the future. See #51.
+#[cfg(feature = "security")]
+#[derive(Debug)]
+pub struct SecurityConfig(SslContext);
+
+#[cfg(feature = "security")]
+impl SecurityConfig {
+    /// In the future this will also support a kerbos via #51.
+    pub fn new(ssl: SslContext) -> SecurityConfig {
+        SecurityConfig(ssl)
+    }
+}
+
+// --------------------------------------------------------------------
+
+#[derive(Debug)]
+pub struct Connections {
+    conns: HashMap<String, KafkaConnection>,
+    rw_timeout: Option<Duration>,
+    #[cfg(feature = "security")]
+    security_config: Option<SecurityConfig>,
+}
+
+impl Connections {
+    #[cfg(not(feature = "security"))]
+    pub fn new(rw_timeout: Option<Duration>) -> Connections {
+        ConnectionPool {
+            conns: HashMap::new(),
+            rw_timeout: rw_timeout,
+        }
+    }
+
+    #[cfg(feature = "security")]
+    pub fn new(rw_timeout: Option<Duration>) -> Connections {
+        Self::new_with_security(rw_timeout, None)
+    }
+
+    #[cfg(feature = "security")]
+    pub fn new_with_security(rw_timeout: Option<Duration>, security: Option<SecurityConfig>)
+                             -> Connections
+    {
+        Connections {
+            conns: HashMap::new(),
+            rw_timeout: rw_timeout,
+            security_config: security,
+        }
+    }
+
+    pub fn get_conn<'a>(&'a mut self, host: &str) -> Result<&'a mut KafkaConnection> {
+        if let Some(conn) = self.conns.get_mut(host) {
+            // ~ decouple the lifetimes to make the borrowck happy;
+            // this is safe since we're immediatelly returning the
+            // reference and the rest of the code in this method is
+            // not affected
+            return Ok(unsafe { mem::transmute(conn) });
+        }
+        let conn = try!(self.new_conn(host));
+        self.conns.insert(host.to_owned(), conn);
+        Ok(self.conns.get_mut(host).unwrap())
+    }
+
+    pub fn get_conn_any<'a>(&'a mut self) -> Option<&'a mut KafkaConnection> {
+        self.conns.iter_mut().next().map(|(_, conn)| conn)
+    }
+
+    #[cfg(not(feature = "security"))]
+    fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
+        KafkaConnection::new(host, self.timeout)
+    }
+
+    #[cfg(feature = "security")]
+    fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
+        KafkaConnection::new(host, self.rw_timeout, self.security_config.as_ref().map(|c| &c.0))
+    }
+}
+
+// --------------------------------------------------------------------
 
 #[cfg(not(feature = "security"))]
 type KafkaStream = TcpStream;
@@ -69,6 +158,7 @@ mod openssled {
     }
 }
 
+/// A TCP stream to a remote Kafka broker.
 pub struct KafkaConnection {
     host: String,
     stream: KafkaStream,
@@ -111,12 +201,12 @@ impl KafkaConnection {
     }
 
     #[cfg(not(feature = "security"))]
-    pub fn new(host: &str, rw_timeout: Option<Duration>) -> Result<KafkaConnection> {
+    fn new(host: &str, rw_timeout: Option<Duration>) -> Result<KafkaConnection> {
         Ok(KafkaConnection::from_stream(try!(TcpStream::connect(host)), host, rw_timeout))
     }
 
     #[cfg(feature = "security")]
-    pub fn new(host: &str, rw_timeout: Option<Duration>, security: Option<&SslContext>) -> Result<KafkaConnection> {
+    fn new(host: &str, rw_timeout: Option<Duration>, security: Option<&SslContext>) -> Result<KafkaConnection> {
         let stream = try!(TcpStream::connect(host));
         let stream = match security {
             Some(ctx) => KafkaStream::Ssl(try!(SslStream::connect(ctx, stream))),
