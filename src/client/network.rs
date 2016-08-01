@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::{Read, Write};
 use std::mem;
-use std::net::TcpStream;
-use std::time::Duration;
+use std::net::{TcpStream, Shutdown};
+use std::time::{Instant, Duration};
 
 #[cfg(feature = "security")]
 use openssl::ssl::{SslContext, SslStream};
@@ -18,7 +18,7 @@ use error::Result;
 
 // --------------------------------------------------------------------
 
-/// Security relevant configuration options for KafkaClient.
+/// Security relevant configuration options for `KafkaClient`.
 // This will be expanded in the future. See #51.
 #[cfg(feature = "security")]
 #[derive(Debug)]
@@ -34,64 +34,140 @@ impl SecurityConfig {
 
 // --------------------------------------------------------------------
 
+struct Pooled<T> {
+    last_checkout: Instant,
+    item: T,
+}
+
+impl<T> Pooled<T> {
+    fn new(last_checkout: Instant, item: T) -> Self {
+        Pooled { last_checkout: last_checkout, item: item }
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Pooled<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Pooled {{ last_checkout: {:?}, item: {:?} }}",
+               self.last_checkout, self.item)
+    }
+}
+
 #[derive(Debug)]
-pub struct Connections {
-    conns: HashMap<String, KafkaConnection>,
+pub struct Config {
     rw_timeout: Option<Duration>,
+    idle_timeout: Option<Duration>,
     #[cfg(feature = "security")]
     security_config: Option<SecurityConfig>,
 }
 
-impl Connections {
-    #[cfg(not(feature = "security"))]
-    pub fn new(rw_timeout: Option<Duration>) -> Connections {
-        ConnectionPool {
-            conns: HashMap::new(),
-            rw_timeout: rw_timeout,
-        }
-    }
-
-    #[cfg(feature = "security")]
-    pub fn new(rw_timeout: Option<Duration>) -> Connections {
-        Self::new_with_security(rw_timeout, None)
-    }
-
-    #[cfg(feature = "security")]
-    pub fn new_with_security(rw_timeout: Option<Duration>, security: Option<SecurityConfig>)
-                             -> Connections
-    {
-        Connections {
-            conns: HashMap::new(),
-            rw_timeout: rw_timeout,
-            security_config: security,
-        }
-    }
-
-    pub fn get_conn<'a>(&'a mut self, host: &str) -> Result<&'a mut KafkaConnection> {
-        if let Some(conn) = self.conns.get_mut(host) {
-            // ~ decouple the lifetimes to make the borrowck happy;
-            // this is safe since we're immediatelly returning the
-            // reference and the rest of the code in this method is
-            // not affected
-            return Ok(unsafe { mem::transmute(conn) });
-        }
-        let conn = try!(self.new_conn(host));
-        self.conns.insert(host.to_owned(), conn);
-        Ok(self.conns.get_mut(host).unwrap())
-    }
-
-    pub fn get_conn_any<'a>(&'a mut self) -> Option<&'a mut KafkaConnection> {
-        self.conns.iter_mut().next().map(|(_, conn)| conn)
-    }
-
+impl Config {
     #[cfg(not(feature = "security"))]
     fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
+        debug!("Establishing connection to '{}'", host);
         KafkaConnection::new(host, self.timeout)
     }
 
     #[cfg(feature = "security")]
     fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(host, self.rw_timeout, self.security_config.as_ref().map(|c| &c.0))
+        debug!("Establishing connection to '{}'", host);
+        KafkaConnection::new(host,
+                             self.rw_timeout,
+                             self.security_config.as_ref().map(|c| &c.0))
+    }
+}
+
+#[derive(Debug)]
+pub struct Connections {
+    conns: HashMap<String, Pooled<KafkaConnection>>,
+    config: Config,
+}
+
+impl Connections {
+    #[cfg(not(feature = "security"))]
+    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Option<Duration>)
+               -> Connections
+    {
+        ConnectionPool {
+            conns: HashMap::new(),
+            rw_timeout: rw_timeout,
+            idle_timeout: idle_timeout,
+        }
+    }
+
+    #[cfg(feature = "security")]
+    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Option<Duration>)
+               -> Connections
+    {
+        Self::new_with_security(rw_timeout, idle_timeout, None)
+    }
+
+    #[cfg(feature = "security")]
+    pub fn new_with_security(rw_timeout: Option<Duration>,
+                             idle_timeout: Option<Duration>,
+                             security: Option<SecurityConfig>)
+                             -> Connections
+    {
+        Connections {
+            conns: HashMap::new(),
+            config: Config {
+                rw_timeout: rw_timeout,
+                idle_timeout: idle_timeout,
+                security_config: security,
+            },
+        }
+    }
+
+    pub fn get_conn<'a>(&'a mut self, host: &str, now: Instant)
+                        -> Result<&'a mut KafkaConnection>
+    {
+        if let Some(conn) = self.conns.get_mut(host) {
+            if let Some(idle_timeout) = self.config.idle_timeout {
+                if now.duration_since(conn.last_checkout) >= idle_timeout {
+                    debug!("Idle timeout ({:?}) reached for connection to '{}'",
+                           idle_timeout, host);
+                    let new_conn = try!(self.config.new_conn(host));
+                    let _ = conn.item.shutdown();
+                    conn.item = new_conn;
+                }
+            }
+            conn.last_checkout = now;
+            let kconn: &mut KafkaConnection = &mut conn.item;
+            // ~ decouple the lifetimes to make the borrowck happy;
+            // this is safe since we're immediatelly returning the
+            // reference and the rest of the code in this method is
+            // not affected
+            return Ok(unsafe { mem::transmute(kconn) });
+        }
+        self.conns.insert(host.to_owned(),
+                          Pooled::new(now, try!(self.config.new_conn(host))));
+        Ok(&mut self.conns.get_mut(host).unwrap().item)
+    }
+
+    pub fn get_conn_any(&mut self, now: Instant) -> Option<&mut KafkaConnection> {
+        for (host, conn) in &mut self.conns {
+            if let Some(idle_timeout) = self.config.idle_timeout {
+                if now.duration_since(conn.last_checkout) >= idle_timeout {
+                    debug!("Idle timeout ({:?}) reached for connection to '{}'",
+                           idle_timeout, host);
+                    let new_conn = match self.config.new_conn(host.as_str()) {
+                        Ok(new_conn) => {
+                            let _ = conn.item.shutdown();
+                            new_conn
+                        }
+                        Err(e) => {
+                            debug!("Failed to establish connection to {}: {:?}",
+                                   host, e);
+                            continue;
+                        }
+                    };
+                    conn.item = new_conn;
+                }
+            }
+            conn.last_checkout = now;
+            let kconn: &mut KafkaConnection = &mut conn.item;
+            return Some(kconn);
+        }
+        None
     }
 }
 
@@ -106,7 +182,7 @@ use self::openssled::KafkaStream;
 #[cfg(feature = "security")]
 mod openssled {
     use std::io::{self, Read, Write};
-    use std::net::TcpStream;
+    use std::net::{TcpStream, Shutdown};
     use std::time::Duration;
 
     use openssl::ssl::SslStream;
@@ -118,9 +194,9 @@ mod openssled {
 
     impl KafkaStream {
         fn get_ref(&self) -> &TcpStream {
-            match self {
-                &KafkaStream::Plain(ref s) => s,
-                &KafkaStream::Ssl(ref s) => s.get_ref()
+            match *self {
+                KafkaStream::Plain(ref s) => s,
+                KafkaStream::Ssl(ref s) => s.get_ref()
             }
         }
 
@@ -131,28 +207,32 @@ mod openssled {
         pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
             self.get_ref().set_write_timeout(dur)
         }
+
+        pub fn shutdown(&mut self, how: Shutdown) -> io::Result<()> {
+            self.get_ref().shutdown(how)
+        }
     }
 
     impl Read for KafkaStream {
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            match self {
-                &mut KafkaStream::Plain(ref mut s) => s.read(buf),
-                &mut KafkaStream::Ssl(ref mut s) => s.read(buf),
+            match *self {
+                KafkaStream::Plain(ref mut s) => s.read(buf),
+                KafkaStream::Ssl(ref mut s) => s.read(buf),
             }
         }
     }
 
     impl Write for KafkaStream {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            match self {
-                &mut KafkaStream::Plain(ref mut s) => s.write(buf),
-                &mut KafkaStream::Ssl(ref mut s) => s.write(buf),
+            match *self {
+                KafkaStream::Plain(ref mut s) => s.write(buf),
+                KafkaStream::Ssl(ref mut s) => s.write(buf),
             }
         }
         fn flush(&mut self) -> io::Result<()> {
-            match self {
-                &mut KafkaStream::Plain(ref mut s) => s.flush(),
-                &mut KafkaStream::Ssl(ref mut s) => s.flush(),
+            match *self {
+                KafkaStream::Plain(ref mut s) => s.flush(),
+                KafkaStream::Ssl(ref mut s) => s.flush(),
             }
         }
     }
@@ -173,11 +253,15 @@ impl fmt::Debug for KafkaConnection {
 impl KafkaConnection {
 
     pub fn send(&mut self, msg: &[u8]) -> Result<usize> {
-        self.stream.write(&msg[..]).map_err(From::from)
+        let r = self.stream.write(&msg[..]).map_err(From::from);
+        debug!("Sent {} bytes to '{}' => {:?}", msg.len(), self.host, r);
+        r
     }
 
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-        (&mut self.stream).read_exact(buf).map_err(From::from)
+        let r = (&mut self.stream).read_exact(buf).map_err(From::from);
+        debug!("Read {} bytes from '{}' => {:?}", buf.len(), self.host, r);
+        r
     }
 
     pub fn read_exact_alloc(&mut self, size: u64) -> Result<Vec<u8>> {
@@ -190,6 +274,12 @@ impl KafkaConnection {
         unsafe { buffer.set_len(size) };
         try!(self.read_exact(buffer.as_mut_slice()));
         Ok(buffer)
+    }
+
+    fn shutdown(&mut self) -> Result<()> {
+        let r = self.stream.shutdown(Shutdown::Both);
+        debug!("Shut down connection to '{}' => {:?}", self.host, r);
+        r.map_err(From::from)
     }
 
     fn from_stream(stream: KafkaStream, host: &str, rw_timeout: Option<Duration>)
@@ -206,7 +296,9 @@ impl KafkaConnection {
     }
 
     #[cfg(feature = "security")]
-    fn new(host: &str, rw_timeout: Option<Duration>, security: Option<&SslContext>) -> Result<KafkaConnection> {
+    fn new(host: &str, rw_timeout: Option<Duration>, security: Option<&SslContext>)
+           -> Result<KafkaConnection>
+    {
         let stream = try!(TcpStream::connect(host));
         let stream = match security {
             Some(ctx) => KafkaStream::Ssl(try!(SslStream::connect(ctx, stream))),
