@@ -1150,10 +1150,10 @@ fn __get_group_coordinator<'a>(group: &str,
     let req = protocol::GroupCoordinatorRequest::new(group, correlation_id, &config.client_id);
     let mut attempt = 1;
     loop {
-        // ~ XXX make this work even if load_metadata has not been
-        // called yet; if there is no connection available right now
-        // we can try connecting to the user specified bootstrap
-        // server similar to the way load_metadata works.
+        // ~ idealy we'd make this work even if `load_metadata` has not
+        // been called yet; if there are no connections available we can
+        // try connecting to the user specified bootstrap server similar
+        // to the way `load_metadata` works.
         let conn = conn_pool.get_conn_any(now).expect("available connection");
         debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
         let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req));
