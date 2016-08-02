@@ -62,46 +62,66 @@ pub struct Config {
 
 impl Config {
     #[cfg(not(feature = "security"))]
-    fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
-        // XXX ideally we'd print some uniq ID of the connection here
-        // to differentiate between two connections to the same host
-        debug!("Establishing connection to '{}'", host);
-        KafkaConnection::new(host, self.timeout)
+    fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
+        KafkaConnection::new(id, host, self.rw_timeout)
+            .map(|c| {
+                debug!("Established: {:?}", c);
+                c
+            })
     }
 
     #[cfg(feature = "security")]
-    fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
-        // XXX ideally we'd print some uniq ID of the connection here
-        // to differentiate between two connections to the same host
-        debug!("Establishing connection to '{}'", host);
-        KafkaConnection::new(host,
+    fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
+        KafkaConnection::new(id,
+                             host,
                              self.rw_timeout,
                              self.security_config.as_ref().map(|c| &c.0))
+            .map(|c| {
+                debug!("Established: {:?}", c);
+                c
+            })
+    }
+}
+
+#[derive(Debug)]
+pub struct State {
+    num_conns: u32,
+}
+
+impl State {
+    fn new() -> State {
+        State { num_conns: 0 }
+    }
+
+    fn next_conn_id(&mut self) -> u32 {
+        let c = self.num_conns;
+        self.num_conns = self.num_conns.wrapping_add(1);
+        c
     }
 }
 
 #[derive(Debug)]
 pub struct Connections {
     conns: HashMap<String, Pooled<KafkaConnection>>,
+    state: State,
     config: Config,
 }
 
 impl Connections {
     #[cfg(not(feature = "security"))]
-    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Duration)
-               -> Connections
-    {
-        ConnectionPool {
+    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Duration) -> Connections {
+        Connections {
             conns: HashMap::new(),
-            rw_timeout: rw_timeout,
-            idle_timeout: idle_timeout,
+            state: State::new(),
+            config: Config {
+                rw_timeout: rw_timeout,
+                idle_timeout: idle_timeout,
+            },
         }
     }
 
     #[cfg(feature = "security")]
-    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Duration)
-               -> Connections
-    {
+    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Duration) -> Connections {
         Self::new_with_security(rw_timeout, idle_timeout, None)
     }
 
@@ -113,6 +133,7 @@ impl Connections {
     {
         Connections {
             conns: HashMap::new(),
+            state: State::new(),
             config: Config {
                 rw_timeout: rw_timeout,
                 idle_timeout: idle_timeout,
@@ -134,8 +155,8 @@ impl Connections {
     {
         if let Some(conn) = self.conns.get_mut(host) {
             if now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
-                debug!("Idle timeout reached for connection to '{}'", host);
-                let new_conn = try!(self.config.new_conn(host));
+                debug!("Idle timeout reached: {:?}", conn.item);
+                let new_conn = try!(self.config.new_conn(self.state.next_conn_id(), host));
                 let _ = conn.item.shutdown();
                 conn.item = new_conn;
             }
@@ -147,24 +168,24 @@ impl Connections {
             // not affected
             return Ok(unsafe { mem::transmute(kconn) });
         }
+        let cid = self.state.next_conn_id();
         self.conns.insert(host.to_owned(),
-                          Pooled::new(now, try!(self.config.new_conn(host))));
+                          Pooled::new(now, try!(self.config.new_conn(cid, host))));
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
 
     pub fn get_conn_any(&mut self, now: Instant) -> Option<&mut KafkaConnection> {
         for (host, conn) in &mut self.conns {
             if now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
-                debug!("Idle timeout ({:?}) reached for connection to '{}'",
-                       self.config.idle_timeout, host);
-                let new_conn = match self.config.new_conn(host.as_str()) {
+                debug!("Idle timeout reached: {:?}", conn.item);
+                let new_conn_id = self.state.next_conn_id();
+                let new_conn = match self.config.new_conn(new_conn_id, host.as_str()) {
                     Ok(new_conn) => {
                         let _ = conn.item.shutdown();
                         new_conn
                     }
                     Err(e) => {
-                        debug!("Failed to establish connection to {}: {:?}",
-                               host, e);
+                        debug!("Failed to establish connection to {}: {:?}", host, e);
                         continue;
                     }
                 };
@@ -180,8 +201,19 @@ impl Connections {
 
 // --------------------------------------------------------------------
 
+trait IsSecured {
+    fn is_secured(&self) -> bool;
+}
+
 #[cfg(not(feature = "security"))]
 type KafkaStream = TcpStream;
+
+#[cfg(not(feature = "security"))]
+impl IsSecured for KafkaStream {
+    fn is_secured(&self) -> bool {
+        false
+    }
+}
 
 #[cfg(feature = "security")]
 use self::openssled::KafkaStream;
@@ -194,9 +226,20 @@ mod openssled {
 
     use openssl::ssl::SslStream;
 
+    use super::IsSecured;
+
     pub enum KafkaStream {
         Plain(TcpStream),
         Ssl(SslStream<TcpStream>)
+    }
+
+    impl IsSecured for KafkaStream {
+        fn is_secured(&self) -> bool {
+            match *self {
+                KafkaStream::Ssl(_) => true,
+                _ => false,
+            }
+        }
     }
 
     impl KafkaStream {
@@ -247,13 +290,19 @@ mod openssled {
 
 /// A TCP stream to a remote Kafka broker.
 pub struct KafkaConnection {
+    // a surrogate identifier to distinguish between
+    // connections to the same host in debug messages
+    id: u32,
+    // "host:port"
     host: String,
+    // the (wrapped) tcp stream
     stream: KafkaStream,
 }
 
 impl fmt::Debug for KafkaConnection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "KafkaConnection {{ host: \"{}\" }}", self.host)
+        write!(f, "KafkaConnection {{ id: {}, secured: {}, host: \"{}\" }}",
+               self.id, self.stream.is_secured(), self.host)
     }
 }
 
@@ -261,13 +310,13 @@ impl KafkaConnection {
 
     pub fn send(&mut self, msg: &[u8]) -> Result<usize> {
         let r = self.stream.write(&msg[..]).map_err(From::from);
-        debug!("Sent {} bytes to '{}' => {:?}", msg.len(), self.host, r);
+        debug!("Sent {} bytes to: {:?} => {:?}", msg.len(), self, r);
         r
     }
 
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         let r = (&mut self.stream).read_exact(buf).map_err(From::from);
-        debug!("Read {} bytes from '{}' => {:?}", buf.len(), self.host, r);
+        debug!("Read {} bytes from: {:?} => {:?}", buf.len(), self, r);
         r
     }
 
@@ -285,25 +334,25 @@ impl KafkaConnection {
 
     fn shutdown(&mut self) -> Result<()> {
         let r = self.stream.shutdown(Shutdown::Both);
-        debug!("Shut down connection to '{}' => {:?}", self.host, r);
+        debug!("Shut down: {:?} => {:?}", self, r);
         r.map_err(From::from)
     }
 
-    fn from_stream(stream: KafkaStream, host: &str, rw_timeout: Option<Duration>)
+    fn from_stream(stream: KafkaStream, id: u32, host: &str, rw_timeout: Option<Duration>)
                    -> Result<KafkaConnection>
     {
         try!(stream.set_read_timeout(rw_timeout));
         try!(stream.set_write_timeout(rw_timeout));
-        Ok(KafkaConnection { host: host.to_owned(), stream: stream })
+        Ok(KafkaConnection { id: id, host: host.to_owned(), stream: stream })
     }
 
     #[cfg(not(feature = "security"))]
-    fn new(host: &str, rw_timeout: Option<Duration>) -> Result<KafkaConnection> {
-        Ok(KafkaConnection::from_stream(try!(TcpStream::connect(host)), host, rw_timeout))
+    fn new(id: u32, host: &str, rw_timeout: Option<Duration>) -> Result<KafkaConnection> {
+        KafkaConnection::from_stream(try!(TcpStream::connect(host)), id, host, rw_timeout)
     }
 
     #[cfg(feature = "security")]
-    fn new(host: &str, rw_timeout: Option<Duration>, security: Option<&SslContext>)
+    fn new(id: u32, host: &str, rw_timeout: Option<Duration>, security: Option<&SslContext>)
            -> Result<KafkaConnection>
     {
         let stream = try!(TcpStream::connect(host));
@@ -311,6 +360,6 @@ impl KafkaConnection {
             Some(ctx) => KafkaStream::Ssl(try!(SslStream::connect(ctx, stream))),
             None => KafkaStream::Plain(stream),
         };
-        KafkaConnection::from_stream(stream, host, rw_timeout)
+        KafkaConnection::from_stream(stream, id, host, rw_timeout)
     }
 }
