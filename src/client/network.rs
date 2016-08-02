@@ -185,7 +185,7 @@ impl Connections {
                         new_conn
                     }
                     Err(e) => {
-                        debug!("Failed to establish connection to {}: {:?}", host, e);
+                        warn!("Failed to establish connection to {}: {:?}", host, e);
                         continue;
                     }
                 };
