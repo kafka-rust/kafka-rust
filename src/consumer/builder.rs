@@ -30,6 +30,7 @@ pub struct Builder {
     fetch_crc_validation: bool,
     security_config: Option<SecurityConfig>,
     group_offset_storage: GroupOffsetStorage,
+    conn_idle_timeout: u32,
 }
 
 // ~ public only to be shared inside the kafka crate; not supposed to
@@ -48,6 +49,7 @@ pub fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
         fallback_offset: DEFAULT_FALLBACK_OFFSET,
         security_config: None,
         group_offset_storage: client::DEFAULT_GROUP_OFFSET_STORAGE,
+        conn_idle_timeout: client::DEFAULT_CONNECTION_IDLE_TIMEOUT,
     };
     if let Some(ref c) = b.client {
         b.fetch_max_wait_time = c.fetch_max_wait_time();
@@ -55,6 +57,7 @@ pub fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
         b.fetch_max_bytes_per_partition = c.fetch_max_bytes_per_partition();
         b.fetch_crc_validation = c.fetch_crc_validation();
         b.group_offset_storage = c.group_offset_storage();
+        b.conn_idle_timeout = c.connection_idle_timeout();
     }
     b
 }
@@ -180,6 +183,13 @@ impl Builder {
         self
     }
 
+    /// Specifies the timeout for idle connections.
+    /// See `KafkaClient::set_connection_idle_timeout`.
+    pub fn with_connection_idle_timeout(mut self, timeout: u32) -> Self {
+        self.conn_idle_timeout = timeout;
+        self
+    }
+
     #[cfg(not(feature = "security"))]
     fn new_kafka_client(hosts: Vec<String>, _: Option<SecurityConfig>) -> KafkaClient {
         KafkaClient::new(hosts)
@@ -218,6 +228,7 @@ impl Builder {
         client.set_fetch_min_bytes(self.fetch_min_bytes);
         client.set_fetch_max_bytes_per_partition(self.fetch_max_bytes_per_partition);
         client.set_group_offset_storage(self.group_offset_storage);
+        client.set_connection_idle_timeout(self.conn_idle_timeout);
 
         let config = Config {
             group: self.group,

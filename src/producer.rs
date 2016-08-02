@@ -324,6 +324,7 @@ pub struct Builder<P = DefaultPartitioner> {
     hosts: Vec<String>,
     compression: Compression,
     ack_timeout: i32,
+    conn_idle_timeout: u32,
     required_acks: RequiredAcks,
     partitioner: P,
     security_config: Option<SecurityConfig>,
@@ -336,12 +337,14 @@ impl Builder {
             hosts: hosts,
             compression: client::DEFAULT_COMPRESSION,
             ack_timeout: DEFAULT_ACK_TIMEOUT,
+            conn_idle_timeout: client::DEFAULT_CONNECTION_IDLE_TIMEOUT,
             required_acks: DEFAULT_REQUIRED_ACKS,
             partitioner: DefaultPartitioner::default(),
             security_config: None,
         };
         if let Some(ref c) = b.client {
             b.compression = c.compression();
+            b.conn_idle_timeout = c.connection_idle_timeout();
         }
         b
     }
@@ -371,6 +374,13 @@ impl Builder {
         self
     }
 
+    /// Specifies the timeout for idle connections.
+    /// See `KafkaClient::set_connection_idle_timeout`.
+    pub fn with_connection_idle_timeout(mut self, timeout: u32) -> Self {
+        self.conn_idle_timeout = timeout;
+        self
+    }
+
     /// Sets how many acknowledgements the kafka brokers should
     /// receive before responding to sent messages.
     ///
@@ -390,12 +400,12 @@ impl<P> Builder<P> {
             hosts: self.hosts,
             compression: self.compression,
             ack_timeout: self.ack_timeout,
+            conn_idle_timeout: self.conn_idle_timeout,
             required_acks: self.required_acks,
             partitioner: partitioner,
             security_config: None,
         }
     }
-
 
     #[cfg(not(feature = "security"))]
     fn new_kafka_client(hosts: Vec<String>, _: Option<SecurityConfig>) -> KafkaClient {
@@ -423,6 +433,7 @@ impl<P> Builder<P> {
             }
         };
         client.set_compression(self.compression);
+        client.set_connection_idle_timeout(self.conn_idle_timeout);
         let state = try!(State::new(&mut client, self.partitioner));
         let config = Config {
             ack_timeout: self.ack_timeout,

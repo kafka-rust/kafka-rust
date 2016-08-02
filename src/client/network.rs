@@ -55,7 +55,7 @@ impl<T: fmt::Debug> fmt::Debug for Pooled<T> {
 #[derive(Debug)]
 pub struct Config {
     rw_timeout: Option<Duration>,
-    idle_timeout: Option<Duration>,
+    idle_timeout: Duration,
     #[cfg(feature = "security")]
     security_config: Option<SecurityConfig>,
 }
@@ -63,12 +63,16 @@ pub struct Config {
 impl Config {
     #[cfg(not(feature = "security"))]
     fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
+        // XXX ideally we'd print some uniq ID of the connection here
+        // to differentiate between two connections to the same host
         debug!("Establishing connection to '{}'", host);
         KafkaConnection::new(host, self.timeout)
     }
 
     #[cfg(feature = "security")]
     fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
+        // XXX ideally we'd print some uniq ID of the connection here
+        // to differentiate between two connections to the same host
         debug!("Establishing connection to '{}'", host);
         KafkaConnection::new(host,
                              self.rw_timeout,
@@ -84,7 +88,7 @@ pub struct Connections {
 
 impl Connections {
     #[cfg(not(feature = "security"))]
-    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Option<Duration>)
+    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Duration)
                -> Connections
     {
         ConnectionPool {
@@ -95,7 +99,7 @@ impl Connections {
     }
 
     #[cfg(feature = "security")]
-    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Option<Duration>)
+    pub fn new(rw_timeout: Option<Duration>, idle_timeout: Duration)
                -> Connections
     {
         Self::new_with_security(rw_timeout, idle_timeout, None)
@@ -103,7 +107,7 @@ impl Connections {
 
     #[cfg(feature = "security")]
     pub fn new_with_security(rw_timeout: Option<Duration>,
-                             idle_timeout: Option<Duration>,
+                             idle_timeout: Duration,
                              security: Option<SecurityConfig>)
                              -> Connections
     {
@@ -117,18 +121,23 @@ impl Connections {
         }
     }
 
+    pub fn set_idle_timeout(&mut self, idle_timeout: Duration) {
+        self.config.idle_timeout = idle_timeout;
+    }
+
+    pub fn idle_timeout(&self) -> Duration {
+        self.config.idle_timeout
+    }
+
     pub fn get_conn<'a>(&'a mut self, host: &str, now: Instant)
                         -> Result<&'a mut KafkaConnection>
     {
         if let Some(conn) = self.conns.get_mut(host) {
-            if let Some(idle_timeout) = self.config.idle_timeout {
-                if now.duration_since(conn.last_checkout) >= idle_timeout {
-                    debug!("Idle timeout ({:?}) reached for connection to '{}'",
-                           idle_timeout, host);
-                    let new_conn = try!(self.config.new_conn(host));
-                    let _ = conn.item.shutdown();
-                    conn.item = new_conn;
-                }
+            if now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
+                debug!("Idle timeout reached for connection to '{}'", host);
+                let new_conn = try!(self.config.new_conn(host));
+                let _ = conn.item.shutdown();
+                conn.item = new_conn;
             }
             conn.last_checkout = now;
             let kconn: &mut KafkaConnection = &mut conn.item;
@@ -145,23 +154,21 @@ impl Connections {
 
     pub fn get_conn_any(&mut self, now: Instant) -> Option<&mut KafkaConnection> {
         for (host, conn) in &mut self.conns {
-            if let Some(idle_timeout) = self.config.idle_timeout {
-                if now.duration_since(conn.last_checkout) >= idle_timeout {
-                    debug!("Idle timeout ({:?}) reached for connection to '{}'",
-                           idle_timeout, host);
-                    let new_conn = match self.config.new_conn(host.as_str()) {
-                        Ok(new_conn) => {
-                            let _ = conn.item.shutdown();
-                            new_conn
-                        }
-                        Err(e) => {
-                            debug!("Failed to establish connection to {}: {:?}",
-                                   host, e);
-                            continue;
-                        }
-                    };
-                    conn.item = new_conn;
-                }
+            if now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
+                debug!("Idle timeout ({:?}) reached for connection to '{}'",
+                       self.config.idle_timeout, host);
+                let new_conn = match self.config.new_conn(host.as_str()) {
+                    Ok(new_conn) => {
+                        let _ = conn.item.shutdown();
+                        new_conn
+                    }
+                    Err(e) => {
+                        debug!("Failed to establish connection to {}: {:?}",
+                               host, e);
+                        continue;
+                    }
+                };
+                conn.item = new_conn;
             }
             conn.last_checkout = now;
             let kconn: &mut KafkaConnection = &mut conn.item;
