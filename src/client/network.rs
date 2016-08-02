@@ -84,7 +84,7 @@ impl Config {
 }
 
 #[derive(Debug)]
-pub struct State {
+struct State {
     num_conns: u32,
 }
 
