@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use client::{self, KafkaClient, FetchOffset, GroupOffsetStorage};
 use error::{Error, Result};
@@ -30,7 +31,7 @@ pub struct Builder {
     fetch_crc_validation: bool,
     security_config: Option<SecurityConfig>,
     group_offset_storage: GroupOffsetStorage,
-    conn_idle_timeout: u32,
+    conn_idle_timeout: Duration,
 }
 
 // ~ public only to be shared inside the kafka crate; not supposed to
@@ -49,7 +50,7 @@ pub fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
         fallback_offset: DEFAULT_FALLBACK_OFFSET,
         security_config: None,
         group_offset_storage: client::DEFAULT_GROUP_OFFSET_STORAGE,
-        conn_idle_timeout: client::DEFAULT_CONNECTION_IDLE_TIMEOUT,
+        conn_idle_timeout: Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
     };
     if let Some(ref c) = b.client {
         b.fetch_max_wait_time = c.fetch_max_wait_time();
@@ -185,7 +186,7 @@ impl Builder {
 
     /// Specifies the timeout for idle connections.
     /// See `KafkaClient::set_connection_idle_timeout`.
-    pub fn with_connection_idle_timeout(mut self, timeout: u32) -> Self {
+    pub fn with_connection_idle_timeout(mut self, timeout: Duration) -> Self {
         self.conn_idle_timeout = timeout;
         self
     }

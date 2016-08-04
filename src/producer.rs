@@ -61,6 +61,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hasher, SipHasher, BuildHasher, BuildHasherDefault};
+use std::time::Duration;
 
 use client::{self, KafkaClient};
 // public re-exports
@@ -324,7 +325,7 @@ pub struct Builder<P = DefaultPartitioner> {
     hosts: Vec<String>,
     compression: Compression,
     ack_timeout: i32,
-    conn_idle_timeout: u32,
+    conn_idle_timeout: Duration,
     required_acks: RequiredAcks,
     partitioner: P,
     security_config: Option<SecurityConfig>,
@@ -337,7 +338,7 @@ impl Builder {
             hosts: hosts,
             compression: client::DEFAULT_COMPRESSION,
             ack_timeout: DEFAULT_ACK_TIMEOUT,
-            conn_idle_timeout: client::DEFAULT_CONNECTION_IDLE_TIMEOUT,
+            conn_idle_timeout: Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
             required_acks: DEFAULT_REQUIRED_ACKS,
             partitioner: DefaultPartitioner::default(),
             security_config: None,
@@ -376,7 +377,7 @@ impl Builder {
 
     /// Specifies the timeout for idle connections.
     /// See `KafkaClient::set_connection_idle_timeout`.
-    pub fn with_connection_idle_timeout(mut self, timeout: u32) -> Self {
+    pub fn with_connection_idle_timeout(mut self, timeout: Duration) -> Self {
         self.conn_idle_timeout = timeout;
         self
     }

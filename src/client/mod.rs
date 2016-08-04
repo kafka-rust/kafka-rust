@@ -72,11 +72,7 @@ pub const DEFAULT_RETRY_BACKOFF_TIME: u32 = 100;
 pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME;
 
 /// The default value for `KafkaClient::set_connection_idle_timeout(..)`
-pub const DEFAULT_CONNECTION_IDLE_TIMEOUT: u32 = 540_000;
-
-fn default_conn_idle_timeout() -> Duration {
-    Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT as u64)
-}
+pub const DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS: u64 = 540_000;
 
 /// Client struct keeping track of brokers and topic metadata.
 ///
@@ -366,7 +362,8 @@ impl KafkaClient {
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: network::Connections::new(
-                default_conn_rw_timeout(), default_conn_idle_timeout()),
+                default_conn_rw_timeout(),
+                Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS)),
             state: state::ClientState::new(),
         }
     }
@@ -423,7 +420,8 @@ impl KafkaClient {
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: network::Connections::new_with_security(
-                default_conn_rw_timeout(), default_conn_idle_timeout(),
+                default_conn_rw_timeout(),
+                Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
                 Some(security)),
             state: state::ClientState::new(),
         }
@@ -625,24 +623,22 @@ impl KafkaClient {
         self.config.retry_max_attempts
     }
 
-    /// Specifies the timeout (in number of milliseconds) after which
-    /// idle connections will transparently be closed/re-established
-    /// by `KafkaClient`.
+    /// Specifies the timeout after which idle connections will
+    /// transparently be closed/re-established by `KafkaClient`.
     ///
     /// To be effective this value must be smaller than the [remote
     /// broker's `connections.max.idle.ms`
     /// setting](https://kafka.apache.org/documentation.html#brokerconfigs).
     #[inline]
-    pub fn set_connection_idle_timeout(&mut self, millis: u32) {
-        self.conn_pool.set_idle_timeout(Duration::from_millis(millis as u64))
+    pub fn set_connection_idle_timeout(&mut self, timeout: Duration) {
+        self.conn_pool.set_idle_timeout(timeout);
     }
 
     /// Retrieves the current
     /// `KafkaClient::set_connection_idle_timeout` setting.
     #[inline]
-    pub fn connection_idle_timeout(&self) -> u32 {
-        let d = self.conn_pool.idle_timeout();
-        d.as_secs() as u32 * 1_000 + d.subsec_nanos() / 1_000_000
+    pub fn connection_idle_timeout(&self) -> Duration {
+        self.conn_pool.idle_timeout()
     }
 
     /// Provides a view onto the currently loaded metadata of known .

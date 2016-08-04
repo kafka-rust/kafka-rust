@@ -6,8 +6,10 @@ use std::{env, fmt, process};
 use std::fs::File;
 use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
 use std::ops::{Deref, DerefMut};
+use std::time::Duration;
 
-use kafka::client::{KafkaClient, Compression, RequiredAcks, DEFAULT_CONNECTION_IDLE_TIMEOUT};
+use kafka::client::{KafkaClient, Compression, RequiredAcks,
+                    DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS};
 use kafka::producer::{AsBytes, Producer, Record};
 
 // how long do we allow waiting for the acknowledgement
@@ -196,7 +198,7 @@ struct Config {
     compression: Compression,
     required_acks: RequiredAcks,
     batch_size: usize,
-    conn_idle_timeout: u32,
+    conn_idle_timeout: Duration,
 }
 
 impl Config {
@@ -259,13 +261,14 @@ impl Config {
                     }
                 }
             },
-            conn_idle_timeout: match m.opt_str("idle-timeout") {
-                None => DEFAULT_CONNECTION_IDLE_TIMEOUT,
-                Some(s) => match s.parse::<u32>() {
-                    Err(_) => return Err(Error::Literal(format!("Not a number: {}", s))),
-                    Ok(n) => n * 1_000,
-                },
-            }
+            conn_idle_timeout: Duration::from_millis(
+                match m.opt_str("idle-timeout") {
+                    None => DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
+                    Some(s) => match s.parse::<u32>() {
+                        Err(_) => return Err(Error::Literal(format!("Not a number: {}", s))),
+                        Ok(n) => n as u64 * 1_000,
+                    }
+                }),
         })
     }
 }
