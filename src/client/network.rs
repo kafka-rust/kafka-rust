@@ -310,13 +310,13 @@ impl KafkaConnection {
 
     pub fn send(&mut self, msg: &[u8]) -> Result<usize> {
         let r = self.stream.write(&msg[..]).map_err(From::from);
-        debug!("Sent {} bytes to: {:?} => {:?}", msg.len(), self, r);
+        trace!("Sent {} bytes to: {:?} => {:?}", msg.len(), self, r);
         r
     }
 
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         let r = (&mut self.stream).read_exact(buf).map_err(From::from);
-        debug!("Read {} bytes from: {:?} => {:?}", buf.len(), self, r);
+        trace!("Read {} bytes from: {:?} => {:?}", buf.len(), self, r);
         r
     }
 
