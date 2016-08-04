@@ -954,13 +954,14 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
+    /// use std::time::Duration;
     /// use kafka::client::{KafkaClient, ProduceMessage, RequiredAcks};
     ///
     /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
     /// let req = vec![ProduceMessage::new("my-topic", 0, None, Some("a".as_bytes())),
     ///                ProduceMessage::new("my-topic-2", 0, None, Some("b".as_bytes()))];
-    /// println!("{:?}", client.produce_messages(RequiredAcks::One, 100, req));
+    /// println!("{:?}", client.produce_messages(RequiredAcks::One, Duration::from_millis(100), req));
     /// ```
     ///
     /// The return value will contain a vector of topic, partition,
@@ -969,10 +970,14 @@ impl KafkaClient {
     // XXX rework signaling an error; note that we need to either return the
     // messages which kafka failed to accept or otherwise tell the client about them
 
-    pub fn produce_messages<'a, 'b, I, J>(&mut self, ack: RequiredAcks, ack_timeout: i32, messages: I)
-                                          -> Result<Vec<TopicPartitionOffset>>
+    pub fn produce_messages<'a, 'b, I, J>(
+        // XXX we should consider making the ack parameters members of
+        // `KafkaClient` just like other configuration values
+        &mut self, ack: RequiredAcks, ack_timeout: Duration, messages: I)
+        -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
+        let ack_timeout = try!(__to_millis_i32(ack_timeout));
         let required_acks = ack as i16;
 
         let state = &mut self.state;
@@ -1449,4 +1454,43 @@ fn __retry_sleep(cfg: &ClientConfig) {
     if cfg.retry_backoff_time > 0 {
         thread::sleep(Duration::from_millis(cfg.retry_backoff_time as u64))
     }
+}
+
+/// Safely converts a Duration into the number of milliseconds as a
+/// i32; as often required in the kafka protocol.
+fn __to_millis_i32(d: Duration) -> Result<i32> {
+    use std::i32;
+    let m = d.as_secs().saturating_mul(1_000).saturating_add((d.subsec_nanos() / 1_000_000) as u64);
+    if m > i32::MAX as u64 {
+        Err(Error::InvalidDuration)
+    } else {
+        Ok(m as i32)
+    }
+}
+
+#[test]
+fn duration_to_millis_i32() {
+    use std::{i32, u32, u64};
+
+    fn assert_invalid(d: Duration) {
+        match __to_millis_i32(d) {
+            Err(Error::InvalidDuration) => {}
+            other => panic!("Expected Err(InvalidDuration) but got {:?}", other),
+        }
+    }
+    fn assert_valid(d: Duration, expected_millis: i32) {
+        let r = __to_millis_i32(d);
+        match r {
+            Ok(m) =>
+                assert_eq!(expected_millis, m),
+            Err(e) =>
+                panic!("Expected Ok({}) but got Err({:?})", expected_millis, e),
+        }
+    }
+    assert_valid(Duration::from_millis(1_234), 1_234);
+    assert_valid(Duration::new(540, 123_456_789), 540_123);
+    assert_invalid(Duration::from_millis(u64::MAX));
+    assert_invalid(Duration::from_millis(u32::MAX as u64));
+    assert_invalid(Duration::from_millis(i32::MAX as u64 + 1));
+    assert_valid(Duration::from_millis(i32::MAX as u64 - 1), i32::MAX - 1);
 }

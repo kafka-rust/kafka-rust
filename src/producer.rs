@@ -14,11 +14,12 @@
 //! # Example
 //! ```no_run
 //! use std::fmt::Write;
+//! use std::time::Duration;
 //! use kafka::producer::{Producer, Record, RequiredAcks};
 //!
 //! let mut producer =
 //!     Producer::from_hosts(vec!("localhost:9092".to_owned()))
-//!         .with_ack_timeout(1000)
+//!         .with_ack_timeout(Duration::from_secs(1))
 //!         .with_required_acks(RequiredAcks::One)
 //!         .create()
 //!         .unwrap();
@@ -79,7 +80,7 @@ use client::SecurityConfig;
 type SecurityConfig = ();
 
 /// The default value for `Builder::with_acks_timeout`.
-pub const DEFAULT_ACK_TIMEOUT: i32 = 30 * 1000;
+pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
 
 /// The default value for `Builder::with_required_acks`.
 pub const DEFAULT_REQUIRED_ACKS: RequiredAcks = RequiredAcks::One;
@@ -216,9 +217,9 @@ struct State<P> {
 }
 
 struct Config {
-    /// The maximum time in millis to wait for acknowledgements. See
+    /// The maximum time to wait for acknowledgements. See
     /// `KafkaClient::produce_messages`.
-    ack_timeout: i32,
+    ack_timeout: Duration,
     /// The number of acks to request. See
     /// `KafkaClient::produce_messages`.
     required_acks: RequiredAcks,
@@ -324,7 +325,7 @@ pub struct Builder<P = DefaultPartitioner> {
     client: Option<KafkaClient>,
     hosts: Vec<String>,
     compression: Compression,
-    ack_timeout: i32,
+    ack_timeout: Duration,
     conn_idle_timeout: Duration,
     required_acks: RequiredAcks,
     partitioner: P,
@@ -337,7 +338,7 @@ impl Builder {
             client: client,
             hosts: hosts,
             compression: client::DEFAULT_COMPRESSION,
-            ack_timeout: DEFAULT_ACK_TIMEOUT,
+            ack_timeout: Duration::from_millis(DEFAULT_ACK_TIMEOUT_MILLIS),
             conn_idle_timeout: Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
             required_acks: DEFAULT_REQUIRED_ACKS,
             partitioner: DefaultPartitioner::default(),
@@ -366,11 +367,11 @@ impl Builder {
         self
     }
 
-    /// Sets the maximum time in milliseconds the kafka brokers can
-    /// await the receipt of required acknowledgements (which is
-    /// specified through `Builder::with_required_acks`.)  Note that
-    /// Kafka explicitely documents this not to be a hard limit.
-    pub fn with_ack_timeout(mut self, timeout: i32) -> Self {
+    /// Sets the maximum time the kafka brokers can await the receipt
+    /// of required acknowledgements (which is specified through
+    /// `Builder::with_required_acks`.)  Note that Kafka explicitely
+    /// documents this not to be a hard limit.
+    pub fn with_ack_timeout(mut self, timeout: Duration) -> Self {
         self.ack_timeout = timeout;
         self
     }

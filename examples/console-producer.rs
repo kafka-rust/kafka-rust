@@ -13,7 +13,7 @@ use kafka::client::{KafkaClient, Compression, RequiredAcks,
 use kafka::producer::{AsBytes, Producer, Record};
 
 // how long do we allow waiting for the acknowledgement
-const ACK_TIMEOUT: i32 = 100;
+const ACK_TIMEOUT_MILLIS: u64 = 100;
 
 /// This is a very simple command line application sending every
 /// non-empty line of standard input to a specified kafka topic; one
@@ -60,7 +60,7 @@ fn produce(cfg: &Config) -> Result<(), Error> {
 
 fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<(), Error> {
     let mut producer = try!(Producer::from_client(client)
-                            .with_ack_timeout(ACK_TIMEOUT)
+                            .with_ack_timeout(Duration::from_millis(ACK_TIMEOUT_MILLIS))
                             .with_required_acks(cfg.required_acks)
                             .with_compression(cfg.compression)
                             .with_connection_idle_timeout(cfg.conn_idle_timeout)
