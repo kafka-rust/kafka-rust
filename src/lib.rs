@@ -35,7 +35,6 @@ pub mod consumer;
 pub mod producer;
 mod utils;
 mod codecs;
-mod connection;
 mod protocol;
 mod compression;
 

@@ -9,23 +9,23 @@ use std::io::Cursor;
 use std::iter::Iterator;
 use std::mem;
 use std::thread;
-use std::time::Duration;
-
-#[cfg(feature = "security")]
-use openssl::ssl::SslContext;
+use std::time::{Duration, Instant};
 
 // pub re-export
 pub use compression::Compression;
 pub use utils::PartitionOffset;
 pub use utils::TopicPartitionOffset;
 
+#[cfg(feature = "security")]
+pub use self::network::SecurityConfig;
+
 use codecs::{ToByte, FromByte};
-use connection::KafkaConnection;
 use error::{Result, Error, KafkaCode};
 use protocol::{self, ResponseParser};
 
 pub mod metadata;
 mod state;
+mod network;
 
 // ~ re-export (only) certain types from the protocol::fetch module as
 // 'client::fetch'.
@@ -36,7 +36,14 @@ pub mod fetch {
 }
 
 const CLIENTID: &'static str = "kafka-rust";
-const DEFAULT_SO_TIMEOUT_SECS: i32 = 120; // socket read, write timeout seconds
+const DEFAULT_CONNECTION_RW_TIMEOUT_SECS: u64 = 120;
+
+fn default_conn_rw_timeout() -> Option<Duration> {
+    match DEFAULT_CONNECTION_RW_TIMEOUT_SECS {
+        0 => None,
+        n => Some(Duration::from_secs(n)),
+    }
+}
 
 /// The default value for `KafkaClient::set_compression(..)`
 pub const DEFAULT_COMPRESSION: Compression = Compression::NONE;
@@ -64,6 +71,13 @@ pub const DEFAULT_RETRY_BACKOFF_TIME: u32 = 100;
 // approximetaly up to two minutes
 pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME;
 
+/// The default value for `KafkaClient::set_connection_idle_timeout(..)`
+pub const DEFAULT_CONNECTION_IDLE_TIMEOUT: u32 = 540_000;
+
+fn default_conn_idle_timeout() -> Duration {
+    Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT as u64)
+}
+
 /// Client struct keeping track of brokers and topic metadata.
 ///
 /// Implements methods described by the [Kafka Protocol](http://kafka.apache.org/protocol.html).
@@ -75,7 +89,7 @@ pub struct KafkaClient {
     config: ClientConfig,
 
     // ~ a pool of re-usable connections to kafka brokers
-    conn_pool: ConnectionPool,
+    conn_pool: network::Connections,
 
     // ~ the current state of this client
     state: state::ClientState,
@@ -107,65 +121,6 @@ struct ClientConfig {
     // ~ the number of repeated retry attempts; prevents endless
     // repetition of a retry attempt
     retry_max_attempts: u32,
-}
-
-#[derive(Debug)]
-struct ConnectionPool {
-    conns: HashMap<String, KafkaConnection>,
-    timeout: i32,
-    #[cfg(feature = "security")]
-    security_config: Option<SecurityConfig>
-}
-
-impl ConnectionPool {
-    #[cfg(not(feature = "security"))]
-    fn new(timeout: i32) -> ConnectionPool {
-        ConnectionPool {
-            conns: HashMap::new(),
-            timeout: timeout,
-        }
-    }
-
-    #[cfg(feature = "security")]
-    fn new(timeout: i32) -> ConnectionPool {
-        Self::new_with_security(timeout, None)
-    }
-
-    #[cfg(feature = "security")]
-    fn new_with_security(timeout: i32, security: Option<SecurityConfig>) -> ConnectionPool {
-        ConnectionPool {
-            conns: HashMap::new(),
-            timeout: timeout,
-            security_config: security,
-        }
-    }
-
-    fn get_conn<'a>(&'a mut self, host: &str) -> Result<&'a mut KafkaConnection> {
-        if let Some(conn) = self.conns.get_mut(host) {
-            // ~ decouple the lifetimes to make borrowck happy; this
-            // is actually safe since we're immediatelly returning
-            // this, so the follow up code is not affected here (this
-            // method is no longer recursive).
-            return Ok(unsafe { mem::transmute(conn) });
-        }
-        let conn = try!(self.new_conn(host));
-        self.conns.insert(host.to_owned(), conn);
-        Ok(self.conns.get_mut(host).unwrap())
-    }
-
-    fn get_conn_any<'a>(&'a mut self) -> Option<&'a mut KafkaConnection> {
-        self.conns.iter_mut().next().map(|(_, conn)| conn)
-    }
-
-    #[cfg(not(feature = "security"))]
-    fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(host, self.timeout)
-    }
-
-    #[cfg(feature = "security")]
-    fn new_conn(&self, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(host, self.timeout, self.security_config.as_ref().map(|c| &c.0))
-    }
 }
 
 // --------------------------------------------------------------------
@@ -384,22 +339,6 @@ impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
 
 // --------------------------------------------------------------------
 
-/// Security relevant configuration options for KafkaClient.
-// This will be expanded in the future. See #51.
-#[cfg(feature = "security")]
-#[derive(Debug)]
-pub struct SecurityConfig(SslContext);
-
-#[cfg(feature = "security")]
-impl SecurityConfig {
-    /// In the future this will also support a kerbos via #51.
-    pub fn new(ssl: SslContext) -> SecurityConfig {
-        SecurityConfig(ssl)
-    }
-}
-
-// --------------------------------------------------------------------
-
 impl KafkaClient {
 
     /// Creates a new instance of KafkaClient. Before being able to
@@ -426,7 +365,8 @@ impl KafkaClient {
                 retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
-            conn_pool: ConnectionPool::new(DEFAULT_SO_TIMEOUT_SECS),
+            conn_pool: network::Connections::new(
+                default_conn_rw_timeout(), default_conn_idle_timeout()),
             state: state::ClientState::new(),
         }
     }
@@ -482,7 +422,9 @@ impl KafkaClient {
                 retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
-            conn_pool: ConnectionPool::new_with_security(DEFAULT_SO_TIMEOUT_SECS, Some(security)),
+            conn_pool: network::Connections::new_with_security(
+                default_conn_rw_timeout(), default_conn_idle_timeout(),
+                Some(security)),
             state: state::ClientState::new(),
         }
     }
@@ -683,6 +625,26 @@ impl KafkaClient {
         self.config.retry_max_attempts
     }
 
+    /// Specifies the timeout (in number of milliseconds) after which
+    /// idle connections will transparently be closed/re-established
+    /// by `KafkaClient`.
+    ///
+    /// To be effective this value must be smaller than the [remote
+    /// broker's `connections.max.idle.ms`
+    /// setting](https://kafka.apache.org/documentation.html#brokerconfigs).
+    #[inline]
+    pub fn set_connection_idle_timeout(&mut self, millis: u32) {
+        self.conn_pool.set_idle_timeout(Duration::from_millis(millis as u64))
+    }
+
+    /// Retrieves the current
+    /// `KafkaClient::set_connection_idle_timeout` setting.
+    #[inline]
+    pub fn connection_idle_timeout(&self) -> u32 {
+        let d = self.conn_pool.idle_timeout();
+        d.as_secs() as u32 * 1_000 + d.subsec_nanos() / 1_000_000
+    }
+
     /// Provides a view onto the currently loaded metadata of known .
     ///
     /// # Examples
@@ -767,9 +729,10 @@ impl KafkaClient {
     /// underlying brokers (`self.hosts`).
     fn fetch_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<protocol::MetadataResponse> {
         let correlation = self.state.next_correlation_id();
+        let now = Instant::now();
         for host in &self.config.hosts {
             debug!("fetch_metadata: requesting metadata from {}", host);
-            match self.conn_pool.get_conn(host) {
+            match self.conn_pool.get_conn(host, now) {
                 Ok(conn) => {
                     let req = protocol::MetadataRequest::new(correlation, &self.config.client_id, topics);
                     match __send_request(conn, req) {
@@ -824,9 +787,10 @@ impl KafkaClient {
         }
 
         // Call each broker with the request formed earlier
+        let now = Instant::now();
         let mut res: HashMap<String, Vec<PartitionOffset>> = HashMap::with_capacity(n_topics);
         for (host, req) in reqs {
-            let resp = try!(__send_receive::<_, protocol::OffsetResponse>(&mut self.conn_pool, &host, req));
+            let resp = try!(__send_receive::<_, protocol::OffsetResponse>(&mut self.conn_pool, &host, now, req));
             for tp in resp.topic_partitions {
                 let e = res.entry(tp.topic).or_insert(vec!());
                 for p in tp.partitions {
@@ -1170,8 +1134,9 @@ impl KafkaClient {
 
 fn __get_group_coordinator<'a>(group: &str,
                                state: &'a mut state::ClientState,
-                               conn_pool: &mut ConnectionPool,
-                               config: &ClientConfig)
+                               conn_pool: &mut network::Connections,
+                               config: &ClientConfig,
+                               now: Instant)
                                -> Result<&'a str>
 {
     if let Some(host) = state.group_coordinator(group) {
@@ -1185,11 +1150,11 @@ fn __get_group_coordinator<'a>(group: &str,
     let req = protocol::GroupCoordinatorRequest::new(group, correlation_id, &config.client_id);
     let mut attempt = 1;
     loop {
-        // ~ idealy we make make this work even if load_metadata has not
-        // been called yet; if there are not connections available we can
+        // ~ idealy we'd make this work even if `load_metadata` has not
+        // been called yet; if there are no connections available we can
         // try connecting to the user specified bootstrap server similar
-        // to the way load_metadata works.
-        let conn = conn_pool.get_conn_any().expect("available connection");
+        // to the way `load_metadata` works.
+        let conn = conn_pool.get_conn_any(now).expect("available connection");
         debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
         let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req));
         let retry_code;
@@ -1217,17 +1182,19 @@ fn __get_group_coordinator<'a>(group: &str,
 
 fn __commit_offsets(req: protocol::OffsetCommitRequest,
                     state: &mut state::ClientState,
-                    conn_pool: &mut ConnectionPool,
+                    conn_pool: &mut network::Connections,
                     config: &ClientConfig)
                     -> Result<()>
 {
     let mut attempt = 1;
     loop {
+        let now = Instant::now();
+
         let tps = {
-            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
+            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
             debug!("commit_offsets: committing on protocol v{} for '{}' to: {}",
                    req.header.api_version, req.group, host);
-            try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, &req))
+            try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, now, &req))
                 .topic_partitions
         };
 
@@ -1274,16 +1241,18 @@ fn __commit_offsets(req: protocol::OffsetCommitRequest,
 // ~ 'num_partitions' is merely a hint to pre-allocation inside this method
 fn __fetch_group_offsets(
     req: protocol::OffsetFetchRequest, num_partitions: usize,
-    state: &mut state::ClientState, conn_pool: &mut ConnectionPool,
+    state: &mut state::ClientState, conn_pool: &mut network::Connections,
     config: &ClientConfig) -> Result<Vec<TopicPartitionOffset>>
 {
     let mut attempt = 1;
     loop {
+        let now = Instant::now();
+
         let r = {
-            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config));
+            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
             debug!("fetch_group_offsets: fetching on protocol v{} for '{}' from: {}",
                    req.header.api_version, req.group, host);
-            try!(__send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, &req))
+            try!(__send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, now, &req))
         };
 
         let mut retry_code = None;
@@ -1342,40 +1311,39 @@ fn __fetch_group_offsets(
 }
 
 /// ~ carries out the given fetch requests and returns the response
-fn __fetch_messages(conn_pool: &mut ConnectionPool,
+fn __fetch_messages(conn_pool: &mut network::Connections,
                     config: &ClientConfig,
                     reqs: HashMap<&str, protocol::FetchRequest>)
                     -> Result<Vec<fetch::Response>>
 {
-    // Call each broker with the request formed earlier
+    let now = Instant::now();
     let mut res = Vec::with_capacity(reqs.len());
     for (host, req) in reqs {
         let p = protocol::fetch::ResponseParser {
             validate_crc: config.fetch_crc_validation,
             requests: Some(&req),
         };
-
-        res.push(try!(__z_send_receive::<&protocol::FetchRequest, _>(conn_pool, host, &req, &p)));
+        res.push(try!(__z_send_receive(conn_pool, host, now, &req, &p)));
     }
     Ok(res)
 }
 
 /// ~ carries out the given produce requests and returns the response
-fn __produce_messages(conn_pool: &mut ConnectionPool,
+fn __produce_messages(conn_pool: &mut network::Connections,
                       reqs: HashMap<&str, protocol::ProduceRequest>,
                       no_acks: bool)
                       -> Result<Vec<TopicPartitionOffset>>
 {
-    // Call each broker with the request formed earlier
+    let now = Instant::now();
     if no_acks {
         for (host, req) in reqs {
-            try!(__send_noack::<_, protocol::ProduceResponse>(conn_pool, host, req));
+            try!(__send_noack::<_, protocol::ProduceResponse>(conn_pool, host, now, req));
         }
         Ok(vec!())
     } else {
         let mut res: Vec<TopicPartitionOffset> = vec![];
         for (host, req) in reqs {
-            let resp = try!(__send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, req));
+            let resp = try!(__send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, now, req));
             for tpo in resp.get_response() {
                 res.push(tpo);
             }
@@ -1384,29 +1352,29 @@ fn __produce_messages(conn_pool: &mut ConnectionPool,
     }
 }
 
-fn __send_receive<T, V>(conn_pool: &mut ConnectionPool, host: &str, req: T)
+fn __send_receive<T, V>(conn_pool: &mut network::Connections, host: &str, now: Instant, req: T)
                         -> Result<V::R>
     where T: ToByte, V: FromByte
 {
-    __send_receive_conn::<T, V>(try!(conn_pool.get_conn(host)), req)
+    __send_receive_conn::<T, V>(try!(conn_pool.get_conn(host, now)), req)
 }
 
-fn __send_receive_conn<T, V>(conn: &mut KafkaConnection, req: T) -> Result<V::R>
+fn __send_receive_conn<T, V>(conn: &mut network::KafkaConnection, req: T) -> Result<V::R>
     where T: ToByte, V: FromByte
 {
     try!(__send_request(conn, req));
     __get_response::<V>(conn)
 }
 
-fn __send_noack<T, V>(conn_pool: &mut ConnectionPool, host: &str, req: T)
+fn __send_noack<T, V>(conn_pool: &mut network::Connections, host: &str, now: Instant, req: T)
                       -> Result<usize>
     where T: ToByte, V: FromByte
 {
-    let mut conn = try!(conn_pool.get_conn(&host));
+    let mut conn = try!(conn_pool.get_conn(host, now));
     __send_request(&mut conn, req)
 }
 
-fn __send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
+fn __send_request<T: ToByte>(conn: &mut network::KafkaConnection, request: T)
                              -> Result<usize>
 {
     // ~ buffer to receive data to be sent
@@ -1422,7 +1390,7 @@ fn __send_request<T: ToByte>(conn: &mut KafkaConnection, request: T)
     conn.send(&buffer)
 }
 
-fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
+fn __get_response<T: FromByte>(conn: &mut network::KafkaConnection)
                              -> Result<T::R>
 {
     let size = try!(__get_response_size(conn));
@@ -1443,16 +1411,16 @@ fn __get_response<T: FromByte>(conn: &mut KafkaConnection)
     T::decode_new(&mut Cursor::new(resp))
 }
 
-fn __z_send_receive<R, P>(conn_pool: &mut ConnectionPool, host: &str, req: R, parser: &P)
+fn __z_send_receive<R, P>(conn_pool: &mut network::Connections, host: &str, now: Instant, req: R, parser: &P)
                           -> Result<P::T>
     where R: ToByte, P: ResponseParser
 {
-    let mut conn = try!(conn_pool.get_conn(host));
+    let mut conn = try!(conn_pool.get_conn(host, now));
     try!(__send_request(&mut conn, req));
     __z_get_response(&mut conn, parser)
 }
 
-fn __z_get_response<P>(conn: &mut KafkaConnection, parser: &P) -> Result<P::T>
+fn __z_get_response<P>(conn: &mut network::KafkaConnection, parser: &P) -> Result<P::T>
     where P: ResponseParser
 {
     let size = try!(__get_response_size(conn));
@@ -1473,7 +1441,7 @@ fn __z_get_response<P>(conn: &mut KafkaConnection, parser: &P) -> Result<P::T>
     parser.parse(resp)
 }
 
-fn __get_response_size(conn: &mut KafkaConnection) -> Result<i32> {
+fn __get_response_size(conn: &mut network::KafkaConnection) -> Result<i32> {
     let mut buf = [0u8; 4];
     try!(conn.read_exact(&mut buf));
     i32::decode_new(&mut Cursor::new(&buf))

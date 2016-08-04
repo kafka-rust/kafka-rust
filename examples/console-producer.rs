@@ -7,10 +7,10 @@ use std::fs::File;
 use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
 use std::ops::{Deref, DerefMut};
 
-use kafka::client::{KafkaClient, Compression, RequiredAcks};
+use kafka::client::{KafkaClient, Compression, RequiredAcks, DEFAULT_CONNECTION_IDLE_TIMEOUT};
 use kafka::producer::{AsBytes, Producer, Record};
 
-// how long do we allow wainting for the acknowledgement
+// how long do we allow waiting for the acknowledgement
 const ACK_TIMEOUT: i32 = 100;
 
 /// This is a very simple command line application sending every
@@ -37,7 +37,6 @@ fn main() {
 
 fn produce(cfg: &Config) -> Result<(), Error> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
-    client.set_compression(cfg.compression);
     try!(client.load_metadata_all());
 
     // ~ verify that the remote brokers do know about the target topic
@@ -61,6 +60,8 @@ fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<
     let mut producer = try!(Producer::from_client(client)
                             .with_ack_timeout(ACK_TIMEOUT)
                             .with_required_acks(cfg.required_acks)
+                            .with_compression(cfg.compression)
+                            .with_connection_idle_timeout(cfg.conn_idle_timeout)
                             .create());
     if cfg.batch_size < 2 {
         produce_impl_nobatch(&mut producer, src, cfg)
@@ -195,6 +196,7 @@ struct Config {
     compression: Compression,
     required_acks: RequiredAcks,
     batch_size: usize,
+    conn_idle_timeout: u32,
 }
 
 impl Config {
@@ -211,6 +213,7 @@ impl Config {
         opts.optopt("", "required-acks", "Specify amount of required broker acknowledgments \
                                           [NONE, ONE, ALL]", "TYPE");
         opts.optopt("", "batch-size", "Send N message in one batch.", "N");
+        opts.optopt("", "idle-timeout", "Specify timeout for idle connections", "SECS");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -256,6 +259,13 @@ impl Config {
                     }
                 }
             },
+            conn_idle_timeout: match m.opt_str("idle-timeout") {
+                None => DEFAULT_CONNECTION_IDLE_TIMEOUT,
+                Some(s) => match s.parse::<u32>() {
+                    Err(_) => return Err(Error::Literal(format!("Not a number: {}", s))),
+                    Ok(n) => n * 1_000,
+                },
+            }
         })
     }
 }
