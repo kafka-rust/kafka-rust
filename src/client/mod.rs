@@ -23,6 +23,8 @@ use codecs::{ToByte, FromByte};
 use error::{Result, Error, KafkaCode};
 use protocol::{self, ResponseParser};
 
+use client_internals::KafkaClientInternals;
+
 pub mod metadata;
 mod state;
 mod network;
@@ -352,7 +354,8 @@ impl KafkaClient {
                 client_id: CLIENTID.to_owned(),
                 hosts: hosts,
                 compression: DEFAULT_COMPRESSION,
-                fetch_max_wait_time: __to_millis_i32(Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS))
+                fetch_max_wait_time: protocol::to_millis_i32(
+                    Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS))
                     .expect("invalid default-fetch-max-time-millis"),
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
@@ -411,7 +414,8 @@ impl KafkaClient {
                 client_id: CLIENTID.to_owned(),
                 hosts: hosts,
                 compression: DEFAULT_COMPRESSION,
-                fetch_max_wait_time: __to_millis_i32(Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS))
+                fetch_max_wait_time: protocol::to_millis_i32(
+                    Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS))
                     .expect("invalid default-fetch-max-time-millis"),
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
@@ -466,7 +470,7 @@ impl KafkaClient {
     /// `KafkaClient::set_fetch_max_bytes_per_partition(..)`.
     #[inline]
     pub fn set_fetch_max_wait_time(&mut self, max_wait_time: Duration) -> Result<()> {
-        self.config.fetch_max_wait_time = try!(__to_millis_i32(max_wait_time));
+        self.config.fetch_max_wait_time = try!(protocol::to_millis_i32(max_wait_time));
         Ok(())
     }
 
@@ -979,28 +983,7 @@ impl KafkaClient {
         -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
-        let ack_timeout = try!(__to_millis_i32(ack_timeout));
-        let required_acks = ack as i16;
-
-        let state = &mut self.state;
-        let correlation = state.next_correlation_id();
-
-        // ~ map topic and partition to the corresponding brokers
-        let config = &self.config;
-        let mut reqs: HashMap<&str, protocol::ProduceRequest> = HashMap::new();
-        for msg in messages {
-            let msg = msg.as_ref();
-            match state.find_broker(msg.topic, msg.partition) {
-                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
-                Some(broker) => reqs.entry(broker)
-                    .or_insert_with(
-                        || protocol::ProduceRequest::new(
-                            required_acks, ack_timeout, correlation,
-                            &config.client_id, config.compression))
-                    .add(msg.topic, msg.partition, msg.key, msg.value),
-            }
-        }
-        __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
+        self.internal_produce_messages(ack, try!(protocol::to_millis_i32(ack_timeout)), messages)
     }
 
     /// Commit offset for a topic partitions on behalf of a consumer group.
@@ -1133,6 +1116,37 @@ impl KafkaClient {
         }
         __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
     }
+}
+
+impl KafkaClientInternals for KafkaClient {
+    fn internal_produce_messages<'a, 'b, I, J>(
+        &mut self, ack: RequiredAcks, ack_timeout: i32, messages: I)
+        -> Result<Vec<TopicPartitionOffset>>
+        where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
+    {
+        let required_acks = ack as i16;
+
+        let state = &mut self.state;
+        let correlation = state.next_correlation_id();
+
+        // ~ map topic and partition to the corresponding brokers
+        let config = &self.config;
+        let mut reqs: HashMap<&str, protocol::ProduceRequest> = HashMap::new();
+        for msg in messages {
+            let msg = msg.as_ref();
+            match state.find_broker(msg.topic, msg.partition) {
+                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+                Some(broker) => reqs.entry(broker)
+                    .or_insert_with(
+                        || protocol::ProduceRequest::new(
+                            required_acks, ack_timeout, correlation,
+                            &config.client_id, config.compression))
+                    .add(msg.topic, msg.partition, msg.key, msg.value),
+            }
+        }
+        __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
+    }
+
 }
 
 fn __get_group_coordinator<'a>(group: &str,
@@ -1454,43 +1468,4 @@ fn __get_response_size(conn: &mut network::KafkaConnection) -> Result<i32> {
 /// method should be called _only_ as part of a retry attempt.
 fn __retry_sleep(cfg: &ClientConfig) {
     thread::sleep(cfg.retry_backoff_time)
-}
-
-/// Safely converts a Duration into the number of milliseconds as a
-/// i32; as often required in the kafka protocol.
-fn __to_millis_i32(d: Duration) -> Result<i32> {
-    use std::i32;
-    let m = d.as_secs().saturating_mul(1_000).saturating_add((d.subsec_nanos() / 1_000_000) as u64);
-    if m > i32::MAX as u64 {
-        Err(Error::InvalidDuration)
-    } else {
-        Ok(m as i32)
-    }
-}
-
-#[test]
-fn duration_to_millis_i32() {
-    use std::{i32, u32, u64};
-
-    fn assert_invalid(d: Duration) {
-        match __to_millis_i32(d) {
-            Err(Error::InvalidDuration) => {}
-            other => panic!("Expected Err(InvalidDuration) but got {:?}", other),
-        }
-    }
-    fn assert_valid(d: Duration, expected_millis: i32) {
-        let r = __to_millis_i32(d);
-        match r {
-            Ok(m) =>
-                assert_eq!(expected_millis, m),
-            Err(e) =>
-                panic!("Expected Ok({}) but got Err({:?})", expected_millis, e),
-        }
-    }
-    assert_valid(Duration::from_millis(1_234), 1_234);
-    assert_valid(Duration::new(540, 123_456_789), 540_123);
-    assert_invalid(Duration::from_millis(u64::MAX));
-    assert_invalid(Duration::from_millis(u32::MAX as u64));
-    assert_invalid(Duration::from_millis(i32::MAX as u64 + 1));
-    assert_valid(Duration::from_millis(i32::MAX as u64 - 1), i32::MAX - 1);
 }

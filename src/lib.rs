@@ -31,6 +31,7 @@ extern crate test;
 
 pub mod error;
 pub mod client;
+mod client_internals;
 pub mod consumer;
 pub mod producer;
 mod utils;
@@ -39,3 +40,10 @@ mod protocol;
 mod compression;
 
 pub use self::error::{Error, Result};
+
+trait KafkaClientInternals {
+    fn internal_produce_messages<'a, 'b, I, J>(
+        &mut self, ack: client::RequiredAcks, ack_timeout: i32, messages: I)
+        -> Result<Vec<client::TopicPartitionOffset>>
+        where J: AsRef<client::ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>;
+}

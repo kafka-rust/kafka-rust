@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 use std::mem;
+use std::time::Duration;
 
 use codecs::{ToByte, FromByte};
 use crc::crc32;
@@ -150,4 +151,45 @@ impl FromByte for HeaderResponse {
 
 pub fn to_crc(data: &[u8]) -> u32 {
     crc32::checksum_ieee(data)
+}
+
+// --------------------------------------------------------------------
+
+/// Safely converts a Duration into the number of milliseconds as a
+/// i32 as often required in the kafka protocol.
+pub fn to_millis_i32(d: Duration) -> Result<i32> {
+    use std::i32;
+    let m = d.as_secs().saturating_mul(1_000).saturating_add((d.subsec_nanos() / 1_000_000) as u64);
+    if m > i32::MAX as u64 {
+        Err(Error::InvalidDuration)
+    } else {
+        Ok(m as i32)
+    }
+}
+
+#[test]
+fn test_to_millis_i32() {
+    use std::{i32, u32, u64};
+
+    fn assert_invalid(d: Duration) {
+        match to_millis_i32(d) {
+            Err(Error::InvalidDuration) => {}
+            other => panic!("Expected Err(InvalidDuration) but got {:?}", other),
+        }
+    }
+    fn assert_valid(d: Duration, expected_millis: i32) {
+        let r = to_millis_i32(d);
+        match r {
+            Ok(m) =>
+                assert_eq!(expected_millis, m),
+            Err(e) =>
+                panic!("Expected Ok({}) but got Err({:?})", expected_millis, e),
+        }
+    }
+    assert_valid(Duration::from_millis(1_234), 1_234);
+    assert_valid(Duration::new(540, 123_456_789), 540_123);
+    assert_invalid(Duration::from_millis(u64::MAX));
+    assert_invalid(Duration::from_millis(u32::MAX as u64));
+    assert_invalid(Duration::from_millis(i32::MAX as u64 + 1));
+    assert_valid(Duration::from_millis(i32::MAX as u64 - 1), i32::MAX - 1);
 }
