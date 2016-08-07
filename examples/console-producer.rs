@@ -4,16 +4,14 @@ extern crate env_logger;
 
 use std::{env, fmt, process};
 use std::fs::File;
+use std::str::FromStr;
 use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
 use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 
 use kafka::client::{KafkaClient, Compression, RequiredAcks,
                     DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS};
-use kafka::producer::{AsBytes, Producer, Record};
-
-// how long do we allow waiting for the acknowledgement
-const ACK_TIMEOUT_MILLIS: u64 = 100;
+use kafka::producer::{AsBytes, Producer, Record, DEFAULT_ACK_TIMEOUT_MILLIS};
 
 /// This is a very simple command line application sending every
 /// non-empty line of standard input to a specified kafka topic; one
@@ -60,7 +58,7 @@ fn produce(cfg: &Config) -> Result<(), Error> {
 
 fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<(), Error> {
     let mut producer = try!(Producer::from_client(client)
-                            .with_ack_timeout(Duration::from_millis(ACK_TIMEOUT_MILLIS))
+                            .with_ack_timeout(cfg.ack_timeout)
                             .with_required_acks(cfg.required_acks)
                             .with_compression(cfg.compression)
                             .with_connection_idle_timeout(cfg.conn_idle_timeout)
@@ -199,6 +197,7 @@ struct Config {
     required_acks: RequiredAcks,
     batch_size: usize,
     conn_idle_timeout: Duration,
+    ack_timeout: Duration,
 }
 
 impl Config {
@@ -214,8 +213,9 @@ impl Config {
         opts.optopt("", "compression", "Compress messages [NONE, GZIP, SNAPPY]", "TYPE");
         opts.optopt("", "required-acks", "Specify amount of required broker acknowledgments \
                                           [NONE, ONE, ALL]", "TYPE");
+        opts.optopt("", "ack-timeout", "Specify time to wait for acks", "MILLIS");
         opts.optopt("", "batch-size", "Send N message in one batch.", "N");
-        opts.optopt("", "idle-timeout", "Specify timeout for idle connections", "SECS");
+        opts.optopt("", "idle-timeout", "Specify timeout for idle connections", "MILLIS");
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -250,25 +250,21 @@ impl Config {
                 Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
                 Some(s) => return Err(Error::Literal(format!("Unknown --required-acks argument: {}", s))),
             },
-            batch_size: {
-                match m.opt_str("batch-size") {
-                    None => 1,
-                    Some(s) => {
-                        match s.parse::<usize>() {
-                            Ok(n) => n,
-                            Err(_) => return Err(Error::Literal(format!("Not a number: {}", s))),
-                        }
-                    }
-                }
-            },
-            conn_idle_timeout: Duration::from_millis(
-                match m.opt_str("idle-timeout") {
-                    None => DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
-                    Some(s) => match s.parse::<u32>() {
-                        Err(_) => return Err(Error::Literal(format!("Not a number: {}", s))),
-                        Ok(n) => n as u64 * 1_000,
-                    }
-                }),
+            batch_size: try!(to_number(m.opt_str("batch-size"), 1)),
+            conn_idle_timeout: Duration::from_millis(try!(to_number(m.opt_str("idle-timeout"),
+                                                                    DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS))),
+            ack_timeout: Duration::from_millis(try!(to_number(m.opt_str("ack-timeout"),
+                                                              DEFAULT_ACK_TIMEOUT_MILLIS))),
         })
+    }
+}
+
+fn to_number<N: FromStr>(s: Option<String>, _default: N) -> Result<N, Error> {
+    match s {
+        None => Ok(_default),
+        Some(s) => match s.parse::<N>() {
+            Ok(n) => Ok(n),
+            Err(_) => return Err(Error::Literal(format!("Not a number: {}", s))),
+        }
     }
 }
