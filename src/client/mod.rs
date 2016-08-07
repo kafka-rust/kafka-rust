@@ -979,11 +979,12 @@ impl KafkaClient {
     // messages which kafka failed to accept or otherwise tell the client about them
 
     pub fn produce_messages<'a, 'b, I, J>(
-        &mut self, ack: RequiredAcks, ack_timeout: Duration, messages: I)
+        &mut self, acks: RequiredAcks, ack_timeout: Duration, messages: I)
         -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
-        self.internal_produce_messages(ack, try!(protocol::to_millis_i32(ack_timeout)), messages)
+        self.internal_produce_messages(
+            acks as i16, try!(protocol::to_millis_i32(ack_timeout)), messages)
     }
 
     /// Commit offset for a topic partitions on behalf of a consumer group.
@@ -1120,12 +1121,10 @@ impl KafkaClient {
 
 impl KafkaClientInternals for KafkaClient {
     fn internal_produce_messages<'a, 'b, I, J>(
-        &mut self, ack: RequiredAcks, ack_timeout: i32, messages: I)
+        &mut self, required_acks: i16, ack_timeout: i32, messages: I)
         -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
-        let required_acks = ack as i16;
-
         let state = &mut self.state;
         let correlation = state.next_correlation_id();
 

@@ -225,7 +225,7 @@ struct Config {
     ack_timeout: i32,
     /// The number of acks to request. See
     /// `KafkaClient::produce_messages`.
-    required_acks: RequiredAcks,
+    required_acks: i16,
 }
 
 impl Producer {
@@ -254,7 +254,7 @@ impl<P: Partitioner> Producer<P> {
               V: AsBytes
     {
         let mut rs = try!(self.send_all(ref_slice(rec)));
-        if let RequiredAcks::None = self.config.required_acks {
+        if self.config.required_acks == 0 {
             // ~ with no required_acks we get no response and
             // consider the send-data request blindly as successful
             Ok(())
@@ -442,7 +442,7 @@ impl<P> Builder<P> {
         client.set_connection_idle_timeout(self.conn_idle_timeout);
         let producer_config = Config {
             ack_timeout: try!(protocol::to_millis_i32(self.ack_timeout)),
-            required_acks: self.required_acks,
+            required_acks: self.required_acks as i16,
         };
         // ~ load metadata if necessary
         if need_metadata {
