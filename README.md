@@ -19,7 +19,7 @@ expect the version number to grow quickly.)
 
 ```toml
 [dependencies]
-kafka = "0.4"
+kafka = "0.5"
 ```
 
 To build kafka-rust you'll need `libsnappy-dev` on your local machine.
