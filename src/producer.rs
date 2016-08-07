@@ -79,7 +79,7 @@ use client::SecurityConfig;
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
 
-/// The default value for `Builder::with_acks_timeout`.
+/// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
 
 /// The default value for `Builder::with_required_acks`.
