@@ -49,7 +49,7 @@ fn default_conn_rw_timeout() -> Option<Duration> {
 pub const DEFAULT_COMPRESSION: Compression = Compression::NONE;
 
 /// The default value for `KafkaClient::set_fetch_max_wait_time(..)`
-pub const DEFAULT_FETCH_MAX_WAIT_TIME: i32 = 100; // milliseconds
+pub const DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS: u64 = 100;
 
 /// The default value for `KafkaClient::set_fetch_min_bytes(..)`
 pub const DEFAULT_FETCH_MIN_BYTES: i32 = 4096;
@@ -352,7 +352,8 @@ impl KafkaClient {
                 client_id: CLIENTID.to_owned(),
                 hosts: hosts,
                 compression: DEFAULT_COMPRESSION,
-                fetch_max_wait_time: DEFAULT_FETCH_MAX_WAIT_TIME,
+                fetch_max_wait_time: __to_millis_i32(Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS))
+                    .expect("invalid default-fetch-max-time-millis"),
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
@@ -410,7 +411,8 @@ impl KafkaClient {
                 client_id: CLIENTID.to_owned(),
                 hosts: hosts,
                 compression: DEFAULT_COMPRESSION,
-                fetch_max_wait_time: DEFAULT_FETCH_MAX_WAIT_TIME,
+                fetch_max_wait_time: __to_millis_i32(Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS))
+                    .expect("invalid default-fetch-max-time-millis"),
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
@@ -463,15 +465,16 @@ impl KafkaClient {
     /// See also `KafkaClient::set_fetch_min_bytes(..)` and
     /// `KafkaClient::set_fetch_max_bytes_per_partition(..)`.
     #[inline]
-    pub fn set_fetch_max_wait_time(&mut self, max_wait_time: i32) {
-        self.config.fetch_max_wait_time = max_wait_time;
+    pub fn set_fetch_max_wait_time(&mut self, max_wait_time: Duration) -> Result<()> {
+        self.config.fetch_max_wait_time = try!(__to_millis_i32(max_wait_time));
+        Ok(())
     }
 
     /// Retrieves the current `KafkaClient::set_fetch_max_wait_time`
     /// setting.
     #[inline]
-    pub fn fetch_max_wait_time(&self) -> i32 {
-        self.config.fetch_max_wait_time
+    pub fn fetch_max_wait_time(&self) -> Duration {
+        Duration::from_millis(self.config.fetch_max_wait_time as u64)
     }
 
     /// Sets the minimum number of bytes of available data to wait for
@@ -488,11 +491,12 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
+    /// use std::time::Duration;
     /// use kafka::client::{KafkaClient, FetchPartition};
     ///
     /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
-    /// client.set_fetch_max_wait_time(100);
+    /// client.set_fetch_max_wait_time(Duration::from_millis(100));
     /// client.set_fetch_min_bytes(64 * 1024);
     /// let r = client.fetch_messages(&[FetchPartition::new("my-topic", 0, 0)]);
     /// ```

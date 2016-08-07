@@ -426,16 +426,21 @@ impl<P> Builder<P> {
     /// Finally creates/builds a new producer based on the so far
     /// supplied settings.
     pub fn create(self) -> Result<Producer<P>> {
-        let mut client = match self.client {
-            Some(client) => client,
+        // ~ create the client if necessary
+        let (mut client, need_metadata) = match self.client {
+            Some(client) => (client, false),
             None => {
-                let mut client = Self::new_kafka_client(self.hosts, self.security_config);
-                try!(client.load_metadata_all());
-                client
+                (Self::new_kafka_client(self.hosts, self.security_config), true)
             }
         };
+        // ~ apply configuration settings
         client.set_compression(self.compression);
         client.set_connection_idle_timeout(self.conn_idle_timeout);
+        // ~ load metadata if necessary
+        if need_metadata {
+            try!(client.load_metadata_all());
+        }
+        // ~ create producer state
         let state = try!(State::new(&mut client, self.partitioner));
         let config = Config {
             ack_timeout: self.ack_timeout,
