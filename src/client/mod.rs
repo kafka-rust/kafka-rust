@@ -971,8 +971,6 @@ impl KafkaClient {
     // messages which kafka failed to accept or otherwise tell the client about them
 
     pub fn produce_messages<'a, 'b, I, J>(
-        // XXX we should consider making the ack parameters members of
-        // `KafkaClient` just like other configuration values
         &mut self, ack: RequiredAcks, ack_timeout: Duration, messages: I)
         -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
