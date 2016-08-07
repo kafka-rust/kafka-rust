@@ -64,12 +64,12 @@ pub const DEFAULT_FETCH_CRC_VALIDATION: bool = true;
 pub const DEFAULT_GROUP_OFFSET_STORAGE: GroupOffsetStorage = GroupOffsetStorage::Zookeeper;
 
 /// The default value for `KafkaClient::set_retry_backoff_time(..)`
-pub const DEFAULT_RETRY_BACKOFF_TIME: u32 = 100;
+pub const DEFAULT_RETRY_BACKOFF_TIME_MILLIS: u64 = 100;
 
 /// The default value for `KafkaClient::set_retry_max_attempts(..)`
 // the default value: re-attempt a repeatable operation for
 // approximetaly up to two minutes
-pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME;
+pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME_MILLIS as u32;
 
 /// The default value for `KafkaClient::set_connection_idle_timeout(..)`
 pub const DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS: u64 = 540_000;
@@ -110,10 +110,10 @@ struct ClientConfig {
     // storage type.
     offset_fetch_version: protocol::OffsetFetchVersion,
     offset_commit_version: protocol::OffsetCommitVersion,
-    // ~ the number of millis to wait before retrying a failed
+    // ~ the duration to wait before retrying a failed
     // operation like refreshing group coordinators; this avoids
     // operation retries in a tight loop.
-    retry_backoff_time: u32,
+    retry_backoff_time: Duration,
     // ~ the number of repeated retry attempts; prevents endless
     // repetition of a retry attempt
     retry_max_attempts: u32,
@@ -359,7 +359,7 @@ impl KafkaClient {
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
                 offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
                 offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
-                retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
+                retry_backoff_time: Duration::from_millis(DEFAULT_RETRY_BACKOFF_TIME_MILLIS),
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: network::Connections::new(
@@ -418,7 +418,7 @@ impl KafkaClient {
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
                 offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
                 offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
-                retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
+                retry_backoff_time: Duration::from_millis(DEFAULT_RETRY_BACKOFF_TIME_MILLIS),
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: network::Connections::new_with_security(
@@ -598,17 +598,17 @@ impl KafkaClient {
         }
     }
 
-    /// Specifies the number of milliseconds to wait before retrying a
-    /// failed, repeatable operation against Kafka.  This avoids
-    /// retrying such operations in a tight loop.
+    /// Specifies the time to wait before retrying a failed,
+    /// repeatable operation against Kafka.  This avoids retrying such
+    /// operations in a tight loop.
     #[inline]
-    pub fn set_retry_backoff_time(&mut self, millis: u32) {
-        self.config.retry_backoff_time = millis;
+    pub fn set_retry_backoff_time(&mut self, time: Duration) {
+        self.config.retry_backoff_time = time;
     }
 
     /// Retrieves the current `KafkaClient::set_retry_backoff_time`
     /// setting.
-    pub fn retry_backoff_time(&self) -> u32 {
+    pub fn retry_backoff_time(&self) -> Duration {
         self.config.retry_backoff_time
     }
 
@@ -1453,9 +1453,7 @@ fn __get_response_size(conn: &mut network::KafkaConnection) -> Result<i32> {
 /// Suspends the calling thread for the configured "retry" time. This
 /// method should be called _only_ as part of a retry attempt.
 fn __retry_sleep(cfg: &ClientConfig) {
-    if cfg.retry_backoff_time > 0 {
-        thread::sleep(Duration::from_millis(cfg.retry_backoff_time as u64))
-    }
+    thread::sleep(cfg.retry_backoff_time)
 }
 
 /// Safely converts a Duration into the number of milliseconds as a
