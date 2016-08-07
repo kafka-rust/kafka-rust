@@ -1,6 +1,8 @@
 extern crate kafka;
 extern crate env_logger;
 
+use std::time::Duration;
+
 use kafka::producer::{Producer, Record, RequiredAcks};
 use kafka::error::Error as KafkaError;
 
@@ -31,7 +33,7 @@ fn produce_message<'a, 'b>(data: &'a [u8], topic: &'b str, brokers: Vec<String>)
     let mut producer =
         try!(Producer::from_hosts(brokers)
              // ~ give the brokers one second time to ack the message
-             .with_ack_timeout(1000)
+             .with_ack_timeout(Duration::from_secs(1))
              // ~ require only one broker to ack the message
              .with_required_acks(RequiredAcks::One)
              // ~ build the producer with the above settings

@@ -14,11 +14,12 @@
 //! # Example
 //! ```no_run
 //! use std::fmt::Write;
+//! use std::time::Duration;
 //! use kafka::producer::{Producer, Record, RequiredAcks};
 //!
 //! let mut producer =
 //!     Producer::from_hosts(vec!("localhost:9092".to_owned()))
-//!         .with_ack_timeout(1000)
+//!         .with_ack_timeout(Duration::from_secs(1))
 //!         .with_required_acks(RequiredAcks::One)
 //!         .create()
 //!         .unwrap();
@@ -61,6 +62,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hasher, SipHasher, BuildHasher, BuildHasherDefault};
+use std::time::Duration;
 
 use client::{self, KafkaClient};
 // public re-exports
@@ -77,8 +79,11 @@ use client::SecurityConfig;
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
 
-/// The default value for `Builder::with_acks_timeout`.
-pub const DEFAULT_ACK_TIMEOUT: i32 = 30 * 1000;
+use client_internals::KafkaClientInternals;
+use protocol;
+
+/// The default value for `Builder::with_ack_timeout`.
+pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
 
 /// The default value for `Builder::with_required_acks`.
 pub const DEFAULT_REQUIRED_ACKS: RequiredAcks = RequiredAcks::One;
@@ -215,12 +220,12 @@ struct State<P> {
 }
 
 struct Config {
-    /// The maximum time in millis to wait for acknowledgements. See
+    /// The maximum time to wait for acknowledgements. See
     /// `KafkaClient::produce_messages`.
     ack_timeout: i32,
     /// The number of acks to request. See
     /// `KafkaClient::produce_messages`.
-    required_acks: RequiredAcks,
+    required_acks: i16,
 }
 
 impl Producer {
@@ -249,7 +254,7 @@ impl<P: Partitioner> Producer<P> {
               V: AsBytes
     {
         let mut rs = try!(self.send_all(ref_slice(rec)));
-        if let RequiredAcks::None = self.config.required_acks {
+        if self.config.required_acks == 0 {
             // ~ with no required_acks we get no response and
             // consider the send-data request blindly as successful
             Ok(())
@@ -271,18 +276,19 @@ impl<P: Partitioner> Producer<P> {
         let client = &mut self.client;
         let config = &self.config;
 
-        client.produce_messages(config.required_acks,
-                                config.ack_timeout,
-                                recs.into_iter().map(|r| {
-                                    let mut m = client::ProduceMessage {
-                                        key: to_option(r.key.as_bytes()),
-                                        value: to_option(r.value.as_bytes()),
-                                        topic: r.topic,
-                                        partition: r.partition,
-                                    };
-                                    partitioner.partition(Topics::new(partitions), &mut m);
-                                    m
-                                }))
+        client.internal_produce_messages(
+            config.required_acks,
+            config.ack_timeout,
+            recs.into_iter().map(|r| {
+                let mut m = client::ProduceMessage {
+                    key: to_option(r.key.as_bytes()),
+                    value: to_option(r.value.as_bytes()),
+                    topic: r.topic,
+                    partition: r.partition,
+                };
+                partitioner.partition(Topics::new(partitions), &mut m);
+                m
+            }))
     }
 }
 
@@ -323,8 +329,8 @@ pub struct Builder<P = DefaultPartitioner> {
     client: Option<KafkaClient>,
     hosts: Vec<String>,
     compression: Compression,
-    ack_timeout: i32,
-    conn_idle_timeout: u32,
+    ack_timeout: Duration,
+    conn_idle_timeout: Duration,
     required_acks: RequiredAcks,
     partitioner: P,
     security_config: Option<SecurityConfig>,
@@ -336,8 +342,8 @@ impl Builder {
             client: client,
             hosts: hosts,
             compression: client::DEFAULT_COMPRESSION,
-            ack_timeout: DEFAULT_ACK_TIMEOUT,
-            conn_idle_timeout: client::DEFAULT_CONNECTION_IDLE_TIMEOUT,
+            ack_timeout: Duration::from_millis(DEFAULT_ACK_TIMEOUT_MILLIS),
+            conn_idle_timeout: Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
             required_acks: DEFAULT_REQUIRED_ACKS,
             partitioner: DefaultPartitioner::default(),
             security_config: None,
@@ -365,18 +371,18 @@ impl Builder {
         self
     }
 
-    /// Sets the maximum time in milliseconds the kafka brokers can
-    /// await the receipt of required acknowledgements (which is
-    /// specified through `Builder::with_required_acks`.)  Note that
-    /// Kafka explicitely documents this not to be a hard limit.
-    pub fn with_ack_timeout(mut self, timeout: i32) -> Self {
+    /// Sets the maximum time the kafka brokers can await the receipt
+    /// of required acknowledgements (which is specified through
+    /// `Builder::with_required_acks`.)  Note that Kafka explicitely
+    /// documents this not to be a hard limit.
+    pub fn with_ack_timeout(mut self, timeout: Duration) -> Self {
         self.ack_timeout = timeout;
         self
     }
 
     /// Specifies the timeout for idle connections.
     /// See `KafkaClient::set_connection_idle_timeout`.
-    pub fn with_connection_idle_timeout(mut self, timeout: u32) -> Self {
+    pub fn with_connection_idle_timeout(mut self, timeout: Duration) -> Self {
         self.conn_idle_timeout = timeout;
         self
     }
@@ -424,25 +430,30 @@ impl<P> Builder<P> {
     /// Finally creates/builds a new producer based on the so far
     /// supplied settings.
     pub fn create(self) -> Result<Producer<P>> {
-        let mut client = match self.client {
-            Some(client) => client,
+        // ~ create the client if necessary
+        let (mut client, need_metadata) = match self.client {
+            Some(client) => (client, false),
             None => {
-                let mut client = Self::new_kafka_client(self.hosts, self.security_config);
-                try!(client.load_metadata_all());
-                client
+                (Self::new_kafka_client(self.hosts, self.security_config), true)
             }
         };
+        // ~ apply configuration settings
         client.set_compression(self.compression);
         client.set_connection_idle_timeout(self.conn_idle_timeout);
-        let state = try!(State::new(&mut client, self.partitioner));
-        let config = Config {
-            ack_timeout: self.ack_timeout,
-            required_acks: self.required_acks,
+        let producer_config = Config {
+            ack_timeout: try!(protocol::to_millis_i32(self.ack_timeout)),
+            required_acks: self.required_acks as i16,
         };
+        // ~ load metadata if necessary
+        if need_metadata {
+            try!(client.load_metadata_all());
+        }
+        // ~ create producer state
+        let state = try!(State::new(&mut client, self.partitioner));
         Ok(Producer {
             client: client,
             state: state,
-            config: config,
+            config: producer_config,
         })
     }
 }

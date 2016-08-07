@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use client::{self, KafkaClient, FetchOffset, GroupOffsetStorage};
 use error::{Error, Result};
@@ -23,14 +24,14 @@ pub struct Builder {
     group: String,
     assignments: HashMap<String, Vec<i32>>,
     fallback_offset: FetchOffset,
-    fetch_max_wait_time: i32,
+    fetch_max_wait_time: Duration,
     fetch_min_bytes: i32,
     fetch_max_bytes_per_partition: i32,
     retry_max_bytes_limit: i32,
     fetch_crc_validation: bool,
     security_config: Option<SecurityConfig>,
     group_offset_storage: GroupOffsetStorage,
-    conn_idle_timeout: u32,
+    conn_idle_timeout: Duration,
 }
 
 // ~ public only to be shared inside the kafka crate; not supposed to
@@ -39,7 +40,7 @@ pub fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
     let mut b = Builder {
         client: client,
         hosts: hosts,
-        fetch_max_wait_time: client::DEFAULT_FETCH_MAX_WAIT_TIME,
+        fetch_max_wait_time: Duration::from_millis(client::DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS),
         fetch_min_bytes: client::DEFAULT_FETCH_MIN_BYTES,
         fetch_max_bytes_per_partition: client::DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
         fetch_crc_validation: client::DEFAULT_FETCH_CRC_VALIDATION,
@@ -49,7 +50,7 @@ pub fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
         fallback_offset: DEFAULT_FALLBACK_OFFSET,
         security_config: None,
         group_offset_storage: client::DEFAULT_GROUP_OFFSET_STORAGE,
-        conn_idle_timeout: client::DEFAULT_CONNECTION_IDLE_TIMEOUT,
+        conn_idle_timeout: Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
     };
     if let Some(ref c) = b.client {
         b.fetch_max_wait_time = c.fetch_max_wait_time();
@@ -127,7 +128,7 @@ impl Builder {
     }
 
     /// See `KafkaClient::set_fetch_max_wait_time`
-    pub fn with_fetch_max_wait_time(mut self, max_wait_time: i32) -> Builder {
+    pub fn with_fetch_max_wait_time(mut self, max_wait_time: Duration) -> Builder {
         self.fetch_max_wait_time = max_wait_time;
         self
     }
@@ -185,7 +186,7 @@ impl Builder {
 
     /// Specifies the timeout for idle connections.
     /// See `KafkaClient::set_connection_idle_timeout`.
-    pub fn with_connection_idle_timeout(mut self, timeout: u32) -> Self {
+    pub fn with_connection_idle_timeout(mut self, timeout: Duration) -> Self {
         self.conn_idle_timeout = timeout;
         self
     }
@@ -215,21 +216,24 @@ impl Builder {
         if self.assignments.is_empty() {
             return Err(Error::NoTopicsAssigned);
         }
-
-        let mut client = match self.client {
-            Some(client) => client,
+        // ~ create the client if necessary
+        let (mut client, need_metadata) = match self.client {
+            Some(client) => (client, false),
             None => {
-                let mut client = Self::new_kafka_client(self.hosts, self.security_config);
-                try!(client.load_metadata_all());
-                client
+                (Self::new_kafka_client(self.hosts, self.security_config), true)
             }
         };
-        client.set_fetch_max_wait_time(self.fetch_max_wait_time);
+        // ~ apply configuration settings
+        try!(client.set_fetch_max_wait_time(self.fetch_max_wait_time));
         client.set_fetch_min_bytes(self.fetch_min_bytes);
         client.set_fetch_max_bytes_per_partition(self.fetch_max_bytes_per_partition);
         client.set_group_offset_storage(self.group_offset_storage);
         client.set_connection_idle_timeout(self.conn_idle_timeout);
-
+        // ~ load metadata if necessary
+        if need_metadata {
+            try!(client.load_metadata_all());
+        }
+        // ~ load consumer state
         let config = Config {
             group: self.group,
             fallback_offset: self.fallback_offset,

@@ -23,6 +23,8 @@ use codecs::{ToByte, FromByte};
 use error::{Result, Error, KafkaCode};
 use protocol::{self, ResponseParser};
 
+use client_internals::KafkaClientInternals;
+
 pub mod metadata;
 mod state;
 mod network;
@@ -49,7 +51,7 @@ fn default_conn_rw_timeout() -> Option<Duration> {
 pub const DEFAULT_COMPRESSION: Compression = Compression::NONE;
 
 /// The default value for `KafkaClient::set_fetch_max_wait_time(..)`
-pub const DEFAULT_FETCH_MAX_WAIT_TIME: i32 = 100; // milliseconds
+pub const DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS: u64 = 100;
 
 /// The default value for `KafkaClient::set_fetch_min_bytes(..)`
 pub const DEFAULT_FETCH_MIN_BYTES: i32 = 4096;
@@ -64,19 +66,15 @@ pub const DEFAULT_FETCH_CRC_VALIDATION: bool = true;
 pub const DEFAULT_GROUP_OFFSET_STORAGE: GroupOffsetStorage = GroupOffsetStorage::Zookeeper;
 
 /// The default value for `KafkaClient::set_retry_backoff_time(..)`
-pub const DEFAULT_RETRY_BACKOFF_TIME: u32 = 100;
+pub const DEFAULT_RETRY_BACKOFF_TIME_MILLIS: u64 = 100;
 
 /// The default value for `KafkaClient::set_retry_max_attempts(..)`
 // the default value: re-attempt a repeatable operation for
 // approximetaly up to two minutes
-pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME;
+pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME_MILLIS as u32;
 
 /// The default value for `KafkaClient::set_connection_idle_timeout(..)`
-pub const DEFAULT_CONNECTION_IDLE_TIMEOUT: u32 = 540_000;
-
-fn default_conn_idle_timeout() -> Duration {
-    Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT as u64)
-}
+pub const DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS: u64 = 540_000;
 
 /// Client struct keeping track of brokers and topic metadata.
 ///
@@ -114,10 +112,10 @@ struct ClientConfig {
     // storage type.
     offset_fetch_version: protocol::OffsetFetchVersion,
     offset_commit_version: protocol::OffsetCommitVersion,
-    // ~ the number of millis to wait before retrying a failed
+    // ~ the duration to wait before retrying a failed
     // operation like refreshing group coordinators; this avoids
     // operation retries in a tight loop.
-    retry_backoff_time: u32,
+    retry_backoff_time: Duration,
     // ~ the number of repeated retry attempts; prevents endless
     // repetition of a retry attempt
     retry_max_attempts: u32,
@@ -356,17 +354,20 @@ impl KafkaClient {
                 client_id: CLIENTID.to_owned(),
                 hosts: hosts,
                 compression: DEFAULT_COMPRESSION,
-                fetch_max_wait_time: DEFAULT_FETCH_MAX_WAIT_TIME,
+                fetch_max_wait_time: protocol::to_millis_i32(
+                    Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS))
+                    .expect("invalid default-fetch-max-time-millis"),
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
                 offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
                 offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
-                retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
+                retry_backoff_time: Duration::from_millis(DEFAULT_RETRY_BACKOFF_TIME_MILLIS),
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: network::Connections::new(
-                default_conn_rw_timeout(), default_conn_idle_timeout()),
+                default_conn_rw_timeout(),
+                Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS)),
             state: state::ClientState::new(),
         }
     }
@@ -413,17 +414,20 @@ impl KafkaClient {
                 client_id: CLIENTID.to_owned(),
                 hosts: hosts,
                 compression: DEFAULT_COMPRESSION,
-                fetch_max_wait_time: DEFAULT_FETCH_MAX_WAIT_TIME,
+                fetch_max_wait_time: protocol::to_millis_i32(
+                    Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS))
+                    .expect("invalid default-fetch-max-time-millis"),
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
                 offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
                 offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
-                retry_backoff_time: DEFAULT_RETRY_BACKOFF_TIME,
+                retry_backoff_time: Duration::from_millis(DEFAULT_RETRY_BACKOFF_TIME_MILLIS),
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
             conn_pool: network::Connections::new_with_security(
-                default_conn_rw_timeout(), default_conn_idle_timeout(),
+                default_conn_rw_timeout(),
+                Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
                 Some(security)),
             state: state::ClientState::new(),
         }
@@ -465,15 +469,16 @@ impl KafkaClient {
     /// See also `KafkaClient::set_fetch_min_bytes(..)` and
     /// `KafkaClient::set_fetch_max_bytes_per_partition(..)`.
     #[inline]
-    pub fn set_fetch_max_wait_time(&mut self, max_wait_time: i32) {
-        self.config.fetch_max_wait_time = max_wait_time;
+    pub fn set_fetch_max_wait_time(&mut self, max_wait_time: Duration) -> Result<()> {
+        self.config.fetch_max_wait_time = try!(protocol::to_millis_i32(max_wait_time));
+        Ok(())
     }
 
     /// Retrieves the current `KafkaClient::set_fetch_max_wait_time`
     /// setting.
     #[inline]
-    pub fn fetch_max_wait_time(&self) -> i32 {
-        self.config.fetch_max_wait_time
+    pub fn fetch_max_wait_time(&self) -> Duration {
+        Duration::from_millis(self.config.fetch_max_wait_time as u64)
     }
 
     /// Sets the minimum number of bytes of available data to wait for
@@ -490,11 +495,12 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
+    /// use std::time::Duration;
     /// use kafka::client::{KafkaClient, FetchPartition};
     ///
     /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
-    /// client.set_fetch_max_wait_time(100);
+    /// client.set_fetch_max_wait_time(Duration::from_millis(100));
     /// client.set_fetch_min_bytes(64 * 1024);
     /// let r = client.fetch_messages(&[FetchPartition::new("my-topic", 0, 0)]);
     /// ```
@@ -596,17 +602,17 @@ impl KafkaClient {
         }
     }
 
-    /// Specifies the number of milliseconds to wait before retrying a
-    /// failed, repeatable operation against Kafka.  This avoids
-    /// retrying such operations in a tight loop.
+    /// Specifies the time to wait before retrying a failed,
+    /// repeatable operation against Kafka.  This avoids retrying such
+    /// operations in a tight loop.
     #[inline]
-    pub fn set_retry_backoff_time(&mut self, millis: u32) {
-        self.config.retry_backoff_time = millis;
+    pub fn set_retry_backoff_time(&mut self, time: Duration) {
+        self.config.retry_backoff_time = time;
     }
 
     /// Retrieves the current `KafkaClient::set_retry_backoff_time`
     /// setting.
-    pub fn retry_backoff_time(&self) -> u32 {
+    pub fn retry_backoff_time(&self) -> Duration {
         self.config.retry_backoff_time
     }
 
@@ -625,24 +631,22 @@ impl KafkaClient {
         self.config.retry_max_attempts
     }
 
-    /// Specifies the timeout (in number of milliseconds) after which
-    /// idle connections will transparently be closed/re-established
-    /// by `KafkaClient`.
+    /// Specifies the timeout after which idle connections will
+    /// transparently be closed/re-established by `KafkaClient`.
     ///
     /// To be effective this value must be smaller than the [remote
     /// broker's `connections.max.idle.ms`
     /// setting](https://kafka.apache.org/documentation.html#brokerconfigs).
     #[inline]
-    pub fn set_connection_idle_timeout(&mut self, millis: u32) {
-        self.conn_pool.set_idle_timeout(Duration::from_millis(millis as u64))
+    pub fn set_connection_idle_timeout(&mut self, timeout: Duration) {
+        self.conn_pool.set_idle_timeout(timeout);
     }
 
     /// Retrieves the current
     /// `KafkaClient::set_connection_idle_timeout` setting.
     #[inline]
-    pub fn connection_idle_timeout(&self) -> u32 {
-        let d = self.conn_pool.idle_timeout();
-        d.as_secs() as u32 * 1_000 + d.subsec_nanos() / 1_000_000
+    pub fn connection_idle_timeout(&self) -> Duration {
+        self.conn_pool.idle_timeout()
     }
 
     /// Provides a view onto the currently loaded metadata of known .
@@ -958,13 +962,14 @@ impl KafkaClient {
     /// # Example
     ///
     /// ```no_run
+    /// use std::time::Duration;
     /// use kafka::client::{KafkaClient, ProduceMessage, RequiredAcks};
     ///
     /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
     /// let req = vec![ProduceMessage::new("my-topic", 0, None, Some("a".as_bytes())),
     ///                ProduceMessage::new("my-topic-2", 0, None, Some("b".as_bytes()))];
-    /// println!("{:?}", client.produce_messages(RequiredAcks::One, 100, req));
+    /// println!("{:?}", client.produce_messages(RequiredAcks::One, Duration::from_millis(100), req));
     /// ```
     ///
     /// The return value will contain a vector of topic, partition,
@@ -973,31 +978,13 @@ impl KafkaClient {
     // XXX rework signaling an error; note that we need to either return the
     // messages which kafka failed to accept or otherwise tell the client about them
 
-    pub fn produce_messages<'a, 'b, I, J>(&mut self, ack: RequiredAcks, ack_timeout: i32, messages: I)
-                                          -> Result<Vec<TopicPartitionOffset>>
+    pub fn produce_messages<'a, 'b, I, J>(
+        &mut self, acks: RequiredAcks, ack_timeout: Duration, messages: I)
+        -> Result<Vec<TopicPartitionOffset>>
         where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
     {
-        let required_acks = ack as i16;
-
-        let state = &mut self.state;
-        let correlation = state.next_correlation_id();
-
-        // ~ map topic and partition to the corresponding brokers
-        let config = &self.config;
-        let mut reqs: HashMap<&str, protocol::ProduceRequest> = HashMap::new();
-        for msg in messages {
-            let msg = msg.as_ref();
-            match state.find_broker(msg.topic, msg.partition) {
-                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
-                Some(broker) => reqs.entry(broker)
-                    .or_insert_with(
-                        || protocol::ProduceRequest::new(
-                            required_acks, ack_timeout, correlation,
-                            &config.client_id, config.compression))
-                    .add(msg.topic, msg.partition, msg.key, msg.value),
-            }
-        }
-        __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
+        self.internal_produce_messages(
+            acks as i16, try!(protocol::to_millis_i32(ack_timeout)), messages)
     }
 
     /// Commit offset for a topic partitions on behalf of a consumer group.
@@ -1130,6 +1117,35 @@ impl KafkaClient {
         }
         __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
     }
+}
+
+impl KafkaClientInternals for KafkaClient {
+    fn internal_produce_messages<'a, 'b, I, J>(
+        &mut self, required_acks: i16, ack_timeout: i32, messages: I)
+        -> Result<Vec<TopicPartitionOffset>>
+        where J: AsRef<ProduceMessage<'a, 'b>>, I: IntoIterator<Item=J>
+    {
+        let state = &mut self.state;
+        let correlation = state.next_correlation_id();
+
+        // ~ map topic and partition to the corresponding brokers
+        let config = &self.config;
+        let mut reqs: HashMap<&str, protocol::ProduceRequest> = HashMap::new();
+        for msg in messages {
+            let msg = msg.as_ref();
+            match state.find_broker(msg.topic, msg.partition) {
+                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+                Some(broker) => reqs.entry(broker)
+                    .or_insert_with(
+                        || protocol::ProduceRequest::new(
+                            required_acks, ack_timeout, correlation,
+                            &config.client_id, config.compression))
+                    .add(msg.topic, msg.partition, msg.key, msg.value),
+            }
+        }
+        __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
+    }
+
 }
 
 fn __get_group_coordinator<'a>(group: &str,
@@ -1450,7 +1466,5 @@ fn __get_response_size(conn: &mut network::KafkaConnection) -> Result<i32> {
 /// Suspends the calling thread for the configured "retry" time. This
 /// method should be called _only_ as part of a retry attempt.
 fn __retry_sleep(cfg: &ClientConfig) {
-    if cfg.retry_backoff_time > 0 {
-        thread::sleep(Duration::from_millis(cfg.retry_backoff_time as u64))
-    }
+    thread::sleep(cfg.retry_backoff_time)
 }

@@ -47,6 +47,8 @@ pub enum Error {
     NoHostReachable,
     /// Unable to set up `Consumer` due to missing topic assignments
     NoTopicsAssigned,
+    /// An invalid user-provided duration
+    InvalidDuration,
 }
 
 /// Various errors reported by a remote Kafka server.
@@ -207,6 +209,7 @@ impl Clone for Error {
             &Error::StringDecodeError => Error::StringDecodeError,
             &Error::NoHostReachable => Error::NoHostReachable,
             &Error::NoTopicsAssigned => Error::NoTopicsAssigned,
+            &Error::InvalidDuration => Error::InvalidDuration,
         }
     }
 }
@@ -227,6 +230,7 @@ impl error::Error for Error {
             Error::StringDecodeError => "String decoding error",
             Error::NoHostReachable => "No host reachable",
             Error::NoTopicsAssigned => "No topic assigned",
+            Error::InvalidDuration => "Invalid duration",
         }
     }
 
@@ -254,6 +258,7 @@ impl fmt::Display for Error {
             Error::StringDecodeError => write!(f, "String decoding error"),
             Error::NoHostReachable => write!(f, "No host reachable"),
             Error::NoTopicsAssigned => write!(f, "No topic assigned"),
+            Error::InvalidDuration => write!(f, "Invalid duration"),
         }
     }
 }

@@ -3,6 +3,7 @@ extern crate getopts;
 extern crate env_logger;
 
 use std::{env, fmt, process};
+use std::time::Duration;
 use std::io::{self, Write};
 use std::ascii::AsciiExt;
 
@@ -31,7 +32,7 @@ fn process(cfg: Config) -> Result<(), Error> {
         let mut cb = Consumer::from_hosts(cfg.brokers)
             .with_group(cfg.group)
             .with_fallback_offset(cfg.fallback_offset)
-            .with_fetch_max_wait_time(1000)
+            .with_fetch_max_wait_time(Duration::from_secs(1))
             .with_fetch_min_bytes(1_000)
             .with_fetch_max_bytes_per_partition(100_000)
             .with_retry_max_bytes_limit(1_000_000)
