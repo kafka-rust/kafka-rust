@@ -106,8 +106,10 @@ impl Consumer {
 
     /// Starts building a consumer bootstraping internally a new kafka
     /// client from the given kafka hosts.
-    pub fn from_hosts(hosts: Vec<String>) -> Builder {
-        builder::new(None, hosts)
+    pub fn from_hosts<S, H>(hosts: H) -> Builder
+        where S: Into<String>,
+              H: IntoIterator<Item = S> {
+        builder::new(None, hosts.into_iter().map(|s| s.into()).collect::<Vec<_>>())
     }
 
     /// Destroys this consumer returning back the underlying kafka client.
