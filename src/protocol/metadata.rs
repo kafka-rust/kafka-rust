@@ -23,8 +23,7 @@ impl<'a, T: AsRef<str>> MetadataRequest<'a, T> {
 
 impl<'a, T: AsRef<str> + 'a> ToByte for MetadataRequest<'a, T> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(self.header.encode(buffer),
-                   AsStrings(self.topics).encode(buffer))
+        try_multi!(self.header.encode(buffer), AsStrings(self.topics).encode(buffer))
     }
 }
 
@@ -76,9 +75,7 @@ impl FromByte for BrokerMetadata {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.node_id.decode(buffer),
-                   self.host.decode(buffer),
-                   self.port.decode(buffer))
+        try_multi!(self.node_id.decode(buffer), self.host.decode(buffer), self.port.decode(buffer))
     }
 }
 

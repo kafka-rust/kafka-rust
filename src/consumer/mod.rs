@@ -157,8 +157,7 @@ impl Consumer {
             None => {
                 let client = &mut self.client;
                 let state = &self.state;
-                debug!("fetching messages: (fetch-offsets: {:?})",
-                       state.fetch_offsets_debug());
+                debug!("fetching messages: (fetch-offsets: {:?})", state.fetch_offsets_debug());
                 let reqs = state.fetch_offsets
                     .iter()
                     .map(|(tp, s)| {
@@ -353,9 +352,7 @@ impl Consumer {
     /// message of the given set as consumed.
     pub fn consume_messageset<'a>(&mut self, msgs: MessageSet<'a>) -> Result<()> {
         if !msgs.messages.is_empty() {
-            self.consume_message(msgs.topic,
-                                 msgs.partition,
-                                 msgs.messages.last().unwrap().offset)
+            self.consume_message(msgs.topic, msgs.partition, msgs.messages.last().unwrap().offset)
         } else {
             Ok(())
         }
@@ -420,8 +417,7 @@ impl MessageSets {
         let mut topics = responses.next().map(|r| r.topics().iter());
         let (curr_topic, partitions) = topics.as_mut()
             .and_then(|t| t.next())
-            .map_or((None, None),
-                    |t| (Some(t.topic()), Some(t.partitions().iter())));
+            .map_or((None, None), |t| (Some(t.topic()), Some(t.partitions().iter())));
         MessageSetsIter {
             responses: responses,
             topics: topics,

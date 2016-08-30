@@ -50,10 +50,7 @@ impl<T> Pooled<T> {
 
 impl<T: fmt::Debug> fmt::Debug for Pooled<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "Pooled {{ last_checkout: {:?}, item: {:?} }}",
-               self.last_checkout,
-               self.item)
+        write!(f, "Pooled {{ last_checkout: {:?}, item: {:?} }}", self.last_checkout, self.item)
     }
 }
 
@@ -76,10 +73,7 @@ impl Config {
 
     #[cfg(feature = "security")]
     fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(id,
-                             host,
-                             self.rw_timeout,
-                             self.security_config.as_ref().map(|c| &c.0))
+        KafkaConnection::new(id, host, self.rw_timeout, self.security_config.as_ref().map(|c| &c.0))
             .map(|c| {
                 debug!("Established: {:?}", c);
                 c
@@ -170,8 +164,7 @@ impl Connections {
             return Ok(unsafe { mem::transmute(kconn) });
         }
         let cid = self.state.next_conn_id();
-        self.conns.insert(host.to_owned(),
-                          Pooled::new(now, try!(self.config.new_conn(cid, host))));
+        self.conns.insert(host.to_owned(), Pooled::new(now, try!(self.config.new_conn(cid, host))));
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
 

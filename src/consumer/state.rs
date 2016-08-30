@@ -144,9 +144,7 @@ fn determine_partitions<'a>(assignment: &'a Assignment,
     let avail_partitions = match metadata.partitions(topic) {
         // ~ fail if the underlying topic is unkonwn to the given client
         None => {
-            debug!("determine_partitions: no such topic: {} (all metadata: {:?})",
-                   topic,
-                   metadata);
+            debug!("determine_partitions: no such topic: {} (all metadata: {:?})", topic, metadata);
             return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
         }
         Some(tp) => tp,
@@ -365,10 +363,7 @@ impl<'a> fmt::Debug for TopicPartitionsDebug<'a> {
             if i != 0 {
                 try!(write!(f, " ,"));
             }
-            try!(write!(f,
-                        "\"{}:{}\"",
-                        self.state.topic_name(tp.topic_ref),
-                        tp.partition));
+            try!(write!(f, "\"{}:{}\"", self.state.topic_name(tp.topic_ref), tp.partition));
         }
         write!(f, "]")
     }

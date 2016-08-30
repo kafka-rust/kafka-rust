@@ -202,8 +202,7 @@ impl FromByte for OffsetFetchResponse {
     type R = OffsetFetchResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.header.decode(buffer),
-                   self.topic_partitions.decode(buffer))
+        try_multi!(self.header.decode(buffer), self.topic_partitions.decode(buffer))
     }
 }
 
@@ -368,8 +367,7 @@ impl FromByte for OffsetCommitResponse {
     type R = OffsetCommitResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.header.decode(buffer),
-                   self.topic_partitions.decode(buffer))
+        try_multi!(self.header.decode(buffer), self.topic_partitions.decode(buffer))
     }
 }
 

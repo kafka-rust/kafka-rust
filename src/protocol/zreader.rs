@@ -92,11 +92,7 @@ impl<'a> ZReader<'a> {
     /// size an array of an empty array.
     pub fn read_array_len(&mut self) -> Result<usize> {
         let len = try!(self.read_i32());
-        Ok(if len < 0 {
-            0
-        } else {
-            len as usize
-        })
+        Ok(if len < 0 { 0 } else { len as usize })
     }
 }
 

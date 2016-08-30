@@ -238,9 +238,7 @@ impl Builder {
             retry_max_bytes_limit: self.retry_max_bytes_limit,
         };
         let state = try!(State::new(&mut client, &config, assignment::from_map(self.assignments)));
-        debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}",
-               config,
-               state);
+        debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}", config, state);
         Ok(Consumer {
             client: client,
             state: state,
