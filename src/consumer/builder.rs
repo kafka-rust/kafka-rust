@@ -219,9 +219,7 @@ impl Builder {
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {
             Some(client) => (client, false),
-            None => {
-                (Self::new_kafka_client(self.hosts, self.security_config), true)
-            }
+            None => (Self::new_kafka_client(self.hosts, self.security_config), true),
         };
         // ~ apply configuration settings
         try!(client.set_fetch_max_wait_time(self.fetch_max_wait_time));
@@ -237,10 +235,14 @@ impl Builder {
         let config = Config {
             group: self.group,
             fallback_offset: self.fallback_offset,
-            retry_max_bytes_limit: self.retry_max_bytes_limit
+            retry_max_bytes_limit: self.retry_max_bytes_limit,
         };
         let state = try!(State::new(&mut client, &config, assignment::from_map(self.assignments)));
         debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}", config, state);
-        Ok(Consumer{ client: client, state: state, config: config })
+        Ok(Consumer {
+            client: client,
+            state: state,
+            config: config,
+        })
     }
 }

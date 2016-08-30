@@ -39,15 +39,23 @@ macro_rules! next_i32 {
 /// stream following the validated header.
 fn validate_stream(mut stream: &[u8]) -> Result<&[u8]> {
     // ~ check the "header magic"
-    if stream.len() < MAGIC.len() { return Err(Error::UnexpectedEOF); }
-    if &stream[..MAGIC.len()] != MAGIC { return Err(Error::InvalidInputSnappy); }
+    if stream.len() < MAGIC.len() {
+        return Err(Error::UnexpectedEOF);
+    }
+    if &stream[..MAGIC.len()] != MAGIC {
+        return Err(Error::InvalidInputSnappy);
+    }
     stream = &stream[MAGIC.len()..];
     // ~ let's be assertive and (for the moment) restrict ourselves to
     // version == 1 and compatibility == 1.
     let version = next_i32!(stream);
-    if version != 1 { return Err(Error::InvalidInputSnappy); }
+    if version != 1 {
+        return Err(Error::InvalidInputSnappy);
+    }
     let compat = next_i32!(stream);
-    if compat != 1 { return Err(Error::InvalidInputSnappy); }
+    if compat != 1 {
+        return Err(Error::InvalidInputSnappy);
+    }
     Ok(stream)
 }
 
@@ -200,13 +208,15 @@ mod tests {
         let compressed = &[12, 42, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116];
         let uncompressed = uncompress(compressed);
         assert!(uncompressed.is_err());
-        assert!(if let Some(Error::InvalidInputSnappy) = uncompressed.err() { true } else { false });
+        assert!(if let Some(Error::InvalidInputSnappy) = uncompressed.err() {
+            true
+        } else {
+            false
+        });
     }
 
-    static ORIGINAL: &'static str =
-        include_str!("../../test-data/fetch1.txt");
-    static COMPRESSED: &'static [u8] =
-        include_bytes!("../../test-data/fetch1.snappy.chunked.4k");
+    static ORIGINAL: &'static str = include_str!("../../test-data/fetch1.txt");
+    static COMPRESSED: &'static [u8] = include_bytes!("../../test-data/fetch1.snappy.chunked.4k");
 
     #[test]
     fn test_snappy_reader_read() {

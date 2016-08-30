@@ -276,28 +276,23 @@ impl<P: Partitioner> Producer<P> {
         let client = &mut self.client;
         let config = &self.config;
 
-        client.internal_produce_messages(
-            config.required_acks,
-            config.ack_timeout,
-            recs.into_iter().map(|r| {
-                let mut m = client::ProduceMessage {
-                    key: to_option(r.key.as_bytes()),
-                    value: to_option(r.value.as_bytes()),
-                    topic: r.topic,
-                    partition: r.partition,
-                };
-                partitioner.partition(Topics::new(partitions), &mut m);
-                m
-            }))
+        client.internal_produce_messages(config.required_acks,
+                                         config.ack_timeout,
+                                         recs.into_iter().map(|r| {
+            let mut m = client::ProduceMessage {
+                key: to_option(r.key.as_bytes()),
+                value: to_option(r.value.as_bytes()),
+                topic: r.topic,
+                partition: r.partition,
+            };
+            partitioner.partition(Topics::new(partitions), &mut m);
+            m
+        }))
     }
 }
 
 fn to_option(data: &[u8]) -> Option<&[u8]> {
-    if data.is_empty() {
-        None
-    } else {
-        Some(data)
-    }
+    if data.is_empty() { None } else { Some(data) }
 }
 
 // --------------------------------------------------------------------
@@ -343,7 +338,8 @@ impl Builder {
             hosts: hosts,
             compression: client::DEFAULT_COMPRESSION,
             ack_timeout: Duration::from_millis(DEFAULT_ACK_TIMEOUT_MILLIS),
-            conn_idle_timeout: Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
+            conn_idle_timeout:
+                Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
             required_acks: DEFAULT_REQUIRED_ACKS,
             partitioner: DefaultPartitioner::default(),
             security_config: None,
@@ -433,9 +429,7 @@ impl<P> Builder<P> {
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {
             Some(client) => (client, false),
-            None => {
-                (Self::new_kafka_client(self.hosts, self.security_config), true)
-            }
+            None => (Self::new_kafka_client(self.hosts, self.security_config), true),
         };
         // ~ apply configuration settings
         client.set_compression(self.compression);

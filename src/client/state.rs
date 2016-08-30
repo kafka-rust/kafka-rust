@@ -187,7 +187,7 @@ pub struct TopicNames<'a> {
 }
 
 impl<'a> Iterator for TopicNames<'a> {
-    type Item=&'a str;
+    type Item = &'a str;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -281,7 +281,7 @@ impl ClientState {
                 }
                 Entry::Vacant(e) => {
                     &mut e.insert(TopicPartitions::new_with_partitions(t.partitions.len()))
-                          .partitions
+                        .partitions
                 }
             };
             // ~ sync the partitions vector with the new information
@@ -353,12 +353,11 @@ impl ClientState {
     /// ~ Updates the coordinator for the specified group and returns
     /// the coordinator host as if `group_coordinator` would have
     /// been called subsequently.
-    pub fn set_group_coordinator<'a>(
-        &'a mut self, group: &str, gc: &protocol::GroupCoordinatorResponse)
-        -> &'a str
-    {
-        debug!("set_group_coordinator: registering coordinator for '{}': {:?}",
-               group, gc);
+    pub fn set_group_coordinator<'a>(&'a mut self,
+                                     group: &str,
+                                     gc: &protocol::GroupCoordinatorResponse)
+                                     -> &'a str {
+        debug!("set_group_coordinator: registering coordinator for '{}': {:?}", group, gc);
 
         let group_host = format!("{}:{}", gc.host, gc.port);
         // ~ try to find an already existing broker
@@ -366,8 +365,11 @@ impl ClientState {
         for (i, broker) in (0u32..).zip(self.brokers.iter()) {
             if gc.broker_id == broker.node_id {
                 if group_host != broker.host {
-                    warn!("set_group_coordinator: coord_host({}) != broker_host({}) for broker_id({})!",
-                          group_host, broker.host, broker.node_id);
+                    warn!("set_group_coordinator: coord_host({}) != broker_host({}) for \
+                           broker_id({})!",
+                          group_host,
+                          broker.host,
+                          broker.node_id);
                 }
                 broker_ref._index = i;
                 break;
@@ -466,13 +468,13 @@ mod tests {
         assert_eq!(expected.len() == 0, partitions.is_empty());
         assert_eq!(expected,
                    &partitions.iter()
-                              .map(|(id, tp)| {
-                                  let broker = tp.broker(&state).map(|b| (b.id(), b.host()));
-                                  // ~ verify that find_broker delivers the same information
-                                  assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
-                                  (id, broker)
-                              })
-                              .collect::<Vec<_>>()[..]);
+                       .map(|(id, tp)| {
+                           let broker = tp.broker(&state).map(|b| (b.id(), b.host()));
+                           // ~ verify that find_broker delivers the same information
+                           assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
+                           (id, broker)
+                       })
+                       .collect::<Vec<_>>()[..]);
     }
 
     fn assert_initial_metadata_load(state: &ClientState) {

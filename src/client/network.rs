@@ -41,14 +41,16 @@ struct Pooled<T> {
 
 impl<T> Pooled<T> {
     fn new(last_checkout: Instant, item: T) -> Self {
-        Pooled { last_checkout: last_checkout, item: item }
+        Pooled {
+            last_checkout: last_checkout,
+            item: item,
+        }
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Pooled<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Pooled {{ last_checkout: {:?}, item: {:?} }}",
-               self.last_checkout, self.item)
+        write!(f, "Pooled {{ last_checkout: {:?}, item: {:?} }}", self.last_checkout, self.item)
     }
 }
 
@@ -63,19 +65,15 @@ pub struct Config {
 impl Config {
     #[cfg(not(feature = "security"))]
     fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(id, host, self.rw_timeout)
-            .map(|c| {
-                debug!("Established: {:?}", c);
-                c
-            })
+        KafkaConnection::new(id, host, self.rw_timeout).map(|c| {
+            debug!("Established: {:?}", c);
+            c
+        })
     }
 
     #[cfg(feature = "security")]
     fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(id,
-                             host,
-                             self.rw_timeout,
-                             self.security_config.as_ref().map(|c| &c.0))
+        KafkaConnection::new(id, host, self.rw_timeout, self.security_config.as_ref().map(|c| &c.0))
             .map(|c| {
                 debug!("Established: {:?}", c);
                 c
@@ -129,8 +127,7 @@ impl Connections {
     pub fn new_with_security(rw_timeout: Option<Duration>,
                              idle_timeout: Duration,
                              security: Option<SecurityConfig>)
-                             -> Connections
-    {
+                             -> Connections {
         Connections {
             conns: HashMap::new(),
             state: State::new(),
@@ -150,9 +147,7 @@ impl Connections {
         self.config.idle_timeout
     }
 
-    pub fn get_conn<'a>(&'a mut self, host: &str, now: Instant)
-                        -> Result<&'a mut KafkaConnection>
-    {
+    pub fn get_conn<'a>(&'a mut self, host: &str, now: Instant) -> Result<&'a mut KafkaConnection> {
         if let Some(conn) = self.conns.get_mut(host) {
             if now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
                 debug!("Idle timeout reached: {:?}", conn.item);
@@ -169,8 +164,7 @@ impl Connections {
             return Ok(unsafe { mem::transmute(kconn) });
         }
         let cid = self.state.next_conn_id();
-        self.conns.insert(host.to_owned(),
-                          Pooled::new(now, try!(self.config.new_conn(cid, host))));
+        self.conns.insert(host.to_owned(), Pooled::new(now, try!(self.config.new_conn(cid, host))));
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
 
@@ -230,7 +224,7 @@ mod openssled {
 
     pub enum KafkaStream {
         Plain(TcpStream),
-        Ssl(SslStream<TcpStream>)
+        Ssl(SslStream<TcpStream>),
     }
 
     impl IsSecured for KafkaStream {
@@ -246,7 +240,7 @@ mod openssled {
         fn get_ref(&self) -> &TcpStream {
             match *self {
                 KafkaStream::Plain(ref s) => s,
-                KafkaStream::Ssl(ref s) => s.get_ref()
+                KafkaStream::Ssl(ref s) => s.get_ref(),
             }
         }
 
@@ -301,13 +295,15 @@ pub struct KafkaConnection {
 
 impl fmt::Debug for KafkaConnection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "KafkaConnection {{ id: {}, secured: {}, host: \"{}\" }}",
-               self.id, self.stream.is_secured(), self.host)
+        write!(f,
+               "KafkaConnection {{ id: {}, secured: {}, host: \"{}\" }}",
+               self.id,
+               self.stream.is_secured(),
+               self.host)
     }
 }
 
 impl KafkaConnection {
-
     pub fn send(&mut self, msg: &[u8]) -> Result<usize> {
         let r = self.stream.write(&msg[..]).map_err(From::from);
         trace!("Sent {} bytes to: {:?} => {:?}", msg.len(), self, r);
@@ -338,12 +334,18 @@ impl KafkaConnection {
         r.map_err(From::from)
     }
 
-    fn from_stream(stream: KafkaStream, id: u32, host: &str, rw_timeout: Option<Duration>)
-                   -> Result<KafkaConnection>
-    {
+    fn from_stream(stream: KafkaStream,
+                   id: u32,
+                   host: &str,
+                   rw_timeout: Option<Duration>)
+                   -> Result<KafkaConnection> {
         try!(stream.set_read_timeout(rw_timeout));
         try!(stream.set_write_timeout(rw_timeout));
-        Ok(KafkaConnection { id: id, host: host.to_owned(), stream: stream })
+        Ok(KafkaConnection {
+            id: id,
+            host: host.to_owned(),
+            stream: stream,
+        })
     }
 
     #[cfg(not(feature = "security"))]
@@ -352,9 +354,11 @@ impl KafkaConnection {
     }
 
     #[cfg(feature = "security")]
-    fn new(id: u32, host: &str, rw_timeout: Option<Duration>, security: Option<&SslContext>)
-           -> Result<KafkaConnection>
-    {
+    fn new(id: u32,
+           host: &str,
+           rw_timeout: Option<Duration>,
+           security: Option<&SslContext>)
+           -> Result<KafkaConnection> {
         let stream = try!(TcpStream::connect(host));
         let stream = match security {
             Some(ctx) => KafkaStream::Ssl(try!(SslStream::connect(ctx, stream))),

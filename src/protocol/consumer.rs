@@ -16,12 +16,15 @@ pub struct GroupCoordinatorRequest<'a, 'b> {
 }
 
 impl<'a, 'b> GroupCoordinatorRequest<'a, 'b> {
-    pub fn new(group: &'b str, correlation_id: i32, client_id: &'a str)
-               -> GroupCoordinatorRequest<'a, 'b>
-    {
+    pub fn new(group: &'b str,
+               correlation_id: i32,
+               client_id: &'a str)
+               -> GroupCoordinatorRequest<'a, 'b> {
         GroupCoordinatorRequest {
-            header: HeaderRequest::new(
-                API_KEY_GROUP_COORDINATOR, API_VERSION, correlation_id, client_id),
+            header: HeaderRequest::new(API_KEY_GROUP_COORDINATOR,
+                                       API_VERSION,
+                                       correlation_id,
+                                       client_id),
             group: group,
         }
     }
@@ -29,9 +32,7 @@ impl<'a, 'b> GroupCoordinatorRequest<'a, 'b> {
 
 impl<'a, 'b> ToByte for GroupCoordinatorRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.group.encode(buffer))
+        try_multi!(self.header.encode(buffer), self.group.encode(buffer))
     }
 }
 
@@ -57,12 +58,11 @@ impl FromByte for GroupCoordinatorResponse {
     type R = GroupCoordinatorResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.error.decode(buffer),
-            self.broker_id.decode(buffer),
-            self.host.decode(buffer),
-            self.port.decode(buffer))
+        try_multi!(self.header.decode(buffer),
+                   self.error.decode(buffer),
+                   self.broker_id.decode(buffer),
+                   self.host.decode(buffer),
+                   self.port.decode(buffer))
     }
 }
 
@@ -81,18 +81,18 @@ pub enum OffsetFetchVersion {
 pub struct OffsetFetchRequest<'a, 'b, 'c> {
     pub header: HeaderRequest<'a>,
     pub group: &'b str,
-    pub topic_partitions: Vec<TopicPartitionOffsetFetchRequest<'c>>
+    pub topic_partitions: Vec<TopicPartitionOffsetFetchRequest<'c>>,
 }
 
 #[derive(Debug)]
 pub struct TopicPartitionOffsetFetchRequest<'a> {
     pub topic: &'a str,
-    pub partitions: Vec<PartitionOffsetFetchRequest>
+    pub partitions: Vec<PartitionOffsetFetchRequest>,
 }
 
 #[derive(Debug)]
 pub struct PartitionOffsetFetchRequest {
-    pub partition: i32
+    pub partition: i32,
 }
 
 impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
@@ -100,13 +100,14 @@ impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
                version: OffsetFetchVersion,
                correlation_id: i32,
                client_id: &'a str)
-               -> OffsetFetchRequest<'a, 'b, 'c>
-    {
+               -> OffsetFetchRequest<'a, 'b, 'c> {
         OffsetFetchRequest {
-            header: HeaderRequest::new(
-                API_KEY_OFFSET_FETCH, version as i16, correlation_id, client_id),
+            header: HeaderRequest::new(API_KEY_OFFSET_FETCH,
+                                       version as i16,
+                                       correlation_id,
+                                       client_id),
             group: group,
-            topic_partitions: vec!()
+            topic_partitions: vec![],
         }
     }
 
@@ -125,7 +126,10 @@ impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
 
 impl<'a> TopicPartitionOffsetFetchRequest<'a> {
     pub fn new(topic: &'a str) -> TopicPartitionOffsetFetchRequest<'a> {
-        TopicPartitionOffsetFetchRequest{topic: topic, partitions: vec!()}
+        TopicPartitionOffsetFetchRequest {
+            topic: topic,
+            partitions: vec![],
+        }
     }
 
     pub fn add(&mut self, partition: i32) {
@@ -135,26 +139,21 @@ impl<'a> TopicPartitionOffsetFetchRequest<'a> {
 
 impl PartitionOffsetFetchRequest {
     pub fn new(partition: i32) -> PartitionOffsetFetchRequest {
-        PartitionOffsetFetchRequest{partition: partition}
+        PartitionOffsetFetchRequest { partition: partition }
     }
 }
 
 impl<'a, 'b, 'c> ToByte for OffsetFetchRequest<'a, 'b, 'c> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.group.encode(buffer),
-            self.topic_partitions.encode(buffer)
-        )
+        try_multi!(self.header.encode(buffer),
+                   self.group.encode(buffer),
+                   self.topic_partitions.encode(buffer))
     }
 }
 
 impl<'a> ToByte for TopicPartitionOffsetFetchRequest<'a> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.topic.encode(buffer),
-            self.partitions.encode(buffer)
-        )
+        try_multi!(self.topic.encode(buffer), self.partitions.encode(buffer))
     }
 }
 
@@ -169,13 +168,13 @@ impl ToByte for PartitionOffsetFetchRequest {
 #[derive(Default, Debug)]
 pub struct OffsetFetchResponse {
     pub header: HeaderResponse,
-    pub topic_partitions: Vec<TopicPartitionOffsetFetchResponse>
+    pub topic_partitions: Vec<TopicPartitionOffsetFetchResponse>,
 }
 
 #[derive(Default, Debug)]
 pub struct TopicPartitionOffsetFetchResponse {
     pub topic: String,
-    pub partitions: Vec<PartitionOffsetFetchResponse>
+    pub partitions: Vec<PartitionOffsetFetchResponse>,
 }
 
 #[derive(Default, Debug)]
@@ -183,7 +182,7 @@ pub struct PartitionOffsetFetchResponse {
     pub partition: i32,
     pub offset: i64,
     pub metadata: String,
-    pub error: i16
+    pub error: i16,
 }
 
 impl PartitionOffsetFetchResponse {
@@ -194,7 +193,7 @@ impl PartitionOffsetFetchResponse {
             offset: match Error::from_protocol(self.error) {
                 None => Ok(self.offset),
                 Some(e) => Err(e),
-            }
+            },
         }
     }
 }
@@ -203,10 +202,7 @@ impl FromByte for OffsetFetchResponse {
     type R = OffsetFetchResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.topic_partitions.decode(buffer)
-        )
+        try_multi!(self.header.decode(buffer), self.topic_partitions.decode(buffer))
     }
 }
 
@@ -214,10 +210,7 @@ impl FromByte for TopicPartitionOffsetFetchResponse {
     type R = TopicPartitionOffsetFetchResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
+        try_multi!(self.topic.decode(buffer), self.partitions.decode(buffer))
     }
 }
 
@@ -225,12 +218,10 @@ impl FromByte for PartitionOffsetFetchResponse {
     type R = PartitionOffsetFetchResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.decode(buffer),
-            self.offset.decode(buffer),
-            self.metadata.decode(buffer),
-            self.error.decode(buffer)
-        )
+        try_multi!(self.partition.decode(buffer),
+                   self.offset.decode(buffer),
+                   self.metadata.decode(buffer),
+                   self.error.decode(buffer))
     }
 }
 
@@ -263,13 +254,13 @@ impl OffsetCommitVersion {
 pub struct OffsetCommitRequest<'a, 'b> {
     pub header: HeaderRequest<'a>,
     pub group: &'b str,
-    pub topic_partitions: Vec<TopicPartitionOffsetCommitRequest<'b>>
+    pub topic_partitions: Vec<TopicPartitionOffsetCommitRequest<'b>>,
 }
 
 #[derive(Debug)]
 pub struct TopicPartitionOffsetCommitRequest<'a> {
     pub topic: &'a str,
-    pub partitions: Vec<PartitionOffsetCommitRequest<'a>>
+    pub partitions: Vec<PartitionOffsetCommitRequest<'a>>,
 }
 
 #[derive(Debug)]
@@ -284,13 +275,14 @@ impl<'a, 'b> OffsetCommitRequest<'a, 'b> {
                version: OffsetCommitVersion,
                correlation_id: i32,
                client_id: &'a str)
-               -> OffsetCommitRequest<'a, 'b>
-    {
-        OffsetCommitRequest{
-            header: HeaderRequest::new(
-                API_KEY_OFFSET_COMMIT, version as i16, correlation_id, client_id),
+               -> OffsetCommitRequest<'a, 'b> {
+        OffsetCommitRequest {
+            header: HeaderRequest::new(API_KEY_OFFSET_COMMIT,
+                                       version as i16,
+                                       correlation_id,
+                                       client_id),
             group: group,
-            topic_partitions: vec!()
+            topic_partitions: vec![],
         }
     }
 
@@ -311,7 +303,7 @@ impl<'a> TopicPartitionOffsetCommitRequest<'a> {
     pub fn new(topic: &'a str) -> TopicPartitionOffsetCommitRequest<'a> {
         TopicPartitionOffsetCommitRequest {
             topic: topic,
-            partitions: vec!()
+            partitions: vec![],
         }
     }
 
@@ -321,13 +313,11 @@ impl<'a> TopicPartitionOffsetCommitRequest<'a> {
 }
 
 impl<'a> PartitionOffsetCommitRequest<'a> {
-    pub fn new(partition: i32, offset: i64, metadata: &'a str)
-               -> PartitionOffsetCommitRequest<'a>
-    {
+    pub fn new(partition: i32, offset: i64, metadata: &'a str) -> PartitionOffsetCommitRequest<'a> {
         PartitionOffsetCommitRequest {
             partition: partition,
             offset: offset,
-            metadata: metadata
+            metadata: metadata,
         }
     }
 }
@@ -347,20 +337,20 @@ impl<'a, 'b> ToByte for OffsetCommitRequest<'a, 'b> {
                 try!("".encode(buffer));
                 try!((-1i64).encode(buffer));
             }
-            _ => { /* nothing to do */ }
+            _ => {
+                // nothing to do
+            }
         }
         codecs::encode_as_array(buffer, &self.topic_partitions, |buffer, tp| {
-            try_multi!(
-                tp.topic.encode(buffer),
-                codecs::encode_as_array(buffer, &tp.partitions, |buffer, p| {
-                    try!(p.partition.encode(buffer));
-                    try!(p.offset.encode(buffer));
-                    if v == OffsetCommitVersion::V1 {
-                        try!((-1i64).encode(buffer));
-                    }
-                    p.metadata.encode(buffer)
-                })
-            )
+            try_multi!(tp.topic.encode(buffer),
+                       codecs::encode_as_array(buffer, &tp.partitions, |buffer, p| {
+                try!(p.partition.encode(buffer));
+                try!(p.offset.encode(buffer));
+                if v == OffsetCommitVersion::V1 {
+                    try!((-1i64).encode(buffer));
+                }
+                p.metadata.encode(buffer)
+            }))
         })
     }
 }
@@ -370,39 +360,35 @@ impl<'a, 'b> ToByte for OffsetCommitRequest<'a, 'b> {
 #[derive(Default, Debug)]
 pub struct OffsetCommitResponse {
     pub header: HeaderResponse,
-    pub topic_partitions: Vec<TopicPartitionOffsetCommitResponse>
+    pub topic_partitions: Vec<TopicPartitionOffsetCommitResponse>,
 }
 
 impl FromByte for OffsetCommitResponse {
     type R = OffsetCommitResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.topic_partitions.decode(buffer))
+        try_multi!(self.header.decode(buffer), self.topic_partitions.decode(buffer))
     }
 }
 
 #[derive(Default, Debug)]
 pub struct TopicPartitionOffsetCommitResponse {
     pub topic: String,
-    pub partitions: Vec<PartitionOffsetCommitResponse>
+    pub partitions: Vec<PartitionOffsetCommitResponse>,
 }
 
 impl FromByte for TopicPartitionOffsetCommitResponse {
     type R = TopicPartitionOffsetCommitResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer))
+        try_multi!(self.topic.decode(buffer), self.partitions.decode(buffer))
     }
 }
 
 #[derive(Default, Debug)]
 pub struct PartitionOffsetCommitResponse {
     pub partition: i32,
-    pub error: i16
+    pub error: i16,
 }
 
 impl PartitionOffsetCommitResponse {
@@ -415,8 +401,6 @@ impl FromByte for PartitionOffsetCommitResponse {
     type R = PartitionOffsetCommitResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.decode(buffer),
-            self.error.decode(buffer))
+        try_multi!(self.partition.decode(buffer), self.error.decode(buffer))
     }
 }

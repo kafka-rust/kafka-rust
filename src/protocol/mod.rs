@@ -28,19 +28,19 @@ pub use self::fetch::FetchRequest;
 pub use self::produce::{ProduceRequest, ProduceResponse};
 pub use self::offset::{OffsetRequest, OffsetResponse};
 pub use self::metadata::{MetadataRequest, MetadataResponse};
-pub use self::consumer::{GroupCoordinatorRequest, GroupCoordinatorResponse,
-                         OffsetFetchVersion, OffsetFetchRequest, OffsetFetchResponse,
-                         OffsetCommitVersion, OffsetCommitRequest, OffsetCommitResponse};
+pub use self::consumer::{GroupCoordinatorRequest, GroupCoordinatorResponse, OffsetFetchVersion,
+                         OffsetFetchRequest, OffsetFetchResponse, OffsetCommitVersion,
+                         OffsetCommitRequest, OffsetCommitResponse};
 
 // --------------------------------------------------------------------
 
-const API_KEY_PRODUCE: i16   = 0;
-const API_KEY_FETCH: i16     = 1;
-const API_KEY_OFFSET: i16    = 2;
-const API_KEY_METADATA: i16  = 3;
+const API_KEY_PRODUCE: i16 = 0;
+const API_KEY_FETCH: i16 = 1;
+const API_KEY_OFFSET: i16 = 2;
+const API_KEY_METADATA: i16 = 3;
 // 4-7 reserved for non-public kafka api services
-const API_KEY_OFFSET_COMMIT: i16     = 8;
-const API_KEY_OFFSET_FETCH: i16      = 9;
+const API_KEY_OFFSET_COMMIT: i16 = 8;
+const API_KEY_OFFSET_FETCH: i16 = 9;
 const API_KEY_GROUP_COORDINATOR: i16 = 10;
 
 // the default version of Kafka API we are requesting
@@ -79,7 +79,11 @@ fn test_kafka_code_from_protocol() {
         }
     };
 
-    assert!(if let None = KafkaCode::from_protocol(0) { true } else { false });
+    assert!(if let None = KafkaCode::from_protocol(0) {
+        true
+    } else {
+        false
+    });
     assert_kafka_code!(KafkaCode::OffsetOutOfRange, KafkaCode::OffsetOutOfRange as i16);
     assert_kafka_code!(KafkaCode::IllegalGeneration, KafkaCode::IllegalGeneration as i16);
     assert_kafka_code!(KafkaCode::UnsupportedVersion, KafkaCode::UnsupportedVersion as i16);
@@ -109,9 +113,11 @@ pub struct HeaderRequest<'a> {
 }
 
 impl<'a> HeaderRequest<'a> {
-    fn new(api_key: i16, api_version: i16, correlation_id: i32, client_id: &'a str)
-           -> HeaderRequest
-    {
+    fn new(api_key: i16,
+           api_version: i16,
+           correlation_id: i32,
+           client_id: &'a str)
+           -> HeaderRequest {
         HeaderRequest {
             api_key: api_key,
             api_version: api_version,
@@ -123,11 +129,10 @@ impl<'a> HeaderRequest<'a> {
 
 impl<'a> ToByte for HeaderRequest<'a> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.api_key.encode(buffer),
-            self.api_version.encode(buffer),
-            self.correlation_id.encode(buffer),
-            self.client_id.encode(buffer))
+        try_multi!(self.api_key.encode(buffer),
+                   self.api_version.encode(buffer),
+                   self.correlation_id.encode(buffer),
+                   self.client_id.encode(buffer))
     }
 }
 
@@ -135,7 +140,7 @@ impl<'a> ToByte for HeaderRequest<'a> {
 
 #[derive(Default, Debug, Clone)]
 pub struct HeaderResponse {
-    pub correlation: i32
+    pub correlation: i32,
 }
 
 impl FromByte for HeaderResponse {
@@ -180,10 +185,8 @@ fn test_to_millis_i32() {
     fn assert_valid(d: Duration, expected_millis: i32) {
         let r = to_millis_i32(d);
         match r {
-            Ok(m) =>
-                assert_eq!(expected_millis, m),
-            Err(e) =>
-                panic!("Expected Ok({}) but got Err({:?})", expected_millis, e),
+            Ok(m) => assert_eq!(expected_millis, m),
+            Err(e) => panic!("Expected Ok({}) but got Err({:?})", expected_millis, e),
         }
     }
     assert_valid(Duration::from_millis(1_234), 1_234);

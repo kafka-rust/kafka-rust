@@ -46,24 +46,26 @@ pub struct MessageProduceRequest<'a> {
 }
 
 impl<'a, 'b> ProduceRequest<'a, 'b> {
-    pub fn new(required_acks: i16, timeout: i32,
-               correlation_id: i32, client_id: &'a str,
+    pub fn new(required_acks: i16,
+               timeout: i32,
+               correlation_id: i32,
+               client_id: &'a str,
                compression: Compression)
-               -> ProduceRequest<'a, 'b>
-    {
+               -> ProduceRequest<'a, 'b> {
         ProduceRequest {
-            header: HeaderRequest::new(
-                API_KEY_PRODUCE, API_VERSION, correlation_id, client_id),
+            header: HeaderRequest::new(API_KEY_PRODUCE, API_VERSION, correlation_id, client_id),
             required_acks: required_acks,
             timeout: timeout,
-            topic_partitions: vec!(),
-            compression: compression
+            topic_partitions: vec![],
+            compression: compression,
         }
     }
 
-    pub fn add(&mut self, topic: &'b str, partition: i32,
-               key: Option<&'b [u8]>, value: Option<&'b [u8]>)
-    {
+    pub fn add(&mut self,
+               topic: &'b str,
+               partition: i32,
+               key: Option<&'b [u8]>,
+               value: Option<&'b [u8]>) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
                 tp.add(partition, key, value);
@@ -80,12 +82,12 @@ impl<'a> TopicPartitionProduceRequest<'a> {
     pub fn new(topic: &'a str, compression: Compression) -> TopicPartitionProduceRequest<'a> {
         TopicPartitionProduceRequest {
             topic: topic,
-            partitions: vec!(),
-            compression: compression
+            partitions: vec![],
+            compression: compression,
         }
     }
 
-    pub fn add(&mut self, partition: i32, key: Option<&'a [u8]>, value: Option<&'a[u8]>) {
+    pub fn add(&mut self, partition: i32, key: Option<&'a [u8]>, value: Option<&'a [u8]>) {
         for pp in &mut self.partitions {
             if pp.partition == partition {
                 pp.add(key, value);
@@ -97,8 +99,14 @@ impl<'a> TopicPartitionProduceRequest<'a> {
 }
 
 impl<'a> PartitionProduceRequest<'a> {
-    pub fn new<'b>(partition: i32, key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> PartitionProduceRequest<'b> {
-        let mut r = PartitionProduceRequest { partition: partition, messages: Vec::new() };
+    pub fn new<'b>(partition: i32,
+                   key: Option<&'b [u8]>,
+                   value: Option<&'b [u8]>)
+                   -> PartitionProduceRequest<'b> {
+        let mut r = PartitionProduceRequest {
+            partition: partition,
+            messages: Vec::new(),
+        };
         r.add(key, value);
         r
     }
@@ -134,8 +142,7 @@ impl<'a> PartitionProduceRequest<'a> {
     //
     // MessetSet => [Offset MessageSize Message]
     // MessageSets are not preceded by an int32 like other array elements in the protocol.
-    fn _encode<W: Write>(&self, out: &mut W, compression: Compression)
-                         -> Result<()> {
+    fn _encode<W: Write>(&self, out: &mut W, compression: Compression) -> Result<()> {
         try!(self.partition.encode(out));
 
         // ~ render the whole MessageSet first to a temporary buffer
@@ -165,9 +172,7 @@ impl<'a> PartitionProduceRequest<'a> {
 // ~ A helper method to render `cdata` into `out` as a compressed message.
 // ~ `out` is first cleared and then populated with the rendered message.
 #[cfg(any(feature = "snappy", feature = "gzip"))]
-fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression)
-                     -> Result<()>
-{
+fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) -> Result<()> {
     out.clear();
     let cmsg = MessageProduceRequest::new(None, Some(cdata));
     cmsg._encode_to_buf(out, MESSAGE_MAGIC_BYTE, compression as i8)
@@ -175,7 +180,10 @@ fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression)
 
 impl<'a> MessageProduceRequest<'a> {
     fn new<'b>(key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> MessageProduceRequest<'b> {
-        MessageProduceRequest { key: key, value: value }
+        MessageProduceRequest {
+            key: key,
+            value: value,
+        }
     }
 
     // render a single message as: Offset MessageSize Message
@@ -208,11 +216,11 @@ impl<'a> MessageProduceRequest<'a> {
 
         // compute the crc and store it back in the reserved space
         crc = to_crc(&buffer[(crc_pos + 4)..]) as i32;
-        try!(crc.encode(&mut &mut buffer[crc_pos .. crc_pos + 4]));
+        try!(crc.encode(&mut &mut buffer[crc_pos..crc_pos + 4]));
 
         // compute the size and store it back in the reserved space
         size = (buffer.len() - crc_pos) as i32;
-        try!(size.encode(&mut &mut buffer[size_pos .. size_pos + 4]));
+        try!(size.encode(&mut &mut buffer[size_pos..size_pos + 4]));
 
         Ok(())
     }
@@ -232,7 +240,7 @@ impl<'a> ToByte for Option<&'a [u8]> {
 #[derive(Default, Debug, Clone)]
 pub struct ProduceResponse {
     pub header: HeaderResponse,
-    pub topic_partitions: Vec<TopicPartitionProduceResponse>
+    pub topic_partitions: Vec<TopicPartitionProduceResponse>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -245,7 +253,7 @@ pub struct TopicPartitionProduceResponse {
 pub struct PartitionProduceResponse {
     pub partition: i32,
     pub error: i16,
-    pub offset: i64
+    pub offset: i64,
 }
 
 impl ProduceResponse {
@@ -274,7 +282,7 @@ impl PartitionProduceResponse {
             offset: match Error::from_protocol(self.error) {
                 None => Ok(self.offset),
                 Some(e) => Err(e),
-            }
+            },
         }
     }
 }
@@ -284,10 +292,7 @@ impl FromByte for ProduceResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.topic_partitions.decode(buffer)
-        )
+        try_multi!(self.header.decode(buffer), self.topic_partitions.decode(buffer))
     }
 }
 
@@ -296,10 +301,7 @@ impl FromByte for TopicPartitionProduceResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
+        try_multi!(self.topic.decode(buffer), self.partitions.decode(buffer))
     }
 }
 
@@ -308,11 +310,8 @@ impl FromByte for PartitionProduceResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.decode(buffer),
-            self.error.decode(buffer),
-            self.offset.decode(buffer)
-        )
+        try_multi!(self.partition.decode(buffer),
+                   self.error.decode(buffer),
+                   self.offset.decode(buffer))
     }
 }
-
