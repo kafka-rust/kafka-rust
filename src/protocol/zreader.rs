@@ -92,7 +92,11 @@ impl<'a> ZReader<'a> {
     /// size an array of an empty array.
     pub fn read_array_len(&mut self) -> Result<usize> {
         let len = try!(self.read_i32());
-        Ok(if len < 0 { 0 } else { len as usize })
+        Ok(if len < 0 {
+            0
+        } else {
+            len as usize
+        })
     }
 }
 
@@ -140,7 +144,7 @@ fn test_read_i8() {
 fn test_read_i16() {
     let data = &[1, 2, 16, 1];
     let mut r = ZReader::new(data);
-    assert_eq!(258 , r.read_i16().unwrap());
+    assert_eq!(258, r.read_i16().unwrap());
     assert_eq!(4097, r.read_i16().unwrap());
     assert!(r.read_i16().is_err());
 
@@ -184,10 +188,8 @@ fn test_read_i64() {
 
 #[test]
 fn test_read_str() {
-    let data = &[0u8, 5, b'h', b'e', b'l', b'l', b'o',
-                 0u8, 7, b',', b' ', b'w', b'o', b'r', b'l', b'd',
-                 255, // a "null" string
-                 28]; // some byte
+    let data = &[0u8, 5, b'h', b'e', b'l', b'l', b'o', 0u8, 7, b',', b' ', b'w', b'o', b'r', b'l',
+                 b'd', 255 /* a "null" string */, 28]; // some byte
 
     let mut r = ZReader::new(data);
     assert_eq!("hello", r.read_str().unwrap());
@@ -202,8 +204,7 @@ fn test_read_str() {
 /// returned slice/string.
 #[test]
 fn test_mutability_lifetimes() {
-    let data = &[0, 2, b'h', b'i',
-                 0, 2, b'h', b'o'];
+    let data = &[0, 2, b'h', b'i', 0, 2, b'h', b'o'];
 
     let mut r = ZReader::new(data);
     let x = r.read_str().unwrap();

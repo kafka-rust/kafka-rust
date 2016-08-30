@@ -163,7 +163,7 @@ pub enum KafkaCode {
     InvalidTimestamp = 32,
     /// The broker does not support the requested SASL mechanism.
     UnsupportedSaslMechanism = 33,
-    ///	Request is not valid given the current SASL state.
+    /// Request is not valid given the current SASL state.
     IllegalSaslState = 34,
     /// The version of API is not supported.
     UnsupportedVersion = 35,
@@ -181,7 +181,9 @@ impl From<io::Error> for Error {
 
 #[cfg(feature = "security")]
 impl From<ssl::error::SslError> for Error {
-    fn from(err: ssl::error::SslError) -> Error { Error::Ssl(err) }
+    fn from(err: ssl::error::SslError) -> Error {
+        Error::Ssl(err)
+    }
 }
 
 impl Clone for Error {
@@ -190,16 +192,20 @@ impl Clone for Error {
             &Error::Io(ref err) => Error::Io(io::Error::new(err.kind(), "Io Error")),
             &Error::Kafka(x) => Error::Kafka(x),
             #[cfg(feature = "security")]
-            &Error::Ssl(ref x) => match x {
-                &ssl::error::SslError::StreamError(ref e) => 
-                    Error::Ssl(ssl::error::SslError::StreamError(
-                            io::Error::new(e.kind(), "Stream Error"))
-                    ),
-                &ssl::error::SslError::SslSessionClosed => 
-                    Error::Ssl(ssl::error::SslError::SslSessionClosed),
-                &ssl::error::SslError::OpenSslErrors(ref v) => 
-                    Error::Ssl(ssl::error::SslError::OpenSslErrors(v.clone())),
-            },
+            &Error::Ssl(ref x) => {
+                match x {
+                    &ssl::error::SslError::StreamError(ref e) => {
+                        Error::Ssl(ssl::error::SslError::StreamError(io::Error::new(e.kind(),
+                                                                                    "Stream Error")))
+                    }
+                    &ssl::error::SslError::SslSessionClosed => {
+                        Error::Ssl(ssl::error::SslError::SslSessionClosed)
+                    }
+                    &ssl::error::SslError::OpenSslErrors(ref v) => {
+                        Error::Ssl(ssl::error::SslError::OpenSslErrors(v.clone()))
+                    }
+                }
+            }
             &Error::UnsupportedProtocol => Error::UnsupportedProtocol,
             &Error::UnsupportedCompression => Error::UnsupportedCompression,
             #[cfg(feature = "snappy")]
@@ -237,7 +243,7 @@ impl error::Error for Error {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             Error::Io(ref err) => err.cause(),
-            _ => None
+            _ => None,
         }
     }
 }

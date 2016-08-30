@@ -36,22 +36,23 @@ pub struct FetchRequest<'a, 'b> {
 #[derive(Debug)]
 pub struct TopicPartitionFetchRequest {
     // partition-id -> partition-data
-    pub partitions: HashMap<i32, PartitionFetchRequest, PartitionHasher>
+    pub partitions: HashMap<i32, PartitionFetchRequest, PartitionHasher>,
 }
 
 #[derive(Debug)]
 pub struct PartitionFetchRequest {
     pub offset: i64,
-    pub max_bytes: i32
+    pub max_bytes: i32,
 }
 
 impl<'a, 'b> FetchRequest<'a, 'b> {
-
-    pub fn new(correlation_id: i32, client_id: &'a str, max_wait_time: i32, min_bytes: i32)
+    pub fn new(correlation_id: i32,
+               client_id: &'a str,
+               max_wait_time: i32,
+               min_bytes: i32)
                -> FetchRequest<'a, 'b> {
         FetchRequest {
-            header: HeaderRequest::new(
-                API_KEY_FETCH, API_VERSION, correlation_id, client_id),
+            header: HeaderRequest::new(API_KEY_FETCH, API_VERSION, correlation_id, client_id),
             replica: -1,
             max_wait_time: max_wait_time,
             min_bytes: min_bytes,
@@ -60,7 +61,8 @@ impl<'a, 'b> FetchRequest<'a, 'b> {
     }
 
     pub fn add(&mut self, topic: &'b str, partition: i32, offset: i64, max_bytes: i32) {
-        self.topic_partitions.entry(topic)
+        self.topic_partitions
+            .entry(topic)
             .or_insert_with(|| TopicPartitionFetchRequest::new())
             .add(partition, offset, max_bytes)
     }
@@ -121,19 +123,18 @@ impl TopicPartitionFetchRequest {
 }
 
 impl PartitionFetchRequest {
-    fn encode<T:Write>(&self, partition: i32, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            partition.encode(buffer),
-            self.offset.encode(buffer),
-            self.max_bytes.encode(buffer)
-        )
+    fn encode<T: Write>(&self, partition: i32, buffer: &mut T) -> Result<()> {
+        try_multi!(partition.encode(buffer),
+                   self.offset.encode(buffer),
+                   self.max_bytes.encode(buffer))
     }
 }
 
 // ~ response related -------------------------------------------------
 
 pub struct ResponseParser<'a, 'b, 'c>
-    where 'a: 'c, 'b: 'c
+    where 'a: 'c,
+          'b: 'c
 {
     pub validate_crc: bool,
     pub requests: Option<&'c FetchRequest<'a, 'b>>,
@@ -180,9 +181,10 @@ pub struct Response {
 impl Response {
     /// Parses a Response from binary data as defined by the
     /// Kafka Protocol.
-    fn from_vec(response: Vec<u8>, reqs: Option<&FetchRequest>, validate_crc: bool)
-                -> Result<Response>
-    {
+    fn from_vec(response: Vec<u8>,
+                reqs: Option<&FetchRequest>,
+                validate_crc: bool)
+                -> Result<Response> {
         let slice = unsafe { mem::transmute(&response[..]) };
         let mut r = ZReader::new(slice);
         let correlation_id = try!(r.read_i32());
@@ -190,7 +192,7 @@ impl Response {
         Ok(Response {
             raw_data: response,
             correlation_id: correlation_id,
-            topics: topics
+            topics: topics,
         })
     }
 
@@ -219,9 +221,10 @@ pub struct Topic<'a> {
 }
 
 impl<'a> Topic<'a> {
-    fn read(r: &mut ZReader<'a>, reqs: Option<&FetchRequest>, validate_crc: bool)
-            -> Result<Topic<'a>>
-    {
+    fn read(r: &mut ZReader<'a>,
+            reqs: Option<&FetchRequest>,
+            validate_crc: bool)
+            -> Result<Topic<'a>> {
         let name = try!(r.read_str());
         let preqs = reqs.and_then(|reqs| reqs.get(name));
         let partitions = array_of!(r, Partition::read(r, preqs, validate_crc));
@@ -261,9 +264,10 @@ pub struct Partition<'a> {
 }
 
 impl<'a> Partition<'a> {
-    fn read(r: &mut ZReader<'a>, preqs: Option<&TopicPartitionFetchRequest>, validate_crc: bool)
-            -> Result<Partition<'a>>
-    {
+    fn read(r: &mut ZReader<'a>,
+            preqs: Option<&TopicPartitionFetchRequest>,
+            validate_crc: bool)
+            -> Result<Partition<'a>> {
         let partition = try!(r.read_i32());
         let proffs = preqs.and_then(|preqs| preqs.get(partition))
             .map(|preq| preq.offset)
@@ -277,11 +281,13 @@ impl<'a> Partition<'a> {
             partition: partition,
             data: match error {
                 Some(error) => Err(error),
-                None => Ok(Data {
-                    highwatermark_offset: highwatermark,
-                    message_set: msgset,
-                    first_message_idx: Cell::new(0),
-                }),
+                None => {
+                    Ok(Data {
+                        highwatermark_offset: highwatermark,
+                        message_set: msgset,
+                        first_message_idx: Cell::new(0),
+                    })
+                }
             },
         })
     }
@@ -356,18 +362,19 @@ impl<'a> MessageSet<'a> {
         // further modifying it and providing
         // publicly no mutability possibilities
         // this is safe
-        let ms = try!(MessageSet::from_slice(unsafe {
-            mem::transmute(&data[..])
-        }, req_offset, validate_crc));
+        let ms = try!(MessageSet::from_slice(unsafe { mem::transmute(&data[..]) },
+                                             req_offset,
+                                             validate_crc));
         return Ok(MessageSet {
             raw_data: Cow::Owned(data),
             messages: ms.messages,
         });
     }
 
-    fn from_slice<'b>(raw_data: &'b [u8], req_offset: i64, validate_crc: bool)
-                      -> Result<MessageSet<'b>>
-    {
+    fn from_slice<'b>(raw_data: &'b [u8],
+                      req_offset: i64,
+                      validate_crc: bool)
+                      -> Result<MessageSet<'b>> {
         let mut r = ZReader::new(raw_data);
         let mut msgs = Vec::new();
         while !r.is_empty() {
@@ -392,7 +399,7 @@ impl<'a> MessageSet<'a> {
                                 msgs.push(Message {
                                     offset: offset,
                                     key: pmsg.key,
-                                    value: pmsg.value
+                                    value: pmsg.value,
                                 });
                             }
                         }
@@ -420,7 +427,9 @@ impl<'a> MessageSet<'a> {
         })
     }
 
-    fn next_message<'b>(r: &mut ZReader<'b>, validate_crc: bool) -> Result<(i64, ProtocolMessage<'b>)> {
+    fn next_message<'b>(r: &mut ZReader<'b>,
+                        validate_crc: bool)
+                        -> Result<(i64, ProtocolMessage<'b>)> {
         let offset = try!(r.read_i64());
         let msg_data = try!(r.read_bytes());
         Ok((offset, try!(ProtocolMessage::from_slice(msg_data, validate_crc))))
@@ -474,8 +483,7 @@ mod tests {
     use super::{FetchRequest, Response, Message};
     use error::{Error, KafkaCode};
 
-    static FETCH1_TXT: &'static str =
-        include_str!("../../test-data/fetch1.txt");
+    static FETCH1_TXT: &'static str = include_str!("../../test-data/fetch1.txt");
     static FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.nocompression.kafka.0821");
     static FETCH1_FETCH_RESPONSE_SNAPPY_K0821: &'static [u8] =
@@ -487,8 +495,7 @@ mod tests {
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
-    static FETCH2_TXT: &'static str =
-        include_str!("../../test-data/fetch2.txt");
+    static FETCH2_TXT: &'static str = include_str!("../../test-data/fetch2.txt");
     static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900: &'static [u8] =
         include_bytes!("../../test-data/fetch2.mytopic.nocompression.kafka.0900");
     static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900: &'static [u8] =
@@ -511,7 +518,10 @@ mod tests {
         all_msgs
     }
 
-    fn test_decode_new_fetch_response(msg_per_line: &str, response: Vec<u8>, requests: Option<&FetchRequest>, validate_crc: bool) {
+    fn test_decode_new_fetch_response(msg_per_line: &str,
+                                      response: Vec<u8>,
+                                      requests: Option<&FetchRequest>,
+                                      validate_crc: bool) {
         let resp = Response::from_vec(response, requests, validate_crc);
         let resp = resp.unwrap();
 
@@ -538,7 +548,7 @@ mod tests {
     fn skip_lines(mut lines: &str, mut n: usize) -> &str {
         while n > 0 {
             n -= 1;
-            lines = &lines[lines.find('\n').map(|i| i+1).unwrap_or(0) ..];
+            lines = &lines[lines.find('\n').map(|i| i + 1).unwrap_or(0)..];
         }
         lines
     }
@@ -548,15 +558,19 @@ mod tests {
         let mut req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 0, -1);
         req.add("foo-quux", 0, 100, -1);
-        test_decode_new_fetch_response(
-            FETCH1_TXT, FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), Some(&req), false);
+        test_decode_new_fetch_response(FETCH1_TXT,
+                                       FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(),
+                                       Some(&req),
+                                       false);
 
         // ~ pretend we asked for messages as of offset five (while
         // the server delivered the zero-offset message as well)
         req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 5, -1);
-        test_decode_new_fetch_response(
-            skip_lines(FETCH1_TXT, 5), FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), Some(&req), false);
+        test_decode_new_fetch_response(skip_lines(FETCH1_TXT, 5),
+                                       FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(),
+                                       Some(&req),
+                                       false);
     }
 
     // verify we don't crash but cleanly fail and report we don't
@@ -566,8 +580,13 @@ mod tests {
     fn test_unsupported_compression_snappy() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 0, -1);
-        let r = Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
-        assert!(match r { Err(Error::UnsupportedCompression) => true, _ => false });
+        let r = Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(),
+                                   Some(&req),
+                                   false);
+        assert!(match r {
+            Err(Error::UnsupportedCompression) => true,
+            _ => false,
+        });
     }
 
     #[cfg(feature = "snappy")]
@@ -575,15 +594,19 @@ mod tests {
     fn test_from_slice_snappy_k0821() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 0, -1);
-        test_decode_new_fetch_response(
-            FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
+        test_decode_new_fetch_response(FETCH1_TXT,
+                                       FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(),
+                                       Some(&req),
+                                       false);
 
         // ~ pretend we asked for messages as of offset three (while
         // the server delivered the zero-offset message as well)
         req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 3, -1);
-        test_decode_new_fetch_response(
-            skip_lines(FETCH1_TXT, 3), FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
+        test_decode_new_fetch_response(skip_lines(FETCH1_TXT, 3),
+                                       FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(),
+                                       Some(&req),
+                                       false);
     }
 
     #[cfg(feature = "snappy")]
@@ -591,8 +614,10 @@ mod tests {
     fn test_from_slice_snappy_k0822() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 0, -1);
-        test_decode_new_fetch_response(
-            FETCH1_TXT, FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), Some(&req), false);
+        test_decode_new_fetch_response(FETCH1_TXT,
+                                       FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(),
+                                       Some(&req),
+                                       false);
     }
 
     #[cfg(feature = "gzip")]
@@ -600,34 +625,49 @@ mod tests {
     fn test_from_slice_gzip_k0821() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 0, -1);
-        test_decode_new_fetch_response(
-            FETCH1_TXT, FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), Some(&req), false);
+        test_decode_new_fetch_response(FETCH1_TXT,
+                                       FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(),
+                                       Some(&req),
+                                       false);
 
         // ~ pretend we asked for messages as of offset one (while the
         // server delivered the zero-offset message as well)
         req.add("my-topic", 0, 1, -1);
-        test_decode_new_fetch_response(
-            skip_lines(FETCH1_TXT, 1), FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), Some(&req), false);
+        test_decode_new_fetch_response(skip_lines(FETCH1_TXT, 1),
+                                       FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(),
+                                       Some(&req),
+                                       false);
 
         // ~ pretend we asked for messages as of offset ten (while the
         // server delivered the zero-offset message as well)
         req.add("my-topic", 0, 10, -1);
-        test_decode_new_fetch_response(
-            skip_lines(FETCH1_TXT, 10), FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), Some(&req), false);
+        test_decode_new_fetch_response(skip_lines(FETCH1_TXT, 10),
+                                       FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(),
+                                       Some(&req),
+                                       false);
     }
 
     #[test]
     fn test_crc_validation() {
-        test_decode_new_fetch_response(FETCH2_TXT, FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900.to_owned(), None, true);
+        test_decode_new_fetch_response(FETCH2_TXT,
+                                       FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900.to_owned(),
+                                       None,
+                                       true);
 
         // now test the same message but with an invalid crc checksum
         // (modified by hand)
         // 1) without checking the crc ... since only the crc field is
         // artificially falsified ... we expect the rest of the
         // message to be parsed correctly
-        test_decode_new_fetch_response(FETCH2_TXT, FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(), None, false);
+        test_decode_new_fetch_response(
+            FETCH2_TXT,
+            FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(),
+            None,
+            false);
         // 2) with checking the crc ... parsing should fail immediately
-        match Response::from_vec(FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(), None, true) {
+        match Response::from_vec(FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(),
+                                 None,
+                                 true) {
             Ok(_) => panic!("Expected error, but got successful response!"),
             Err(Error::Kafka(KafkaCode::CorruptMessage)) => {}
             Err(e) => panic!("Expected KafkaCode::CorruptMessage error, but got: {:?}", e),
@@ -655,48 +695,66 @@ mod tests {
 
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), false)
+            bench_decode_new_fetch_response(
+                b,
+                super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(),
+                false)
         }
 
         #[cfg(feature = "snappy")]
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), false)
+            bench_decode_new_fetch_response(b,
+                                            super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(),
+                                            false)
         }
 
         #[cfg(feature = "snappy")]
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), false)
+            bench_decode_new_fetch_response(b,
+                                            super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(),
+                                            false)
         }
 
         #[cfg(feature = "gzip")]
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), false)
+            bench_decode_new_fetch_response(b,
+                                            super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(),
+                                            false)
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821_validate_crc(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(), true)
+            bench_decode_new_fetch_response(
+                b,
+                super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(),
+                true)
         }
 
         #[cfg(feature = "snappy")]
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0821_validate_crc(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), true)
+            bench_decode_new_fetch_response(b,
+                                            super::FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(),
+                                            true)
         }
 
         #[cfg(feature = "snappy")]
         #[bench]
         fn bench_decode_new_fetch_response_snappy_k0822_validate_crc(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(), true)
+            bench_decode_new_fetch_response(b,
+                                            super::FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(),
+                                            true)
         }
 
         #[cfg(feature = "gzip")]
         #[bench]
         fn bench_decode_new_fetch_response_gzip_k0821_validate_crc(b: &mut Bencher) {
-            bench_decode_new_fetch_response(b, super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(), true)
+            bench_decode_new_fetch_response(b,
+                                            super::FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(),
+                                            true)
         }
     }
 }

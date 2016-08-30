@@ -11,13 +11,13 @@ use super::{API_KEY_OFFSET, API_VERSION};
 pub struct OffsetRequest<'a> {
     pub header: HeaderRequest<'a>,
     pub replica: i32,
-    pub topic_partitions: Vec<TopicPartitionOffsetRequest<'a>>
+    pub topic_partitions: Vec<TopicPartitionOffsetRequest<'a>>,
 }
 
 #[derive(Default, Debug)]
 pub struct TopicPartitionOffsetRequest<'a> {
     pub topic: &'a str,
-    pub partitions: Vec<PartitionOffsetRequest>
+    pub partitions: Vec<PartitionOffsetRequest>,
 }
 
 #[derive(Default, Debug)]
@@ -30,10 +30,9 @@ pub struct PartitionOffsetRequest {
 impl<'a> OffsetRequest<'a> {
     pub fn new(correlation_id: i32, client_id: &'a str) -> OffsetRequest<'a> {
         OffsetRequest {
-            header: HeaderRequest::new(
-                API_KEY_OFFSET, API_VERSION, correlation_id, client_id),
+            header: HeaderRequest::new(API_KEY_OFFSET, API_VERSION, correlation_id, client_id),
             replica: -1,
-            topic_partitions: vec!()
+            topic_partitions: vec![],
         }
     }
 
@@ -54,7 +53,7 @@ impl<'a> TopicPartitionOffsetRequest<'a> {
     pub fn new(topic: &'a str) -> TopicPartitionOffsetRequest<'a> {
         TopicPartitionOffsetRequest {
             topic: topic,
-            partitions: vec!()
+            partitions: vec![],
         }
     }
 
@@ -65,7 +64,7 @@ impl<'a> TopicPartitionOffsetRequest<'a> {
 
 impl PartitionOffsetRequest {
     pub fn new(partition: i32, time: i64) -> PartitionOffsetRequest {
-        PartitionOffsetRequest{
+        PartitionOffsetRequest {
             partition: partition,
             max_offsets: 1,
             time: time,
@@ -74,31 +73,24 @@ impl PartitionOffsetRequest {
 }
 
 impl<'a> ToByte for OffsetRequest<'a> {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.replica.encode(buffer),
-            self.topic_partitions.encode(buffer)
-        )
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        try_multi!(self.header.encode(buffer),
+                   self.replica.encode(buffer),
+                   self.topic_partitions.encode(buffer))
     }
 }
 
 impl<'a> ToByte for TopicPartitionOffsetRequest<'a> {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.encode(buffer),
-            self.partitions.encode(buffer)
-        )
+        try_multi!(self.topic.encode(buffer), self.partitions.encode(buffer))
     }
 }
 
 impl ToByte for PartitionOffsetRequest {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.encode(buffer),
-            self.time.encode(buffer),
-            self.max_offsets.encode(buffer)
-        )
+        try_multi!(self.partition.encode(buffer),
+                   self.time.encode(buffer),
+                   self.max_offsets.encode(buffer))
     }
 }
 
@@ -120,7 +112,7 @@ pub struct TopicPartitionOffsetResponse {
 pub struct PartitionOffsetResponse {
     pub partition: i32,
     pub error: i16,
-    pub offset: Vec<i64>
+    pub offset: Vec<i64>,
 }
 
 impl PartitionOffsetResponse {
@@ -128,12 +120,14 @@ impl PartitionOffsetResponse {
         PartitionOffset {
             partition: self.partition,
             offset: match Error::from_protocol(self.error) {
-                None => Ok(match self.offset.first() {
-                    Some(offs) => *offs,
-                    None => -1,
-                }),
+                None => {
+                    Ok(match self.offset.first() {
+                        Some(offs) => *offs,
+                        None => -1,
+                    })
+                }
                 Some(e) => Err(e),
-            }
+            },
         }
     }
 }
@@ -143,10 +137,8 @@ impl FromByte for OffsetResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.topic_partitions.decode(buffer)
-        )
+        try_multi!(self.header.decode(buffer),
+                   self.topic_partitions.decode(buffer))
     }
 }
 
@@ -155,10 +147,7 @@ impl FromByte for TopicPartitionOffsetResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
+        try_multi!(self.topic.decode(buffer), self.partitions.decode(buffer))
     }
 }
 
@@ -167,10 +156,8 @@ impl FromByte for PartitionOffsetResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.partition.decode(buffer),
-            self.error.decode(buffer),
-            self.offset.decode(buffer)
-        )
+        try_multi!(self.partition.decode(buffer),
+                   self.error.decode(buffer),
+                   self.offset.decode(buffer))
     }
 }

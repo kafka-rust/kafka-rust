@@ -34,25 +34,25 @@ impl<'a, T: ToByte + 'a + ?Sized> ToByte for &'a T {
 }
 
 impl ToByte for i8 {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_i8(*self).or_else(|e| Err(From::from(e)))
     }
 }
 
 impl ToByte for i16 {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_i16::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
 
 impl ToByte for i32 {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_i32::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
 
 impl ToByte for i64 {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         buffer.write_i64::<BigEndian>(*self).or_else(|e| Err(From::from(e)))
     }
 }
@@ -76,8 +76,8 @@ fn test_string_too_long() {
     assert!(buf.is_empty());
 }
 
-impl <V: ToByte> ToByte for [V] {
-    fn encode<T:Write>(&self, buffer: &mut T) -> Result<()> {
+impl<V: ToByte> ToByte for [V] {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         encode_as_array(buffer, self, |buffer, x| x.encode(buffer))
     }
 }
@@ -96,18 +96,16 @@ pub struct AsStrings<'a, T: 'a>(pub &'a [T]);
 
 impl<'a, T: AsRef<str> + 'a> ToByte for AsStrings<'a, T> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        encode_as_array(buffer, self.0, |buffer, x| {
-            x.as_ref().encode(buffer)
-        })
+        encode_as_array(buffer, self.0, |buffer, x| x.as_ref().encode(buffer))
     }
 }
 
 /// ~ Renders the length of `xs` to `buffer` as the start of a
 /// protocol array and then for each element of `xs` invokes `f`
 /// assuming that function will render the element to the buffer.
-pub fn encode_as_array<T, F, W>(buffer: &mut W, xs: &[T], mut f: F)
-                                -> Result<()>
-    where F: FnMut(&mut W, &T) -> Result<()>, W: Write
+pub fn encode_as_array<T, F, W>(buffer: &mut W, xs: &[T], mut f: F) -> Result<()>
+    where F: FnMut(&mut W, &T) -> Result<()>,
+          W: Write
 {
     let l = try_usize_to_int!(xs.len(), i32);
     try!(buffer.write_i32::<BigEndian>(l));
@@ -127,7 +125,7 @@ pub trait FromByte {
         let mut temp: Self::R = Default::default();
         match temp.decode(buffer) {
             Ok(_) => Ok(temp),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 }
@@ -193,7 +191,9 @@ impl FromByte for String {
         if let Err(e) = decode!(buffer, read_i16, &mut length) {
             return Err(e);
         }
-        if length <= 0 { return Ok(()); }
+        if length <= 0 {
+            return Ok(());
+        }
         self.reserve(length as usize);
         let _ = buffer.take(length as u64).read_to_string(self);
         if self.len() != length as usize {
@@ -203,7 +203,7 @@ impl FromByte for String {
     }
 }
 
-impl <V: FromByte + Default> FromByte for Vec<V>{
+impl<V: FromByte + Default> FromByte for Vec<V> {
     type R = Vec<V>;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
@@ -211,7 +211,9 @@ impl <V: FromByte + Default> FromByte for Vec<V>{
         if let Err(e) = decode!(buffer, read_i32, &mut length) {
             return Err(e);
         }
-        if length <= 0 { return Ok(()); }
+        if length <= 0 {
+            return Ok(());
+        }
         self.reserve(length as usize);
         for _ in 0..length {
             let mut e: V = Default::default();
@@ -222,26 +224,28 @@ impl <V: FromByte + Default> FromByte for Vec<V>{
     }
 }
 
-impl FromByte for Vec<u8>{
+impl FromByte for Vec<u8> {
     type R = Vec<u8>;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i32 = 0;
         match decode!(buffer, read_i32, &mut length) {
-            Ok(_) => {},
-            Err(e) => return Err(e)
+            Ok(_) => {}
+            Err(e) => return Err(e),
         }
-        if length <= 0 {return Ok(());}
+        if length <= 0 {
+            return Ok(());
+        }
         self.reserve(length as usize);
         match buffer.take(length as u64).read_to_end(self) {
             Ok(size) => {
                 if size < length as usize {
-                    return Err(Error::UnexpectedEOF)
+                    return Err(Error::UnexpectedEOF);
                 } else {
                     Ok(())
                 }
-            },
-            Err(e) => Err(From::from(e))
+            }
+            Err(e) => Err(From::from(e)),
         }
     }
 }
@@ -249,7 +253,7 @@ impl FromByte for Vec<u8>{
 #[test]
 fn codec_i8() {
     use std::io::Cursor;
-    let mut buf = vec!();
+    let mut buf = vec![];
     let orig: i8 = 5;
 
     // Encode into buffer
@@ -269,7 +273,7 @@ fn codec_i8() {
 #[test]
 fn codec_i16() {
     use std::io::Cursor;
-    let mut buf = vec!();
+    let mut buf = vec![];
     let orig: i16 = 5;
 
     // Encode into buffer
@@ -289,7 +293,7 @@ fn codec_i16() {
 #[test]
 fn codec_32() {
     use std::io::Cursor;
-    let mut buf = vec!();
+    let mut buf = vec![];
     let orig: i32 = 5;
 
     // Encode into buffer
@@ -309,7 +313,7 @@ fn codec_32() {
 #[test]
 fn codec_i64() {
     use std::io::Cursor;
-    let mut buf = vec!();
+    let mut buf = vec![];
     let orig: i64 = 5;
 
     // Encode into buffer
@@ -329,7 +333,7 @@ fn codec_i64() {
 #[test]
 fn codec_string() {
     use std::io::Cursor;
-    let mut buf = vec!();
+    let mut buf = vec![];
     let orig = "test".to_owned();
 
     // Encode into buffer
@@ -349,15 +353,15 @@ fn codec_string() {
 #[test]
 fn codec_vec_u8() {
     use std::io::Cursor;
-    let mut buf = vec!();
-    let orig: Vec<u8> = vec!(1, 2, 3);
+    let mut buf = vec![];
+    let orig: Vec<u8> = vec![1, 2, 3];
 
     // Encode into buffer
     orig.encode(&mut buf).unwrap();
     assert_eq!(buf, [0, 0, 0, 3, 1, 2, 3]);
 
     // Read from buffer into existing variable
-    let mut dec1: Vec<u8> = vec!();
+    let mut dec1: Vec<u8> = vec![];
     dec1.decode(&mut Cursor::new(&buf[..])).unwrap();
     assert_eq!(dec1, orig);
 
@@ -397,17 +401,20 @@ fn codec_as_strings() {
         }}
     }
 
-    { // slice of &str
+    {
+        // slice of &str
         let orig: &[&str] = &["abc", "defg"];
         enc_dec_cmp!(orig);
     }
 
-    { // vec of &str
+    {
+        // vec of &str
         let orig: Vec<&str> = vec!["abc", "defg"];
         enc_dec_cmp!(orig);
     }
 
-    { // vec of String
+    {
+        // vec of String
         let orig: Vec<String> = vec!["abc".to_owned(), "defg".to_owned()];
         enc_dec_cmp!(orig);
     }

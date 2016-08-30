@@ -77,8 +77,8 @@ impl<'a> fmt::Debug for Topics<'a> {
 }
 
 impl<'a> IntoIterator for &'a Topics<'a> {
-    type Item=Topic<'a>;
-    type IntoIter=TopicIter<'a>;
+    type Item = Topic<'a>;
+    type IntoIter = TopicIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -86,8 +86,8 @@ impl<'a> IntoIterator for &'a Topics<'a> {
 }
 
 impl<'a> IntoIterator for Topics<'a> {
-    type Item=Topic<'a>;
-    type IntoIter=TopicIter<'a>;
+    type Item = Topic<'a>;
+    type IntoIter = TopicIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         TopicIter::new(self.state)
@@ -110,7 +110,7 @@ impl<'a> TopicIter<'a> {
 }
 
 impl<'a> Iterator for TopicIter<'a> {
-    type Item=Topic<'a>;
+    type Item = Topic<'a>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -215,8 +215,8 @@ impl<'a> fmt::Debug for Partitions<'a> {
 }
 
 impl<'a> IntoIterator for &'a Partitions<'a> {
-    type Item=Partition<'a>;
-    type IntoIter=PartitionIter<'a>;
+    type Item = Partition<'a>;
+    type IntoIter = PartitionIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -224,8 +224,8 @@ impl<'a> IntoIterator for &'a Partitions<'a> {
 }
 
 impl<'a> IntoIterator for Partitions<'a> {
-    type Item=Partition<'a>;
-    type IntoIter=PartitionIter<'a>;
+    type Item = Partition<'a>;
+    type IntoIter = PartitionIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         PartitionIter::new(self.state, self.tp)
@@ -248,7 +248,7 @@ impl<'a> PartitionIter<'a> {
 }
 
 impl<'a> Iterator for PartitionIter<'a> {
-    type Item=Partition<'a>;
+    type Item = Partition<'a>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {

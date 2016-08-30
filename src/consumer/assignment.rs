@@ -14,7 +14,7 @@ pub struct Assignment {
     /// available partitions
     /// ~ kept in ascending order
     /// ~ no duplicates
-    partitions: Vec<i32>, 
+    partitions: Vec<i32>,
 }
 
 impl Assignment {
@@ -41,7 +41,8 @@ impl Assignments {
     }
 
     pub fn topic_ref(&self, topic: &str) -> Option<AssignmentRef> {
-        self.0.binary_search_by(|x| x.topic.as_str().cmp(topic))
+        self.0
+            .binary_search_by(|x| x.topic.as_str().cmp(topic))
             .ok()
             .map(|i| AssignmentRef(i as u32))
     }
