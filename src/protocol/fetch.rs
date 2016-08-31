@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::io::Write;
 use std::mem;
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 
@@ -285,7 +284,6 @@ impl<'a> Partition<'a> {
                     Ok(Data {
                         highwatermark_offset: highwatermark,
                         message_set: msgset,
-                        first_message_idx: Cell::new(0),
                     })
                 }
             },
@@ -308,10 +306,6 @@ impl<'a> Partition<'a> {
 pub struct Data<'a> {
     highwatermark_offset: i64,
     message_set: MessageSet<'a>,
-
-    // ~ points to the first message in message_set#messages to
-    // deliver through messages()
-    first_message_idx: Cell<usize>,
 }
 
 impl<'a> Data<'a> {
@@ -327,7 +321,7 @@ impl<'a> Data<'a> {
     /// Retrieves the fetched message data for this partition.
     #[inline]
     pub fn messages(&self) -> &[Message<'a>] {
-        &self.message_set.messages[self.first_message_idx.get()..]
+        &self.message_set.messages
     }
 }
 
