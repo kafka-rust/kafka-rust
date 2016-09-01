@@ -22,14 +22,10 @@ expect the version number to grow quickly.)
 kafka = "0.5"
 ```
 
-To build kafka-rust you'll need `libsnappy-dev` on your local machine.
-If that library is not installed in the usual path, you can export the
-`LD_LIBRARY_PATH` and `LD_RUN_PATH` environment variables before
-issueing `cargo build`.
-
-Alternatively, support for various features, including snappy, can be
-turned off at compile time.  See kafka-rust's `Cargo.toml` and
-[cargo's documentation](http://doc.crates.io/manifest.html#the-features-section).
+To build kafka-rust the usual `cargo build` should suffice.  The crate
+supports various features which can be turned off at compile time.
+See kafka-rust's `Cargo.toml` and [cargo's
+documentation](http://doc.crates.io/manifest.html#the-features-section).
 
 ### Supported Kafka version
 
