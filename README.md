@@ -22,7 +22,7 @@ expect the version number to grow quickly.)
 kafka = "0.5"
 ```
 
-To build kafka-rust you'll merely need issue `cargo build`.  The crate
+To build kafka-rust the usual `cargo build` should suffice.  The crate
 supports various features which can be turned off at compile time.
 See kafka-rust's `Cargo.toml` and [cargo's
 documentation](http://doc.crates.io/manifest.html#the-features-section).
