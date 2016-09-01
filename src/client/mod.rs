@@ -408,7 +408,7 @@ impl KafkaClient {
     ///     ctx.set_certificate_file(&cert, X509FileType::PEM).unwrap();
     ///     ctx.set_private_key_file(&key, X509FileType::PEM).unwrap();
     ///     ctx.set_default_verify_paths().unwrap();
-    ///     ctx.set_verify(SSL_VERIFY_PEER, None);
+    ///     ctx.set_verify(SSL_VERIFY_PEER);
     ///
     ///     let mut client = KafkaClient::new_secure(vec!("localhost:9092".to_owned()),
     ///                                              SecurityConfig::new(ctx));
