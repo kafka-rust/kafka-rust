@@ -2,12 +2,6 @@ language: rust
 sudo: false
 cache: cargo
 
-addons:
-  apt:
-    packages:
-      - libsnappy1
-      - libsnappy-dev
-
 rust:
   - stable
   - beta
