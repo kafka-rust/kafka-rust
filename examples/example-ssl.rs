@@ -12,7 +12,7 @@ mod example {
     use std::env;
     use std::process;
 
-    use self::kafka::client::{KafkaClient, SecurityConfig};
+    use self::kafka::client::{FetchOffset, KafkaClient, SecurityConfig};
 
     use self::openssl::ssl::{SslContext, SslMethod, SSL_VERIFY_PEER};
     use self::openssl::x509::X509FileType;
@@ -60,13 +60,33 @@ mod example {
                 process::exit(1);
             }
             Ok(_) => {
-                let topics = client.topics();
-                if topics.len() == 0 {
+                // ~ at this point we have successfully loaded
+                // metadata via a secured connection to one of the
+                // specified brokers
+
+                if client.topics().len() == 0 {
                     println!("No topics available!");
                 } else {
-                    println!("Available topic(s):");
-                    for topic in client.topics().names() {
-                        println!("\t{}", topic);
+                    // ~ now let's communicate with all the brokers in
+                    // the cluster our topics are spread over
+
+                    let topics: Vec<String> = client.topics().names().map(Into::into).collect();
+                    match client.fetch_offsets(topics.as_slice(), FetchOffset::Latest) {
+                        Err(e) => {
+                            println!("{:?}", e);
+                            drop(client);
+                            process::exit(1);
+                        }
+                        Ok(toffsets) => {
+                            println!("Topic offsets:");
+                            for (topic, mut offs) in toffsets {
+                                offs.sort_by_key(|x| x.partition);
+                                println!("{}", topic);
+                                for off in offs {
+                                    println!("\t{}: {:?}", off.partition, off.offset);
+                                }
+                            }
+                        }
                     }
                 }
             }
