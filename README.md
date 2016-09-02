@@ -4,8 +4,10 @@
 
 ### Documentation
 
-* This library is primarily documented through examples in its [API
-documentation](https://spicavigo.github.io/kafka-rust/).
+* This library is primarily documented through examples in its API
+documentation:
+  * [master](https://spicavigo.github.io/kafka-rust/)
+  * [0.5](https://docs.rs/kafka/^0.5)
 * Documentation about Kafka itself can be found at [its project
 home page](http://kafka.apache.org/).
 
