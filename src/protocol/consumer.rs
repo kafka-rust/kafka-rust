@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use codecs::{self, ToByte, FromByte};
 use error::{self, Error, Result};
-use utils::TopicPartitionOffset;
+use utils::PartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET_FETCH, API_KEY_OFFSET_COMMIT, API_KEY_GROUP_COORDINATOR, API_VERSION};
@@ -186,9 +186,8 @@ pub struct PartitionOffsetFetchResponse {
 }
 
 impl PartitionOffsetFetchResponse {
-    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffset {
-        TopicPartitionOffset {
-            topic: topic,
+    pub fn get_offsets(&self) -> PartitionOffset {
+        PartitionOffset {
             partition: self.partition,
             offset: match Error::from_protocol(self.error) {
                 None => Ok(self.offset),

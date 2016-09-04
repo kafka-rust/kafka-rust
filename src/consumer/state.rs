@@ -205,20 +205,22 @@ fn load_consumed_offsets(client: &mut KafkaClient,
                                                            FetchGroupOffset::new(topic, p)
                                                        })
                                                    })));
-    for tpo in tpos {
-        match tpo.offset {
-            Ok(o) if o != -1 => {
-                offs.insert(TopicPartition {
-                                topic_ref: assignments.topic_ref(&tpo.topic)
-                                    .expect("non-assigned topic"),
-                                partition: tpo.partition,
-                            },
-                            ConsumedOffset {
-                                offset: o,
-                                dirty: false,
-                            });
+    for (topic, pos) in tpos {
+        for po in pos {
+            match po.offset {
+                Ok(o) if o != -1 => {
+                    offs.insert(TopicPartition {
+                                    topic_ref: assignments.topic_ref(&topic)
+                                        .expect("non-assigned topic"),
+                                    partition: po.partition,
+                                },
+                                ConsumedOffset {
+                                    offset: o,
+                                    dirty: false,
+                                });
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
     Ok(offs)

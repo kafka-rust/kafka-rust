@@ -1115,7 +1115,7 @@ impl KafkaClient {
     pub fn fetch_group_offsets<'a, J, I>(&mut self,
                                          group: &str,
                                          partitions: I)
-                                         -> Result<Vec<TopicPartitionOffset>>
+                                         -> Result<HashMap<String, Vec<PartitionOffset>>>
         where J: AsRef<FetchGroupOffset<'a>>,
               I: IntoIterator<Item = J>
     {
@@ -1123,17 +1123,15 @@ impl KafkaClient {
                                                         self.config.offset_fetch_version,
                                                         self.state.next_correlation_id(),
                                                         &self.config.client_id);
-        let mut num = 0;
         for p in partitions {
             let p = p.as_ref();
             if self.state.contains_topic_partition(p.topic, p.partition) {
                 req.add(p.topic, p.partition);
-                num += 1;
             } else {
                 return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
-        __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
+        __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
     }
 
     /// Fetch offset for all partitions of a particular topic of a consumer group
@@ -1150,22 +1148,24 @@ impl KafkaClient {
     pub fn fetch_group_topic_offsets(&mut self,
                                      group: &str,
                                      topic: &str)
-                                     -> Result<Vec<TopicPartitionOffset>> {
+                                     -> Result<Vec<PartitionOffset>> {
         let mut req = protocol::OffsetFetchRequest::new(group,
                                                         self.config.offset_fetch_version,
                                                         self.state.next_correlation_id(),
                                                         &self.config.client_id);
-        let num;
+
         match self.state.partitions_for(topic) {
             None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
             Some(tp) => {
-                num = tp.len();
                 for (id, _) in tp {
                     req.add(topic, id);
                 }
             }
         }
-        __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
+
+        Ok(try!(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config))
+            .remove(topic)
+            .unwrap_or_else(Vec::new))
     }
 }
 
@@ -1312,13 +1312,11 @@ fn __commit_offsets(req: protocol::OffsetCommitRequest,
     }
 }
 
-// ~ 'num_partitions' is merely a hint to pre-allocation inside this method
 fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
-                         num_partitions: usize,
                          state: &mut state::ClientState,
                          conn_pool: &mut network::Connections,
                          config: &ClientConfig)
-                         -> Result<Vec<TopicPartitionOffset>> {
+                         -> Result<HashMap<String, Vec<PartitionOffset>>> {
     let mut attempt = 1;
     loop {
         let now = Instant::now();
@@ -1333,21 +1331,24 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
         };
 
         let mut retry_code = None;
-        let mut v = Vec::with_capacity(num_partitions);
+        let mut topic_map = HashMap::with_capacity(r.topic_partitions.len());
 
         'rproc: for tp in r.topic_partitions {
+            let mut partition_offsets = Vec::with_capacity(tp.partitions.len());
+
             for p in tp.partitions {
-                let mut o = p.get_offsets(tp.topic.clone());
+                let mut o = p.get_offsets();
+
                 match o.offset {
                     Ok(_) => {
-                        v.push(o);
+                        partition_offsets.push(o);
                     }
                     Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)) => {
                         // ~ occurs only on protocol v0 when no offset available
                         // for the group in question; we'll align the behavior
                         // with protocol v1.
                         o.offset = Ok(-1);
-                        v.push(o);
+                        partition_offsets.push(o);
                     }
                     Err(Error::Kafka(e @ KafkaCode::GroupLoadInProgress)) => {
                         retry_code = Some(e);
@@ -1366,7 +1367,10 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                     }
                 }
             }
+
+            topic_map.insert(tp.topic, partition_offsets);
         }
+
         // ~ have we processed the result successfully or shall we
         // retry once more?
         match retry_code {
@@ -1382,7 +1386,7 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                 }
             }
             None => {
-                return Ok(v);
+                return Ok(topic_map);
             }
         }
     }
