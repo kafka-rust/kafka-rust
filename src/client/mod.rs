@@ -827,7 +827,7 @@ impl KafkaClient {
             for tp in resp.topic_partitions {
                 let e = res.entry(tp.topic).or_insert(vec![]);
                 for p in tp.partitions {
-                    e.push(p.into_offset());
+                    e.push(try!(p.into_offset()));
                 }
             }
         }
@@ -1337,17 +1337,8 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
             let mut partition_offsets = Vec::with_capacity(tp.partitions.len());
 
             for p in tp.partitions {
-                let mut o = p.get_offsets();
-
-                match o.offset {
-                    Ok(_) => {
-                        partition_offsets.push(o);
-                    }
-                    Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)) => {
-                        // ~ occurs only on protocol v0 when no offset available
-                        // for the group in question; we'll align the behavior
-                        // with protocol v1.
-                        o.offset = Ok(-1);
+                match p.get_offsets() {
+                    Ok(o) => {
                         partition_offsets.push(o);
                     }
                     Err(Error::Kafka(e @ KafkaCode::GroupLoadInProgress)) => {
@@ -1365,6 +1356,7 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                         // ~ immeditaly abort with the error
                         return Err(e);
                     }
+
                 }
             }
 

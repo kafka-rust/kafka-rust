@@ -8,7 +8,7 @@ use error::Result;
 /// already known topic.
 #[derive(Debug)]
 pub struct PartitionOffset {
-    pub offset: Result<i64>,
+    pub offset: i64,
     pub partition: i32,
 }
 

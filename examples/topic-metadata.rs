@@ -65,30 +65,28 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
         for (topic, offsets) in offsets {
             topic_width = cmp::max(topic_width, topic.len());
             let mut offs = Vec::with_capacity(offsets.len());
+
             for _ in 0..offsets.len() {
                 offs.push(Offsets::default());
             }
+
             for offset in offsets {
-                match offset.offset {
-                    Ok(o) => offs[offset.partition as usize].latest = o,
-                    Err(e) => debug!("Cannot determine latest offset for {}:{}: {}",
-                                     topic, offset.partition, e),
-                }
+                offs[offset.partition as usize].latest = offset.offset;
             }
+
             m.insert(topic, offs);
         }
+
         offsets = try!(client.fetch_offsets(&topics, FetchOffset::Earliest)
                        .map_err(|e| e.to_string()));
+
         for (topic, offsets) in offsets {
             let mut offs = m.get_mut(&topic).expect("unknown topic");
             for offset in offsets {
-                match offset.offset {
-                    Ok(o) => offs[offset.partition as usize].earliest = o,
-                    Err(e) => debug!("Cannot determine earliest offset for {}:{}: {}",
-                                     topic, offset.partition, e),
-                }
+                offs[offset.partition as usize].earliest = offset.offset;
             }
         }
+
         (topic_width + 2, m)
     };
     // ~ produce the output
