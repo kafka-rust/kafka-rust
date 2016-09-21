@@ -153,11 +153,15 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
 
 fn send_batch(producer: &mut Producer, batch: &[Record<(), Trimmed>]) -> Result<(), Error> {
     let rs = try!(producer.send_all(batch));
+
     for r in rs {
-        if let Err(e) = r.offset {
-            return Err(From::from(e));
+        for tpc in r.partition_confirms {
+            if let Err(code) = tpc.offset {
+                return Err(Error::Kafka(kafka::error::Error::Kafka(code)));
+            }
         }
     }
+
     Ok(())
 }
 

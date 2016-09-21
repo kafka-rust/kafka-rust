@@ -4,6 +4,7 @@
 //! The entry point into this module is `KafkaClient` obtained by a
 //! call to `KafkaClient::new()`.
 
+use std;
 use std::collections::hash_map::HashMap;
 use std::io::Cursor;
 use std::iter::Iterator;
@@ -14,7 +15,6 @@ use std::time::{Duration, Instant};
 // pub re-export
 pub use compression::Compression;
 pub use utils::PartitionOffset;
-pub use utils::TopicPartitionOffset;
 
 #[cfg(feature = "security")]
 pub use self::network::SecurityConfig;
@@ -349,6 +349,30 @@ impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
         self
     }
 }
+
+/// A confirmation of messages sent back by the Kafka broker
+/// to confirm delivery of producer messages.
+#[derive(Debug)]
+pub struct ProduceConfirm {
+    /// The topic the messages were sent to.
+    pub topic: String,
+
+    /// The list of individual confirmations for each offset and partition.
+    pub partition_confirms: Vec<ProducePartitionConfirm>,
+}
+
+/// A confirmation of messages sent back by the Kafka broker
+/// to confirm delivery of producer messages for a particular topic.
+#[derive(Debug)]
+pub struct ProducePartitionConfirm {
+    /// The offset assigned to the first message in the message set appended
+    /// to this partition, or an error if one occurred.
+    pub offset: std::result::Result<i64, KafkaCode>,
+
+    /// The partition to which the message(s) were appended.
+    pub partition: i32,
+}
+
 
 // --------------------------------------------------------------------
 
@@ -1017,7 +1041,7 @@ impl KafkaClient {
                                           acks: RequiredAcks,
                                           ack_timeout: Duration,
                                           messages: I)
-                                          -> Result<Vec<TopicPartitionOffset>>
+                                          -> Result<Vec<ProduceConfirm>>
         where J: AsRef<ProduceMessage<'a, 'b>>,
               I: IntoIterator<Item = J>
     {
@@ -1174,7 +1198,7 @@ impl KafkaClientInternals for KafkaClient {
                                                required_acks: i16,
                                                ack_timeout: i32,
                                                messages: I)
-                                               -> Result<Vec<TopicPartitionOffset>>
+                                               -> Result<Vec<ProduceConfirm>>
         where J: AsRef<ProduceMessage<'a, 'b>>,
               I: IntoIterator<Item = J>
     {
@@ -1356,7 +1380,6 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                         // ~ immeditaly abort with the error
                         return Err(e);
                     }
-
                 }
             }
 
@@ -1405,7 +1428,7 @@ fn __fetch_messages(conn_pool: &mut network::Connections,
 fn __produce_messages(conn_pool: &mut network::Connections,
                       reqs: HashMap<&str, protocol::ProduceRequest>,
                       no_acks: bool)
-                      -> Result<Vec<TopicPartitionOffset>> {
+                      -> Result<Vec<ProduceConfirm>> {
     let now = Instant::now();
     if no_acks {
         for (host, req) in reqs {
@@ -1413,7 +1436,7 @@ fn __produce_messages(conn_pool: &mut network::Connections,
         }
         Ok(vec![])
     } else {
-        let mut res: Vec<TopicPartitionOffset> = vec![];
+        let mut res: Vec<ProduceConfirm> = vec![];
         for (host, req) in reqs {
             let resp =
                 try!(__send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, now, req));
