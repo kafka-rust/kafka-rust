@@ -25,7 +25,7 @@ openssl = { version = "0.8", optional = true }
 
 [dev-dependencies]
 getopts = "0.2"
-env_logger = "0.3"
+env_logger = { version = "0.3", default-features = false }
 time = "0.1"
 
 
