@@ -5,6 +5,7 @@
 //! call to `KafkaClient::new()`.
 
 use std;
+use std::collections::hash_map;
 use std::collections::hash_map::HashMap;
 use std::io::Cursor;
 use std::iter::Iterator;
@@ -849,13 +850,55 @@ impl KafkaClient {
                                                                           now,
                                                                           req));
             for tp in resp.topic_partitions {
-                let e = res.entry(tp.topic).or_insert(vec![]);
-                for p in tp.partitions {
-                    e.push(try!(p.into_offset()));
+                let mut entry = res.entry(tp.topic);
+                let mut new_resp_offsets = None;
+                let mut err = None;
+                // Use an explicit scope here to allow insertion into a vacant entry
+                // below
+                {
+                    // Return a &mut to the response we will be collecting into to
+                    // return from this function. If there are some responses we have
+                    // already prepared, keep collecting into that; otherwise, make a
+                    // new collection to return.
+                    let resp_offsets = match entry {
+                        hash_map::Entry::Occupied(ref mut e) => e.get_mut(),
+                        hash_map::Entry::Vacant(_) => {
+                            new_resp_offsets = Some(Vec::new());
+                            new_resp_offsets.as_mut().unwrap()
+                        }
+                    };
+                    for p in tp.partitions {
+                        let partition_offset = match p.into_offset() {
+                            Ok(po) => po,
+                            Err(code) => {
+                                err = Some((p.partition, code));
+                                break;
+                            }
+                        };
+                        resp_offsets.push(partition_offset);
+                    }
+                }
+                if let Some((partition, code)) = err {
+                    let topic = KafkaClient::get_key_from_entry(entry);
+                    return Err(Error::TopicPartitionError(topic, partition, code));
+                }
+                if let hash_map::Entry::Vacant(e) = entry {
+                    // unwrap is ok because if it is Vacant, it would have
+                    // been made into a Some above
+                    e.insert(new_resp_offsets.unwrap());
                 }
             }
         }
+
         Ok(res)
+    }
+
+    /// Takes ownership back from the given HashMap Entry.
+    fn get_key_from_entry<'a, K: 'a, V: 'a>(entry: hash_map::Entry<'a, K, V>) -> K {
+        match entry {
+            hash_map::Entry::Occupied(e) => e.remove_entry().0,
+            hash_map::Entry::Vacant(e) => e.into_key(),
+        }
     }
 
     /// Fetch offset for a single topic.

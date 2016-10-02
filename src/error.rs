@@ -20,8 +20,15 @@ pub type Result<T> = result::Result<T, Error>;
 pub enum Error {
     /// Input/Output error while communicating with Kafka
     Io(io::Error),
+
     /// An error as reported by a remote Kafka server
     Kafka(KafkaCode),
+
+    /// An error when transmitting a request for a particular topic and partition.
+    /// Contains the topic and partition of the request that failed, and the
+    /// error code as reported by the Kafka server, respectively.
+    TopicPartitionError(String, i32, KafkaCode),
+
     /// An error as reported by OpenSsl
     #[cfg(feature = "security")]
     Ssl(ssl::error::SslError),
@@ -30,22 +37,30 @@ pub enum Error {
     /// server speaking a newer protocol version (than the one this
     /// library supports)
     UnsupportedProtocol,
+
     /// Failure to correctly parse the server response by this library
     /// due to an unsupported compression format of the data
     UnsupportedCompression,
+
     /// Failure to decode a snappy compressed response from Kafka
     #[cfg(feature = "snappy")]
     InvalidInputSnappy,
+
     /// Failure to decode a response due to an insufficient number of bytes available
     UnexpectedEOF,
+
     /// Failure to decode or encode a response or request respectively
     CodecError,
+
     /// Failure to decode a string into a valid utf8 byte sequence
     StringDecodeError,
+
     /// Unable to reach any host
     NoHostReachable,
+
     /// Unable to set up `Consumer` due to missing topic assignments
     NoTopicsAssigned,
+
     /// An invalid user-provided duration
     InvalidDuration,
 }
@@ -190,6 +205,9 @@ impl Clone for Error {
         match self {
             &Error::Io(ref err) => Error::Io(io::Error::new(err.kind(), "Io Error")),
             &Error::Kafka(x) => Error::Kafka(x),
+            &Error::TopicPartitionError(ref topic, partition, error_code) => {
+                Error::TopicPartitionError(topic.clone(), partition, error_code)
+            }
             #[cfg(feature = "security")]
             &Error::Ssl(ref x) => {
                 match x {
@@ -224,6 +242,7 @@ impl error::Error for Error {
         match *self {
             Error::Io(ref err) => error::Error::description(err),
             Error::Kafka(_) => "Kafka Error",
+            Error::TopicPartitionError(_, _, _) => "Error in request for topic and partition",
             #[cfg(feature = "security")]
             Error::Ssl(ref err) => error::Error::description(err),
             Error::UnsupportedProtocol => "Unsupported protocol version",
@@ -252,6 +271,9 @@ impl fmt::Display for Error {
         match *self {
             Error::Io(ref err) => err.fmt(f),
             Error::Kafka(ref c) => write!(f, "Kafka Error ({:?})", c),
+            Error::TopicPartitionError(ref topic, ref partition, ref error_code) => {
+                write!(f, "Topic Partition Error ({:?}, {:?}, {:?})", topic, partition, error_code)
+            }
             #[cfg(feature = "security")]
             Error::Ssl(ref err) => err.fmt(f),
             Error::UnsupportedProtocol => write!(f, "Unsupported protocol version"),

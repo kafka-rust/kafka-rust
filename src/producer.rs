@@ -269,7 +269,9 @@ impl<P: Partitioner> Producer<P> {
         }
     }
 
-    /// Synchronously send all of the specified messages to Kafka.
+    /// Synchronously send all of the specified messages to Kafka. To validate
+    /// that all of the specified records have been successfully delivered,
+    /// inspection of the offsets on the returned confirms is necessary.
     pub fn send_all<'a, K, V>(&mut self, recs: &[Record<'a, K, V>]) -> Result<Vec<ProduceConfirm>>
         where K: AsBytes,
               V: AsBytes
