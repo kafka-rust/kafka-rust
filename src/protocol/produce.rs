@@ -7,9 +7,9 @@ use compression::gzip;
 #[cfg(feature = "snappy")]
 use compression::snappy;
 
-use error::{Error, Result};
-use utils::TopicPartitionOffset;
+use error::{KafkaCode, Result};
 
+use producer::{ProduceConfirm, ProducePartitionConfirm};
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
 use super::to_crc;
@@ -257,31 +257,35 @@ pub struct PartitionProduceResponse {
 }
 
 impl ProduceResponse {
-    pub fn get_response(&self) -> Vec<TopicPartitionOffset> {
+    pub fn get_response(self) -> Vec<ProduceConfirm> {
         self.topic_partitions
-            .iter()
-            .flat_map(|ref tp| tp.get_response(tp.topic.clone()))
+            .into_iter()
+            .map(|tp| tp.get_response())
             .collect()
     }
 }
 
 impl TopicPartitionProduceResponse {
-    pub fn get_response(&self, topic: String) -> Vec<TopicPartitionOffset> {
-        self.partitions
+    pub fn get_response(self) -> ProduceConfirm {
+        let confirms = self.partitions
             .iter()
-            .map(|ref p| p.get_response(topic.clone()))
-            .collect()
+            .map(|ref p| p.get_response())
+            .collect();
+
+        ProduceConfirm {
+            topic: self.topic,
+            partition_confirms: confirms,
+        }
     }
 }
 
 impl PartitionProduceResponse {
-    pub fn get_response(&self, topic: String) -> TopicPartitionOffset {
-        TopicPartitionOffset {
-            topic: topic,
+    pub fn get_response(&self) -> ProducePartitionConfirm {
+        ProducePartitionConfirm {
             partition: self.partition,
-            offset: match Error::from_protocol(self.error) {
+            offset: match KafkaCode::from_protocol(self.error) {
                 None => Ok(self.offset),
-                Some(e) => Err(e),
+                Some(code) => Err(code),
             },
         }
     }

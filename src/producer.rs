@@ -63,14 +63,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hasher, SipHasher, BuildHasher, BuildHasherDefault};
 use std::time::Duration;
-
 use client::{self, KafkaClient};
-// public re-exports
-pub use client::Compression;
-pub use client::RequiredAcks;
-use error::Result;
-use utils::TopicPartitionOffset;
-
+use error::{Error, Result};
 use ref_slice::ref_slice;
 
 #[cfg(feature = "security")]
@@ -78,9 +72,11 @@ use client::SecurityConfig;
 
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
-
 use client_internals::KafkaClientInternals;
 use protocol;
+
+// public re-exports
+pub use client::{Compression, RequiredAcks, ProduceConfirm, ProducePartitionConfirm};
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
@@ -254,20 +250,29 @@ impl<P: Partitioner> Producer<P> {
               V: AsBytes
     {
         let mut rs = try!(self.send_all(ref_slice(rec)));
+
         if self.config.required_acks == 0 {
             // ~ with no required_acks we get no response and
             // consider the send-data request blindly as successful
             Ok(())
         } else {
             assert_eq!(1, rs.len());
-            rs.pop().unwrap().offset.map(|_| ())
+            let mut produce_confirm = rs.pop().unwrap();
+
+            assert_eq!(1, produce_confirm.partition_confirms.len());
+            produce_confirm.partition_confirms
+                .pop()
+                .unwrap()
+                .offset
+                .map(|_| ())
+                .map_err(Error::Kafka)
         }
     }
 
-    /// Synchronously send all of the specified messages to Kafka.
-    pub fn send_all<'a, K, V>(&mut self,
-                              recs: &[Record<'a, K, V>])
-                              -> Result<Vec<TopicPartitionOffset>>
+    /// Synchronously send all of the specified messages to Kafka. To validate
+    /// that all of the specified records have been successfully delivered,
+    /// inspection of the offsets on the returned confirms is necessary.
+    pub fn send_all<'a, K, V>(&mut self, recs: &[Record<'a, K, V>]) -> Result<Vec<ProduceConfirm>>
         where K: AsBytes,
               V: AsBytes
     {

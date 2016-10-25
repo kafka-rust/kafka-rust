@@ -1,8 +1,8 @@
 use std::io::{Read, Write};
 
 use codecs::{self, ToByte, FromByte};
-use error::{self, Error, Result};
-use utils::TopicPartitionOffset;
+use error::{self, Error, Result, KafkaCode};
+use utils::PartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET_FETCH, API_KEY_OFFSET_COMMIT, API_KEY_GROUP_COORDINATOR, API_VERSION};
@@ -186,14 +186,24 @@ pub struct PartitionOffsetFetchResponse {
 }
 
 impl PartitionOffsetFetchResponse {
-    pub fn get_offsets(&self, topic: String) -> TopicPartitionOffset {
-        TopicPartitionOffset {
-            topic: topic,
-            partition: self.partition,
-            offset: match Error::from_protocol(self.error) {
-                None => Ok(self.offset),
-                Some(e) => Err(e),
-            },
+    pub fn get_offsets(&self) -> Result<PartitionOffset> {
+        match Error::from_protocol(self.error) {
+            Some(Error::Kafka(KafkaCode::UnknownTopicOrPartition)) => {
+                // ~ occurs only on protocol v0 when no offset available
+                // for the group in question; we'll align the behavior
+                // with protocol v1.
+                Ok(PartitionOffset {
+                    partition: self.partition,
+                    offset: -1,
+                })
+            }
+            Some(e) => Err(e),
+            None => {
+                Ok(PartitionOffset {
+                    partition: self.partition,
+                    offset: self.offset,
+                })
+            }
         }
     }
 }

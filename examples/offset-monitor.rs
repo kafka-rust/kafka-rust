@@ -116,30 +116,26 @@ impl State {
     {
         // ~ get the latest topic offsets
         let latests = try!(client.fetch_topic_offsets(topic, FetchOffset::Latest));
+
         for l in latests {
             let off = self.offsets.get_mut(l.partition as usize)
                 .expect("[topic offset] non-existent partition");
             off.prev_latest = off.curr_latest;
-            off.curr_latest = l.offset.unwrap_or(-1);
+            off.curr_latest = l.offset;
         }
+
         if !group.is_empty() {
             // ~ get the current group offsets
             let groups = try!(client.fetch_group_topic_offsets(group, topic));
             for g in groups {
                 let off = self.offsets.get_mut(g.partition as usize)
                     .expect("[group offset] non-existent partition");
-                match g.offset {
-                    Ok(v) => {
-                        // ~ it's quite likely that we fetched group offsets
-                        // which are a bit ahead of the topic's latest offset
-                        // since we issued the fetch-latest-offset request
-                        // earlier than the request for the group offsets
-                        off.curr_lag = cmp::max(0, off.curr_latest - v - self.lag_decr);
-                    }
-                    Err(_) => {
-                        off.curr_lag = -1;
-                    }
-                }
+
+                // ~ it's quite likely that we fetched group offsets
+                // which are a bit ahead of the topic's latest offset
+                // since we issued the fetch-latest-offset request
+                // earlier than the request for the group offsets
+                off.curr_lag = cmp::max(0, off.curr_latest - g.offset - self.lag_decr);
             }
         }
         Ok(())

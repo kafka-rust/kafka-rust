@@ -205,20 +205,19 @@ fn load_consumed_offsets(client: &mut KafkaClient,
                                                            FetchGroupOffset::new(topic, p)
                                                        })
                                                    })));
-    for tpo in tpos {
-        match tpo.offset {
-            Ok(o) if o != -1 => {
+    for (topic, pos) in tpos {
+        for po in pos {
+            if po.offset != -1 {
                 offs.insert(TopicPartition {
-                                topic_ref: assignments.topic_ref(&tpo.topic)
+                                topic_ref: assignments.topic_ref(&topic)
                                     .expect("non-assigned topic"),
-                                partition: tpo.partition,
+                                partition: po.partition,
                             },
                             ConsumedOffset {
-                                offset: o,
+                                offset: po.offset,
                                 dirty: false,
                             });
             }
-            _ => {}
         }
     }
     Ok(offs)
@@ -242,9 +241,11 @@ fn load_fetch_states(client: &mut KafkaClient,
         for (topic, poffs) in toffs {
             let mut pidx = HashMap::with_capacity_and_hasher(poffs.len(),
                                                              PartitionHasher::default());
+
             for poff in poffs {
-                pidx.insert(poff.partition, poff.offset.unwrap_or(-1));
+                pidx.insert(poff.partition, poff.offset);
             }
+
             m.insert(topic, pidx);
         }
         Ok(m)

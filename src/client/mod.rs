@@ -4,6 +4,8 @@
 //! The entry point into this module is `KafkaClient` obtained by a
 //! call to `KafkaClient::new()`.
 
+use std;
+use std::collections::hash_map;
 use std::collections::hash_map::HashMap;
 use std::io::Cursor;
 use std::iter::Iterator;
@@ -14,7 +16,6 @@ use std::time::{Duration, Instant};
 // pub re-export
 pub use compression::Compression;
 pub use utils::PartitionOffset;
-pub use utils::TopicPartitionOffset;
 
 #[cfg(feature = "security")]
 pub use self::network::SecurityConfig;
@@ -349,6 +350,30 @@ impl<'a> AsRef<FetchPartition<'a>> for FetchPartition<'a> {
         self
     }
 }
+
+/// A confirmation of messages sent back by the Kafka broker
+/// to confirm delivery of producer messages.
+#[derive(Debug)]
+pub struct ProduceConfirm {
+    /// The topic the messages were sent to.
+    pub topic: String,
+
+    /// The list of individual confirmations for each offset and partition.
+    pub partition_confirms: Vec<ProducePartitionConfirm>,
+}
+
+/// A confirmation of messages sent back by the Kafka broker
+/// to confirm delivery of producer messages for a particular topic.
+#[derive(Debug)]
+pub struct ProducePartitionConfirm {
+    /// The offset assigned to the first message in the message set appended
+    /// to this partition, or an error if one occurred.
+    pub offset: std::result::Result<i64, KafkaCode>,
+
+    /// The partition to which the message(s) were appended.
+    pub partition: i32,
+}
+
 
 // --------------------------------------------------------------------
 
@@ -825,13 +850,55 @@ impl KafkaClient {
                                                                           now,
                                                                           req));
             for tp in resp.topic_partitions {
-                let e = res.entry(tp.topic).or_insert(vec![]);
-                for p in tp.partitions {
-                    e.push(p.into_offset());
+                let mut entry = res.entry(tp.topic);
+                let mut new_resp_offsets = None;
+                let mut err = None;
+                // Use an explicit scope here to allow insertion into a vacant entry
+                // below
+                {
+                    // Return a &mut to the response we will be collecting into to
+                    // return from this function. If there are some responses we have
+                    // already prepared, keep collecting into that; otherwise, make a
+                    // new collection to return.
+                    let resp_offsets = match entry {
+                        hash_map::Entry::Occupied(ref mut e) => e.get_mut(),
+                        hash_map::Entry::Vacant(_) => {
+                            new_resp_offsets = Some(Vec::new());
+                            new_resp_offsets.as_mut().unwrap()
+                        }
+                    };
+                    for p in tp.partitions {
+                        let partition_offset = match p.into_offset() {
+                            Ok(po) => po,
+                            Err(code) => {
+                                err = Some((p.partition, code));
+                                break;
+                            }
+                        };
+                        resp_offsets.push(partition_offset);
+                    }
+                }
+                if let Some((partition, code)) = err {
+                    let topic = KafkaClient::get_key_from_entry(entry);
+                    return Err(Error::TopicPartitionError(topic, partition, code));
+                }
+                if let hash_map::Entry::Vacant(e) = entry {
+                    // unwrap is ok because if it is Vacant, it would have
+                    // been made into a Some above
+                    e.insert(new_resp_offsets.unwrap());
                 }
             }
         }
+
         Ok(res)
+    }
+
+    /// Takes ownership back from the given HashMap Entry.
+    fn get_key_from_entry<'a, K: 'a, V: 'a>(entry: hash_map::Entry<'a, K, V>) -> K {
+        match entry {
+            hash_map::Entry::Occupied(e) => e.remove_entry().0,
+            hash_map::Entry::Vacant(e) => e.into_key(),
+        }
     }
 
     /// Fetch offset for a single topic.
@@ -1017,7 +1084,7 @@ impl KafkaClient {
                                           acks: RequiredAcks,
                                           ack_timeout: Duration,
                                           messages: I)
-                                          -> Result<Vec<TopicPartitionOffset>>
+                                          -> Result<Vec<ProduceConfirm>>
         where J: AsRef<ProduceMessage<'a, 'b>>,
               I: IntoIterator<Item = J>
     {
@@ -1115,7 +1182,7 @@ impl KafkaClient {
     pub fn fetch_group_offsets<'a, J, I>(&mut self,
                                          group: &str,
                                          partitions: I)
-                                         -> Result<Vec<TopicPartitionOffset>>
+                                         -> Result<HashMap<String, Vec<PartitionOffset>>>
         where J: AsRef<FetchGroupOffset<'a>>,
               I: IntoIterator<Item = J>
     {
@@ -1123,17 +1190,15 @@ impl KafkaClient {
                                                         self.config.offset_fetch_version,
                                                         self.state.next_correlation_id(),
                                                         &self.config.client_id);
-        let mut num = 0;
         for p in partitions {
             let p = p.as_ref();
             if self.state.contains_topic_partition(p.topic, p.partition) {
                 req.add(p.topic, p.partition);
-                num += 1;
             } else {
                 return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
-        __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
+        __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
     }
 
     /// Fetch offset for all partitions of a particular topic of a consumer group
@@ -1150,22 +1215,24 @@ impl KafkaClient {
     pub fn fetch_group_topic_offsets(&mut self,
                                      group: &str,
                                      topic: &str)
-                                     -> Result<Vec<TopicPartitionOffset>> {
+                                     -> Result<Vec<PartitionOffset>> {
         let mut req = protocol::OffsetFetchRequest::new(group,
                                                         self.config.offset_fetch_version,
                                                         self.state.next_correlation_id(),
                                                         &self.config.client_id);
-        let num;
+
         match self.state.partitions_for(topic) {
             None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
             Some(tp) => {
-                num = tp.len();
                 for (id, _) in tp {
                     req.add(topic, id);
                 }
             }
         }
-        __fetch_group_offsets(req, num, &mut self.state, &mut self.conn_pool, &self.config)
+
+        Ok(try!(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config))
+            .remove(topic)
+            .unwrap_or_else(Vec::new))
     }
 }
 
@@ -1174,7 +1241,7 @@ impl KafkaClientInternals for KafkaClient {
                                                required_acks: i16,
                                                ack_timeout: i32,
                                                messages: I)
-                                               -> Result<Vec<TopicPartitionOffset>>
+                                               -> Result<Vec<ProduceConfirm>>
         where J: AsRef<ProduceMessage<'a, 'b>>,
               I: IntoIterator<Item = J>
     {
@@ -1312,13 +1379,11 @@ fn __commit_offsets(req: protocol::OffsetCommitRequest,
     }
 }
 
-// ~ 'num_partitions' is merely a hint to pre-allocation inside this method
 fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
-                         num_partitions: usize,
                          state: &mut state::ClientState,
                          conn_pool: &mut network::Connections,
                          config: &ClientConfig)
-                         -> Result<Vec<TopicPartitionOffset>> {
+                         -> Result<HashMap<String, Vec<PartitionOffset>>> {
     let mut attempt = 1;
     loop {
         let now = Instant::now();
@@ -1333,21 +1398,15 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
         };
 
         let mut retry_code = None;
-        let mut v = Vec::with_capacity(num_partitions);
+        let mut topic_map = HashMap::with_capacity(r.topic_partitions.len());
 
         'rproc: for tp in r.topic_partitions {
+            let mut partition_offsets = Vec::with_capacity(tp.partitions.len());
+
             for p in tp.partitions {
-                let mut o = p.get_offsets(tp.topic.clone());
-                match o.offset {
-                    Ok(_) => {
-                        v.push(o);
-                    }
-                    Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)) => {
-                        // ~ occurs only on protocol v0 when no offset available
-                        // for the group in question; we'll align the behavior
-                        // with protocol v1.
-                        o.offset = Ok(-1);
-                        v.push(o);
+                match p.get_offsets() {
+                    Ok(o) => {
+                        partition_offsets.push(o);
                     }
                     Err(Error::Kafka(e @ KafkaCode::GroupLoadInProgress)) => {
                         retry_code = Some(e);
@@ -1366,7 +1425,10 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                     }
                 }
             }
+
+            topic_map.insert(tp.topic, partition_offsets);
         }
+
         // ~ have we processed the result successfully or shall we
         // retry once more?
         match retry_code {
@@ -1382,7 +1444,7 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                 }
             }
             None => {
-                return Ok(v);
+                return Ok(topic_map);
             }
         }
     }
@@ -1409,7 +1471,7 @@ fn __fetch_messages(conn_pool: &mut network::Connections,
 fn __produce_messages(conn_pool: &mut network::Connections,
                       reqs: HashMap<&str, protocol::ProduceRequest>,
                       no_acks: bool)
-                      -> Result<Vec<TopicPartitionOffset>> {
+                      -> Result<Vec<ProduceConfirm>> {
     let now = Instant::now();
     if no_acks {
         for (host, req) in reqs {
@@ -1417,7 +1479,7 @@ fn __produce_messages(conn_pool: &mut network::Connections,
         }
         Ok(vec![])
     } else {
-        let mut res: Vec<TopicPartitionOffset> = vec![];
+        let mut res: Vec<ProduceConfirm> = vec![];
         for (host, req) in reqs {
             let resp =
                 try!(__send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, now, req));

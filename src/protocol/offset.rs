@@ -1,7 +1,8 @@
 use std::io::{Read, Write};
 
+use std;
 use codecs::{ToByte, FromByte};
-use error::{Error, Result};
+use error::{Result, KafkaCode};
 use utils::PartitionOffset;
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET, API_VERSION};
@@ -116,18 +117,20 @@ pub struct PartitionOffsetResponse {
 }
 
 impl PartitionOffsetResponse {
-    pub fn into_offset(self) -> PartitionOffset {
-        PartitionOffset {
-            partition: self.partition,
-            offset: match Error::from_protocol(self.error) {
-                None => {
-                    Ok(match self.offset.first() {
-                        Some(offs) => *offs,
-                        None => -1,
-                    })
-                }
-                Some(e) => Err(e),
-            },
+    pub fn into_offset(&self) -> std::result::Result<PartitionOffset, KafkaCode> {
+        match KafkaCode::from_protocol(self.error) {
+            Some(code) => Err(code),
+            None => {
+                let offset = match self.offset.first() {
+                    Some(offs) => *offs,
+                    None => -1,
+                };
+
+                Ok(PartitionOffset {
+                    partition: self.partition,
+                    offset: offset,
+                })
+            }
         }
     }
 }
