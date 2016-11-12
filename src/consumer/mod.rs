@@ -114,8 +114,8 @@ impl Consumer {
         self.client
     }
 
-    /// Retrieves the current topic partitions assignment being
-    /// consumed by this consumer.
+    /// Retrieves the topic partitions being currently consumed by
+    /// this consumer.
     pub fn subscriptions(&self) -> HashMap<String, Vec<i32>> {
         // ~ current subscriptions are reflected by
         // `self.state.fetch_offsets` see `self.fetch_messages()`.
