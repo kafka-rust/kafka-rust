@@ -61,7 +61,7 @@
 //! group configured, it will behave as if it had one, only that
 //! commiting consumed message offsets resolves into a void operation.
 
-use std::collections::hash_map::Entry;
+use std::collections::hash_map::{Entry, HashMap};
 use std::slice;
 
 use client::{KafkaClient, FetchPartition, CommitOffset};
@@ -112,6 +112,32 @@ impl Consumer {
     /// Destroys this consumer returning back the underlying kafka client.
     pub fn client(self) -> KafkaClient {
         self.client
+    }
+
+    /// Retrieves the topic partitions being currently consumed by
+    /// this consumer.
+    pub fn subscriptions(&self) -> HashMap<String, Vec<i32>> {
+        // ~ current subscriptions are reflected by
+        // `self.state.fetch_offsets` see `self.fetch_messages()`.
+        // ~ the number of topics subscribed can be estimated from the
+        // user specified assignments stored in `self.state.assignments`.
+        let mut h: HashMap<String, Vec<i32>> =
+            HashMap::with_capacity(self.state.assignments.as_slice().len());
+        // ~ expand subscriptions to (topic-name, partition id)
+        let tps = self.state
+            .fetch_offsets
+            .keys()
+            .map(|tp| (self.state.topic_name(tp.topic_ref), tp.partition));
+        // ~ group by topic-name
+        for tp in tps {
+            // ~ allocate topic-name only once per topic
+            if let Some(ps) = h.get_mut(tp.0) {
+                ps.push(tp.1);
+                continue;
+            }
+            h.insert(tp.0.to_owned(), Vec::new());
+        }
+        h
     }
 
     /// Polls for the next available message data.
