@@ -130,7 +130,7 @@ impl Consumer {
             .map(|tp| (self.state.topic_name(tp.topic_ref), tp.partition));
         // ~ group by topic-name
         for tp in tps {
-            // ~ to the topic-name allocation only once per topic
+            // ~ allocate topic-name only once per topic
             if let Some(ps) = h.get_mut(tp.0) {
                 ps.push(tp.1);
                 continue;
