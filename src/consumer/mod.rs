@@ -135,7 +135,7 @@ impl Consumer {
                 ps.push(tp.1);
                 continue;
             }
-            h.insert(tp.0.to_owned(), Vec::new());
+            h.insert(tp.0.to_owned(), vec![tp.1]);
         }
         h
     }
