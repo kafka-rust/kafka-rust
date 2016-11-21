@@ -109,8 +109,13 @@ impl Consumer {
         builder::new(None, hosts)
     }
 
+    /// Borrow the underlying kafka client
+    pub fn client(&self) -> &KafkaClient {
+        &self.client
+    }
+
     /// Destroys this consumer returning back the underlying kafka client.
-    pub fn client(self) -> KafkaClient {
+    pub fn into_client(self) -> KafkaClient {
         self.client
     }
 
