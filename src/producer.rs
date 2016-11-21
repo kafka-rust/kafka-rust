@@ -236,7 +236,7 @@ impl Producer {
         Builder::new(None, hosts)
     }
 
-    /// Borrow the underlying kafka client
+    /// Borrows the underlying kafka client.
     pub fn client(&self) -> &KafkaClient {
         &self.client
     }
