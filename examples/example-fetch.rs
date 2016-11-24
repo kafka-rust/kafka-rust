@@ -14,10 +14,13 @@ fn main() {
     let offset = 0;
 
     println!("About to fetch messages at {} from: {} (partition {}, offset {}) ",
-        broker, topic, partition, offset);
+             broker,
+             topic,
+             partition,
+             offset);
 
 
-    let mut client = KafkaClient::new(vec!(broker.to_owned()));
+    let mut client = KafkaClient::new(vec![broker.to_owned()]);
     if let Err(e) = client.load_metadata_all() {
         println!("Failed to load metadata from {}: {}", broker, e);
         return;
@@ -43,11 +46,18 @@ fn main() {
                                 println!("partition error: {}:{}: {}", t.topic(), p.partition(), e)
                             }
                             &Ok(ref data) => {
-                                println!("topic: {} / partition: {} / latest available message offset: {}",
-                                         t.topic(), p.partition(), data.highwatermark_offset());
+                                println!("topic: {} / partition: {} / latest available message \
+                                          offset: {}",
+                                         t.topic(),
+                                         p.partition(),
+                                         data.highwatermark_offset());
                                 for msg in data.messages() {
-                                    println!("topic: {} / partition: {} / message.offset: {} / message.len: {}",
-                                             t.topic(), p.partition(), msg.offset, msg.value.len());
+                                    println!("topic: {} / partition: {} / message.offset: {} / \
+                                              message.len: {}",
+                                             t.topic(),
+                                             p.partition(),
+                                             msg.offset,
+                                             msg.value.len());
                                 }
                             }
                         }

@@ -183,7 +183,7 @@ impl Consumer {
                  self.client.fetch_messages_for_partition(&FetchPartition::new(topic,
                                                                                tp.partition,
                                                                                s.offset)
-                    .with_max_bytes(s.max_bytes)))
+                     .with_max_bytes(s.max_bytes)))
             }
             None => {
                 let client = &mut self.client;

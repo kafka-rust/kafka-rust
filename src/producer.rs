@@ -694,14 +694,14 @@ mod default_partitioner_tests {
     fn test_key_partitioning() {
         let h = topics_map(vec![("foo",
                                  Partitions {
-                                    available_ids: vec![0, 1, 4],
-                                    num_all_partitions: 5,
-                                }),
+                                     available_ids: vec![0, 1, 4],
+                                     num_all_partitions: 5,
+                                 }),
                                 ("bar",
                                  Partitions {
-                                    available_ids: vec![0, 1],
-                                    num_all_partitions: 2,
-                                })]);
+                                     available_ids: vec![0, 1],
+                                     num_all_partitions: 2,
+                                 })]);
 
         let mut p: DefaultPartitioner<BuildHasherDefault<SipHasher>> = Default::default();
 
@@ -740,14 +740,14 @@ mod default_partitioner_tests {
 
         let h = topics_map(vec![("confirms",
                                  Partitions {
-                                    available_ids: vec![0, 1],
-                                    num_all_partitions: 2,
-                                }),
+                                     available_ids: vec![0, 1],
+                                     num_all_partitions: 2,
+                                 }),
                                 ("contents",
                                  Partitions {
-                                    available_ids: vec![0, 1, 9],
-                                    num_all_partitions: 10,
-                                })]);
+                                     available_ids: vec![0, 1, 9],
+                                     num_all_partitions: 10,
+                                 })]);
 
         // verify also the partitioner derives the correct partition
         // ... this is hash modulo num_all_partitions. here it is a
