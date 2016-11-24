@@ -474,7 +474,8 @@ mod tests {
                            assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
                            (id, broker)
                        })
-                       .collect::<Vec<_>>()[..]);
+                       .collect::<Vec<_>>()
+                        [..]);
     }
 
     fn assert_initial_metadata_load(state: &ClientState) {

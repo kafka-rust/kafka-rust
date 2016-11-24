@@ -1,0 +1,77 @@
+#!/bin/bash
+#
+# Usage: ./run-all-tests <Kafka version>...
+#
+# This script will automatically set up the Docker environment for Kafka, and then
+# run all cargo tests, including integration tests, for each Kafka version specified.
+# For example, running:
+#
+# ./run-all-tests 0.8.2.2 0.9.0.0
+#
+# will run the tests against Kafka versions 0.8.2.2 and 0.9.0.0. The arguments
+# should correspond to a Docker tag of the `wurstmeister/kafka` image, so any valid
+# tag will do—i.e.,
+#
+# ./run-all-tests latest
+#
+# will run against the most recent Kafka version published in the
+# `wurstmeister/kafka` repo. If there are no versions specified, it runs the tests
+# on a set of default versions.
+
+stop_docker() {
+  docker-compose down
+}
+
+start_docker() {
+  # pull all images before starting anything
+  docker-compose pull
+  docker-compose up -d
+
+  # wait for Kafka to be ready and the test topic to be created
+  ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test\"'"
+}
+
+setup() {
+  # use a subshell so the working directory changes back after it exits
+  (
+    cd "$(dirname $0)"
+    stop_docker # just in case something went wrong with a previous shutdown
+    start_docker
+  )
+}
+
+teardown() {
+  # use a subshell so the working directory changes back after it exits
+  (
+    cd "$(dirname $0)"
+    stop_docker
+  )
+}
+
+### START TEST ###
+
+# need to run tests serially to avoid the tests stepping on each others' toes
+export RUST_TEST_THREADS=1
+DEFAULT_VERS='0.8.2.2 0.9.0.1 latest'
+vers=$@
+
+if [[ -z "$vers" ]]; then
+  vers=$DEFAULT_VERS
+fi
+
+for ver in $vers; do
+  export KAFKA_VER=$ver
+  echo "Running tests with KAFKA_VER=$KAFKA_VER"
+
+  setup || {
+    teardown
+    exit 1
+  }
+
+  cargo test --features integration_tests || {
+    teardown
+    exit 1
+  }
+
+  teardown
+done

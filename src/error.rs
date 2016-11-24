@@ -67,7 +67,7 @@ pub enum Error {
 
 /// Various errors reported by a remote Kafka server.
 /// See also [Kafka Errors](http://kafka.apache.org/protocol.html)
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum KafkaCode {
     /// An unexpected server error
     Unknown = -1,

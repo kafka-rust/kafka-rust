@@ -268,8 +268,7 @@ impl Config {
                 }
             },
             batch_size: try!(to_number(m.opt_str("batch-size"), 1)),
-            conn_idle_timeout:
-                Duration::from_millis(try!(to_number(m.opt_str("idle-timeout"),
+            conn_idle_timeout: Duration::from_millis(try!(to_number(m.opt_str("idle-timeout"),
                                                      DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS))),
             ack_timeout: Duration::from_millis(try!(to_number(m.opt_str("ack-timeout"),
                                                               DEFAULT_ACK_TIMEOUT_MILLIS))),

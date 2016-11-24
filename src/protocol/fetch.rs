@@ -162,6 +162,7 @@ macro_rules! array_of {
 /// The result of a "fetch messages" request from a particular Kafka
 /// broker. Such a response can contain messages for multiple topic
 /// partitions.
+#[derive(Debug)]
 pub struct Response {
     // used to "own" the data all other references of this struct
     // point to.
@@ -214,6 +215,7 @@ impl Response {
 /// broker for a single topic only.  Beside the name of the topic,
 /// this structure provides an iterator over the topic partitions from
 /// which messages were requested.
+#[derive(Debug)]
 pub struct Topic<'a> {
     topic: &'a str,
     partitions: Vec<Partition<'a>>,
@@ -254,6 +256,7 @@ impl<'a> Topic<'a> {
 ///
 /// Note: There might have been a (recoverable) error for a particular
 /// partition (but not for another).
+#[derive(Debug)]
 pub struct Partition<'a> {
     /// The identifier of the represented partition.
     partition: i32,
@@ -303,6 +306,7 @@ impl<'a> Partition<'a> {
 }
 
 /// The successfully fetched data payload for a particular partition.
+#[derive(Debug)]
 pub struct Data<'a> {
     highwatermark_offset: i64,
     message_set: MessageSet<'a>,
@@ -325,6 +329,7 @@ impl<'a> Data<'a> {
     }
 }
 
+#[derive(Debug)]
 struct MessageSet<'a> {
     #[allow(dead_code)]
     raw_data: Cow<'a, [u8]>, // ~ this field is used to potentially "own" the underlying vector
@@ -478,20 +483,32 @@ mod tests {
     use error::{Error, KafkaCode};
 
     static FETCH1_TXT: &'static str = include_str!("../../test-data/fetch1.txt");
+
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     static FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.nocompression.kafka.0821");
+
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     static FETCH1_FETCH_RESPONSE_SNAPPY_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0821");
+
     #[cfg(feature = "snappy")]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     static FETCH1_FETCH_RESPONSE_SNAPPY_K0822: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
+
     #[cfg(feature = "gzip")]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
     static FETCH2_TXT: &'static str = include_str!("../../test-data/fetch2.txt");
+
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900: &'static [u8] =
         include_bytes!("../../test-data/fetch2.mytopic.nocompression.kafka.0900");
+
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900: &'static [u8] =
         include_bytes!("../../test-data/fetch2.mytopic.nocompression.invalid_crc.kafka.0900");
 
