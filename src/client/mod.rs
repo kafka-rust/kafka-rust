@@ -411,6 +411,41 @@ impl KafkaClient {
         }
     }
 
+    /// Creates a new instance of KafkaClient with a specific client_id. Before being able to
+    /// successfully use the new client, you'll have to load metadata.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut client = kafka::client::KafkaClient::new_with_client_id(
+    ///                                              vec!("localhost:9092".to_owned()),
+    ///                                              "my_client_id".to_owned());
+    /// client.load_metadata_all().unwrap();
+    /// ```
+    pub fn new_with_client_id(hosts: Vec<String>, client_id: String) -> KafkaClient {
+        KafkaClient {
+            config: ClientConfig {
+                client_id: client_id,
+                hosts: hosts,
+                compression: DEFAULT_COMPRESSION,
+                fetch_max_wait_time: protocol::to_millis_i32(
+                    Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS))
+                    .expect("invalid default-fetch-max-time-millis"),
+                fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
+                fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
+                fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
+                offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
+                offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
+                retry_backoff_time: Duration::from_millis(DEFAULT_RETRY_BACKOFF_TIME_MILLIS),
+                retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
+            },
+            conn_pool: network::Connections::new(
+                default_conn_rw_timeout(),
+                Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS)),
+            state: state::ClientState::new(),
+        }
+    }
+
     /// Creates a new secure instance of KafkaClient. Before being able to
     /// successfully use the new client, you'll have to load metadata.
     ///
