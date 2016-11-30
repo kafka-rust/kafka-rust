@@ -36,7 +36,8 @@ fn process(cfg: Config) -> Result<(), Error> {
             .with_fetch_min_bytes(1_000)
             .with_fetch_max_bytes_per_partition(100_000)
             .with_retry_max_bytes_limit(1_000_000)
-            .with_offset_storage(cfg.offset_storage);
+            .with_offset_storage(cfg.offset_storage)
+            .with_client_id("kafka-rust-console-consumer".into());
         for topic in cfg.topics {
             cb = cb.with_topic(topic);
         }

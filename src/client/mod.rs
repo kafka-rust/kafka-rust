@@ -38,7 +38,6 @@ pub mod fetch {
     pub use protocol::fetch::{Data, Message, Partition, Response, Topic};
 }
 
-const CLIENTID: &'static str = "kafka-rust";
 const DEFAULT_CONNECTION_RW_TIMEOUT_SECS: u64 = 120;
 
 fn default_conn_rw_timeout() -> Option<Duration> {
@@ -390,7 +389,7 @@ impl KafkaClient {
     pub fn new(hosts: Vec<String>) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
-                client_id: CLIENTID.to_owned(),
+                client_id: String::new(),
                 hosts: hosts,
                 compression: DEFAULT_COMPRESSION,
                 fetch_max_wait_time: protocol::to_millis_i32(
@@ -451,7 +450,7 @@ impl KafkaClient {
     pub fn new_secure(hosts: Vec<String>, security: SecurityConfig) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
-                client_id: CLIENTID.to_owned(),
+                client_id: String::new(),
                 hosts: hosts,
                 compression: DEFAULT_COMPRESSION,
                 fetch_max_wait_time: protocol::to_millis_i32(
@@ -479,6 +478,21 @@ impl KafkaClient {
     #[inline]
     pub fn hosts(&self) -> &[String] {
         &self.config.hosts
+    }
+
+    /// Sets the client_id to be sent along every request to the
+    /// remote Kafka brokers.  By default, this value is the empty
+    /// string.
+    ///
+    /// Kafka brokers write out this client id to their
+    /// request/response trace log - if configured appropriately.
+    pub fn set_client_id(&mut self, client_id: String) {
+        self.config.client_id = client_id;
+    }
+
+    /// Retrieves the current `KafkaClient::set_client_id` setting.
+    pub fn client_id(&self) -> &str {
+        &self.config.client_id
     }
 
     /// Sets the compression algorithm to use when sending out messages.

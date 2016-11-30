@@ -339,6 +339,7 @@ pub struct Builder<P = DefaultPartitioner> {
     required_acks: RequiredAcks,
     partitioner: P,
     security_config: Option<SecurityConfig>,
+    client_id: Option<String>,
 }
 
 impl Builder {
@@ -353,6 +354,7 @@ impl Builder {
             required_acks: DEFAULT_REQUIRED_ACKS,
             partitioner: DefaultPartitioner::default(),
             security_config: None,
+            client_id: None,
         };
         if let Some(ref c) = b.client {
             b.compression = c.compression();
@@ -401,6 +403,13 @@ impl Builder {
         self.required_acks = acks;
         self
     }
+
+    /// Specifies a client_id to be sent along every request to Kafka
+    /// brokers. See `KafkaClient::set_client_id`.
+    pub fn with_client_id(mut self, client_id: String) -> Self {
+        self.client_id = Some(client_id);
+        self
+    }
 }
 
 impl<P> Builder<P> {
@@ -416,6 +425,7 @@ impl<P> Builder<P> {
             required_acks: self.required_acks,
             partitioner: partitioner,
             security_config: None,
+            client_id: None,
         }
     }
 
@@ -444,6 +454,9 @@ impl<P> Builder<P> {
         // ~ apply configuration settings
         client.set_compression(self.compression);
         client.set_connection_idle_timeout(self.conn_idle_timeout);
+        if let Some(client_id) = self.client_id {
+            client.set_client_id(client_id);
+        }
         let producer_config = Config {
             ack_timeout: try!(protocol::to_millis_i32(self.ack_timeout)),
             required_acks: self.required_acks as i16,
