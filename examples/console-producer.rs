@@ -37,6 +37,7 @@ fn main() {
 
 fn produce(cfg: &Config) -> Result<(), Error> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
+    client.set_client_id("kafka-rust-console-producer".into());
     try!(client.load_metadata_all());
 
     // ~ verify that the remote brokers do know about the target topic

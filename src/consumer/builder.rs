@@ -32,6 +32,7 @@ pub struct Builder {
     security_config: Option<SecurityConfig>,
     group_offset_storage: GroupOffsetStorage,
     conn_idle_timeout: Duration,
+    client_id: Option<String>,
 }
 
 // ~ public only to be shared inside the kafka crate; not supposed to
@@ -51,6 +52,7 @@ pub fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
         security_config: None,
         group_offset_storage: client::DEFAULT_GROUP_OFFSET_STORAGE,
         conn_idle_timeout: Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
+        client_id: None,
     };
     if let Some(ref c) = b.client {
         b.fetch_max_wait_time = c.fetch_max_wait_time();
@@ -191,6 +193,13 @@ impl Builder {
         self
     }
 
+    /// Specifies a client_id to be sent along every request to Kafka
+    /// brokers. See `KafkaClient::set_client_id`.
+    pub fn with_client_id(mut self, client_id: String) -> Self {
+        self.client_id = Some(client_id);
+        self
+    }
+
     #[cfg(not(feature = "security"))]
     fn new_kafka_client(hosts: Vec<String>, _: Option<SecurityConfig>) -> KafkaClient {
         KafkaClient::new(hosts)
@@ -227,6 +236,9 @@ impl Builder {
         client.set_fetch_max_bytes_per_partition(self.fetch_max_bytes_per_partition);
         client.set_group_offset_storage(self.group_offset_storage);
         client.set_connection_idle_timeout(self.conn_idle_timeout);
+        if let Some(client_id) = self.client_id {
+            client.set_client_id(client_id)
+        }
         // ~ load metadata if necessary
         if need_metadata {
             try!(client.load_metadata_all());
