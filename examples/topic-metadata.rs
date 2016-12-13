@@ -66,8 +66,20 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
             topic_width = cmp::max(topic_width, topic.len());
             let mut offs = Vec::with_capacity(offsets.len());
 
-            for _ in 0..offsets.len() {
-                offs.push(Offsets::default());
+            {
+                // make sure to init the `offs` table based on the
+                // clients metadata since that represents the set of
+                // known partitions whereas the offsets we retrieved
+                // can be missing some partitions if there are no
+                // offsets for them, e.g. partition=0 might have no
+                // offsets or might be out of order, while for
+                // partition=1 we might have obtained an offset.  this
+                // allows us later to use the partition as an index
+                // into the table.
+                let num_partitions = client.topics().partitions(&topic).map(|ps| ps.len()).unwrap_or(0);
+                for _ in 0..num_partitions {
+                    offs.push(Offsets::default());
+                }
             }
 
             for offset in offsets {
