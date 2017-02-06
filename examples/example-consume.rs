@@ -20,15 +20,13 @@ fn main() {
     }
 }
 
-fn consume_messages(group: String, topic: String, brokers: Vec<String>)
-                    -> Result<(), KafkaError>
-{
+fn consume_messages(group: String, topic: String, brokers: Vec<String>) -> Result<(), KafkaError> {
     let mut con = try!(Consumer::from_hosts(brokers)
-                       .with_topic(topic)
-                       .with_group(group)
-                       .with_fallback_offset(FetchOffset::Earliest)
-                       .with_offset_storage(GroupOffsetStorage::Kafka)
-                       .create());
+        .with_topic(topic)
+        .with_group(group)
+        .with_fallback_offset(FetchOffset::Earliest)
+        .with_offset_storage(GroupOffsetStorage::Kafka)
+        .create());
 
     loop {
         let mss = try!(con.poll());

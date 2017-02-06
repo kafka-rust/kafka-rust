@@ -71,7 +71,7 @@ fn run(cfg: Config) -> Result<(), Error> {
     let mut printer = Printer::new(stdout(), &cfg);
     try!(printer.print_head(num_partitions));
 
-    // ~ initialize the state 
+    // ~ initialize the state
     let mut first_time = true;
     loop {
         let t = time::now();
@@ -94,7 +94,11 @@ struct Partition {
 
 impl Default for Partition {
     fn default() -> Self {
-        Partition { prev_latest: -1, curr_latest: -1, curr_lag: -1 }
+        Partition {
+            prev_latest: -1,
+            curr_latest: -1,
+            curr_lag: -1,
+        }
     }
 }
 
@@ -111,14 +115,17 @@ impl State {
         }
     }
 
-    fn update_partitions(&mut self, client: &mut KafkaClient, topic: &str, group: &str)
-                         -> Result<(), Error>
-    {
+    fn update_partitions(&mut self,
+                         client: &mut KafkaClient,
+                         topic: &str,
+                         group: &str)
+                         -> Result<(), Error> {
         // ~ get the latest topic offsets
         let latests = try!(client.fetch_topic_offsets(topic, FetchOffset::Latest));
 
         for l in latests {
-            let off = self.offsets.get_mut(l.partition as usize)
+            let off = self.offsets
+                .get_mut(l.partition as usize)
                 .expect("[topic offset] non-existent partition");
             off.prev_latest = off.curr_latest;
             off.curr_latest = l.offset;
@@ -128,7 +135,8 @@ impl State {
             // ~ get the current group offsets
             let groups = try!(client.fetch_group_topic_offsets(group, topic));
             for g in groups {
-                let off = self.offsets.get_mut(g.partition as usize)
+                let off = self.offsets
+                    .get_mut(g.partition as usize)
                     .expect("[group offset] non-existent partition");
 
                 // ~ it's quite likely that we fetched group offsets
@@ -184,7 +192,8 @@ impl<W: Write> Printer<W> {
 
     fn print_head(&mut self, num_partitions: usize) -> Result<(), io::Error> {
         self.out_buf.clear();
-        {   // ~ format
+        {
+            // ~ format
             use std::fmt::Write;
             let _ = write!(self.out_buf, "{1:<0$}", self.time_width, "time");
             if self.print_summary {
@@ -210,18 +219,24 @@ impl<W: Write> Printer<W> {
             }
             self.out_buf.push('\n');
         }
-        {   // ~ print
+        {
+            // ~ print
             self.out.write_all(self.out_buf.as_bytes())
         }
     }
 
-    fn print_offsets(&mut self, time: &time::Tm, partitions: &[Partition]) -> Result<(), io::Error> {
+    fn print_offsets(&mut self,
+                     time: &time::Tm,
+                     partitions: &[Partition])
+                     -> Result<(), io::Error> {
         self.out_buf.clear();
-        {   // ~ format
+        {
+            // ~ format
             use std::fmt::Write;
 
             self.fmt_buf.clear();
-            let _ = write!(self.fmt_buf, "{}", time.strftime(&self.timefmt).expect("invalid timefmt"));
+            let _ =
+                write!(self.fmt_buf, "{}", time.strftime(&self.timefmt).expect("invalid timefmt"));
             let _ = write!(self.out_buf, "{1:<0$}", self.time_width, self.fmt_buf);
             if self.print_summary {
                 let mut prev_latest = 0;
@@ -296,7 +311,8 @@ impl Config {
         opts.optopt("", "sleep", "Specify the sleep time", "SECS");
         opts.optflag("", "partitions", "Print each partition instead of the summary");
         opts.optflag("", "no-growth", "Don't print offset growth");
-        opts.optflag("", "committed-not-yet-consumed",
+        opts.optflag("",
+                     "committed-not-yet-consumed",
                      "Assume commited group offsets specify \
                       messages the group will start consuming \
                       (including those at these offsets)");
@@ -364,9 +380,13 @@ impl fmt::Display for Error {
 }
 
 impl From<kafka::error::Error> for Error {
-    fn from(e: kafka::error::Error) -> Self { Error::Kafka(e) }
+    fn from(e: kafka::error::Error) -> Self {
+        Error::Kafka(e)
+    }
 }
 
 impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self { Error::Io(e) }
+    fn from(e: io::Error) -> Self {
+        Error::Io(e)
+    }
 }

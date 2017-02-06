@@ -22,16 +22,16 @@ fn main() {
     }
 }
 
-fn produce_message<'a, 'b>(data: &'a [u8], topic: &'b str, brokers: Vec<String>)
-                   -> Result<(), KafkaError>
-{
+fn produce_message<'a, 'b>(data: &'a [u8],
+                           topic: &'b str,
+                           brokers: Vec<String>)
+                           -> Result<(), KafkaError> {
     println!("About to publish a message at {:?} to: {}", brokers, topic);
 
     // ~ create a producer. this is a relatively costly operation, so
     // you'll do this typically once in your application and re-use
     // the instance many times.
-    let mut producer =
-        try!(Producer::from_hosts(brokers)
+    let mut producer = try!(Producer::from_hosts(brokers)
              // ~ give the brokers one second time to ack the message
              .with_ack_timeout(Duration::from_secs(1))
              // ~ require only one broker to ack the message
@@ -48,7 +48,7 @@ fn produce_message<'a, 'b>(data: &'a [u8], topic: &'b str, brokers: Vec<String>)
     // ~ we leave the partition "unspecified" - this is a negative
     // partition - which causes the producer to find out one on its
     // own using its underlying partitioner.
-    try!(producer.send(&Record{
+    try!(producer.send(&Record {
         topic: topic,
         partition: -1,
         key: (),
