@@ -1,8 +1,6 @@
 extern crate kafka;
 extern crate getopts;
 extern crate env_logger;
-#[macro_use]
-extern crate log;
 
 use std::collections::HashMap;
 use std::cmp;
@@ -79,7 +77,8 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
                 // partition=1 we might have obtained an offset.  this
                 // allows us later to use the partition as an index
                 // into the table.
-                let num_partitions = client.topics().partitions(&topic).map(|ps| ps.len()).unwrap_or(0);
+                let num_partitions =
+                    client.topics().partitions(&topic).map(|ps| ps.len()).unwrap_or(0);
                 for _ in 0..num_partitions {
                     offs.push(Offsets::default());
                 }

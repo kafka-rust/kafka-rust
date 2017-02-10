@@ -83,12 +83,17 @@ There's still a lot of room for improvements on `kafka-rust`.  Not
 everything works right at the moment.  Have a look into the [issue
 tracker](https://github.com/spicavigo/kafka-rust/issues) and feel free
 to contribute by reporting new problems or contributing to existing
-ones.  Any constructive contribution is warmly wellcome!
+ones.  Any constructive contribution is warmly welcome!
 
 As usually with open source, don't hesitate to fork the repo and
 submit a pull requests if you see something to be changed.  We'll be
 happy see `kafka-rust` improving over time.
 
+#### Integration tests
+When working locally, the integration tests require that you must have
+Docker (1.10.0+) and docker-compose (1.6.0+) installed and run the tests via the
+included `run-all-tests` script in the `tests` directory. See the `run-all-tests`
+script itself for details on its usage.
 
 ### [Creating a topic] (https://kafka.apache.org/documentation.html#quickstart)
 
@@ -105,7 +110,6 @@ distribution):
 ```
 kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181  --partition 1 --replication-factor 1
 ```
-
 
 ### Alternative/Related projects
 

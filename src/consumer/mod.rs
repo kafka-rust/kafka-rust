@@ -88,6 +88,7 @@ pub const DEFAULT_FALLBACK_OFFSET: FetchOffset = FetchOffset::Latest;
 /// The Kafka Consumer
 ///
 /// See module level documentation.
+#[derive(Debug)]
 pub struct Consumer {
     client: KafkaClient,
     state: state::State,
@@ -426,6 +427,7 @@ impl Consumer {
 /// concatenation of blocks of messages successfully retrieved from
 /// the consumed topic partitions.  Each such partitions is guaranteed
 /// to be present at most once in this structure.
+#[derive(Debug)]
 pub struct MessageSets {
     responses: Vec<fetch::Response>,
 

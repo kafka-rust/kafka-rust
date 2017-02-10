@@ -7,13 +7,16 @@ rust:
   - beta
   - nightly
 
-before_script:
+services:
+  - docker
+
+before_install:
   - pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
 
 script:
   - |
       travis-cargo build &&
-      travis-cargo test &&
+      ./tests/run-all-tests $KAFKA_VER &&
       travis-cargo bench &&
       travis-cargo --only stable doc
 
@@ -22,5 +25,11 @@ after_success:
 
 env:
   global:
+    - RUST_TEST_THREADS: 1
     - TRAVIS_CARGO_NIGHTLY_FEATURE="nightly"
     - secure: zK1SJqtVc2Ha/onG/QvjLfz+JHqxfhLmOJuKpzfi/CiZwCUdVqeJdOd48jBON5vnrJ4LGKiEnydgaEtLYFYUb7Xkvxa3Zk5SeB+EmCVzobUSSjSodtx/HlIWP6HRdd8RFnZR8e945BvXt0bOghzJYNpDMWZxn7gTjm2ZM3vaJUwbZqO+9nAWoERnxS/6AgVuuALgcq+FgmOVTG/hXSWQZvmyNzO/6upIOJ3nBHHtBtfRhTrszk+/fEzmYyNWWXGyD65SaQTvJ4Wt8nnykpeGVYXo+SEtpypmuOxnnNTVXC+6BAK6Q3i1Z65NNKDNyjYEZMMWHIiTDLXuLiHp9Bw9hs5sR6DhXNS84zdYmssylr8TlNUXXhU8IR1+c7R5++HbcopAYFkEZonF7lcL9T9BwbZqFk6wcQKSJrw7N3btfbLtgULfjvBbWrA0md4iqce7x0V3h6zo6BBbhlbxxa3FeAUZ9kMopq0SIjSRHHW/NbAfT9b8tthlRTgqx/eFbdil6pHjtSCdDTN8+V+iaA7WqPycscRo3JhHXunlqJTesA71bw2ovLBjJ6OheBSnYAZ+gYLKF56P3QrJZ6uAIt6kZkKrORoVygy6HRCZDTiNf+5NkDw4AgVULeGfRwqoLnhQOjW3yChbG/Ur4V9Ascr9RVlwRj/6tpX6A5d3UFVn3WA=
+
+  matrix:
+    - KAFKA_VER=0.8.2.2
+    - KAFKA_VER=0.9.0.1
+    - KAFKA_VER=latest
