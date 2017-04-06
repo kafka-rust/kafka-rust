@@ -116,7 +116,8 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
     let host_width = if cfg.host {
         2 +
         topics.iter()
-            .flat_map(|t| md.partitions(t).expect("unkonwn topic metadata"))
+            .filter_map(|t| md.partitions(t))
+            .flat_map(|t| t)
             .map(|p| p.leader().map(|b| b.host().len()).unwrap_or(0))
             .fold(0, cmp::max)
     } else {
@@ -141,35 +142,50 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
     }
     // ~ print each topic partition on its own line
     for (ti, topic) in topics.iter().enumerate() {
-        let offsets = &offsets[topic.as_str()];
-        let tmd = md.partitions(topic).expect("unknown topic metadata");
-        for (pi, p) in offsets.iter().enumerate() {
-            use std::fmt::Write;
-            out_buf.clear();
-            if cfg.topic_separators && ti != 0 && pi == 0 {
-                out_buf.push('\n');
+        match md.partitions(topic) {
+            None => {
+                use std::fmt::Write;
+                out_buf.clear();
+                if cfg.topic_separators && ti != 0 {
+                    out_buf.push('\n');
+                }
+                let _ = write!(out_buf, "{1:0$} - not available!\n", topic_width, topic);
+                {
+                    use std::io::Write;
+                    let _ = out.write_all(out_buf.as_bytes());
+                }
             }
-            let (leader_id, leader_host) = tmd.partition(pi as i32)
-                .expect("unknown topic partition metadata")
-                .leader()
-                .map(|b| (b.id(), b.host()))
-                .unwrap_or((-1, ""));
-            let _ = write!(out_buf, "{1:0$} {2:>4} {3:>4}", topic_width, topic, pi, leader_id);
-            if cfg.host {
-                fmt_buf.clear();
-                let _ = write!(fmt_buf, "({})", leader_host);
-                let _ = write!(out_buf, " {1:0$}", host_width, fmt_buf);
-            }
-            let _ = write!(out_buf, " {:>12} {:>12}", p.earliest, p.latest);
-            if cfg.size {
-                fmt_buf.clear();
-                let _ = write!(fmt_buf, "({})", p.latest - p.earliest);
-                let _ = write!(out_buf, " {:>12}", fmt_buf);
-            }
-            out_buf.push('\n');
-            {
-                use std::io::Write;
-                let _ = out.write_all(out_buf.as_bytes());
+            Some(tmd) => {
+                let offsets = &offsets[topic.as_str()];
+                for (pi, p) in offsets.iter().enumerate() {
+                    use std::fmt::Write;
+                    out_buf.clear();
+                    if cfg.topic_separators && ti != 0 && pi == 0 {
+                        out_buf.push('\n');
+                    }
+                    let (leader_id, leader_host) = tmd.partition(pi as i32)
+                        .expect("unknown topic partition metadata")
+                        .leader()
+                        .map(|b| (b.id(), b.host()))
+                        .unwrap_or((-1, ""));
+                    let _ = write!(out_buf, "{1:0$} {2:>4} {3:>4}", topic_width, topic, pi, leader_id);
+                    if cfg.host {
+                        fmt_buf.clear();
+                        let _ = write!(fmt_buf, "({})", leader_host);
+                        let _ = write!(out_buf, " {1:0$}", host_width, fmt_buf);
+                    }
+                    let _ = write!(out_buf, " {:>12} {:>12}", p.earliest, p.latest);
+                    if cfg.size {
+                        fmt_buf.clear();
+                        let _ = write!(fmt_buf, "({})", p.latest - p.earliest);
+                        let _ = write!(out_buf, " {:>12}", fmt_buf);
+                    }
+                    out_buf.push('\n');
+                    {
+                        use std::io::Write;
+                        let _ = out.write_all(out_buf.as_bytes());
+                    }
+                }
             }
         }
     }
