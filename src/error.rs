@@ -42,9 +42,9 @@ pub enum Error {
     /// due to an unsupported compression format of the data
     UnsupportedCompression,
 
-    /// Failure to decode a snappy compressed response from Kafka
+    /// Failure to encode/decode a snappy compressed response from Kafka
     #[cfg(feature = "snappy")]
-    InvalidInputSnappy,
+    InvalidSnappy(::snap::Error),
 
     /// Failure to decode a response due to an insufficient number of bytes available
     UnexpectedEOF,
@@ -210,6 +210,13 @@ impl<S> From<ssl::HandshakeError<S>> for Error {
     }
 }
 
+#[cfg(feature = "snappy")]
+impl From<::snap::Error> for Error {
+    fn from(err: ::snap::Error) -> Error {
+        Error::InvalidSnappy(err)
+    }
+}
+
 impl Clone for Error {
     fn clone(&self) -> Error {
         match self {
@@ -223,7 +230,7 @@ impl Clone for Error {
             &Error::UnsupportedProtocol => Error::UnsupportedProtocol,
             &Error::UnsupportedCompression => Error::UnsupportedCompression,
             #[cfg(feature = "snappy")]
-            &Error::InvalidInputSnappy => Error::InvalidInputSnappy,
+            &Error::InvalidSnappy(ref err) => from_snap_error_ref(err),
             &Error::UnexpectedEOF => Error::UnexpectedEOF,
             &Error::CodecError => Error::CodecError,
             &Error::StringDecodeError => Error::StringDecodeError,
@@ -246,6 +253,85 @@ fn from_sslerror_ref(err: &ssl::Error) -> Error {
     }
 }
 
+#[cfg(feature = "snappy")]
+fn from_snap_error_ref(err: &::snap::Error) -> Error {
+    match err {
+        &::snap::Error::TooBig { given, max } => {
+            Error::InvalidSnappy(::snap::Error::TooBig {
+                                     given: given,
+                                     max: max,
+                                 })
+        }
+        &::snap::Error::BufferTooSmall { given, min } => {
+            Error::InvalidSnappy(::snap::Error::BufferTooSmall {
+                                     given: given,
+                                     min: min,
+                                 })
+        }
+        &::snap::Error::Empty => Error::InvalidSnappy(::snap::Error::Empty),
+        &::snap::Error::Header => Error::InvalidSnappy(::snap::Error::Header),
+        &::snap::Error::HeaderMismatch {
+             expected_len,
+             got_len,
+         } => {
+            Error::InvalidSnappy(::snap::Error::HeaderMismatch {
+                                     expected_len: expected_len,
+                                     got_len: got_len,
+                                 })
+        }
+        &::snap::Error::Literal {
+             len,
+             src_len,
+             dst_len,
+         } => {
+            Error::InvalidSnappy(::snap::Error::Literal {
+                                     len: len,
+                                     src_len: src_len,
+                                     dst_len: dst_len,
+                                 })
+        }
+        &::snap::Error::CopyRead { len, src_len } => {
+            Error::InvalidSnappy(::snap::Error::CopyRead {
+                                     len: len,
+                                     src_len: src_len,
+                                 })
+        }
+        &::snap::Error::CopyWrite { len, dst_len } => {
+            Error::InvalidSnappy(::snap::Error::CopyWrite {
+                                     len: len,
+                                     dst_len: dst_len,
+                                 })
+        }
+        &::snap::Error::Offset { offset, dst_pos } => {
+            Error::InvalidSnappy(::snap::Error::Offset {
+                                     offset: offset,
+                                     dst_pos: dst_pos,
+                                 })
+        }
+        &::snap::Error::StreamHeader { byte } => {
+            Error::InvalidSnappy(::snap::Error::StreamHeader { byte: byte })
+        }
+        &::snap::Error::StreamHeaderMismatch { ref bytes } => {
+            Error::InvalidSnappy(::snap::Error::StreamHeaderMismatch { bytes: bytes.clone() })
+        }
+        &::snap::Error::UnsupportedChunkType { byte } => {
+            Error::InvalidSnappy(::snap::Error::UnsupportedChunkType { byte: byte })
+        }
+        &::snap::Error::UnsupportedChunkLength { len, header } => {
+            Error::InvalidSnappy(::snap::Error::UnsupportedChunkLength {
+                                     len: len,
+                                     header: header,
+                                 })
+        }
+        &::snap::Error::Checksum { expected, got } => {
+            Error::InvalidSnappy(::snap::Error::Checksum {
+                                     expected: expected,
+                                     got: got,
+                                 })
+        }
+    }
+}
+
 /// Attempt to clone `io::Error`.
 fn clone_ioe(e: &io::Error) -> io::Error {
     match e.raw_os_error() {
@@ -265,7 +351,7 @@ impl error::Error for Error {
             Error::UnsupportedProtocol => "Unsupported protocol version",
             Error::UnsupportedCompression => "Unsupported compression format",
             #[cfg(feature = "snappy")]
-            Error::InvalidInputSnappy => "Snappy decode error",
+            Error::InvalidSnappy(ref err) => error::Error::description(err),
             Error::UnexpectedEOF => "Unexpected EOF",
             Error::CodecError => "Encoding/Decoding error",
             Error::StringDecodeError => "String decoding error",
@@ -298,7 +384,7 @@ impl fmt::Display for Error {
             Error::UnsupportedProtocol => write!(f, "Unsupported protocol version"),
             Error::UnsupportedCompression => write!(f, "Unsupported compression format"),
             #[cfg(feature = "snappy")]
-            Error::InvalidInputSnappy => write!(f, "Snappy decode error"),
+            Error::InvalidSnappy(ref err) => write!(f, "Snappy error, {}", err),
             Error::UnexpectedEOF => write!(f, "Unexpected EOF"),
             Error::CodecError => write!(f, "Encoding/Decoding Error"),
             Error::StringDecodeError => write!(f, "String decoding error"),
