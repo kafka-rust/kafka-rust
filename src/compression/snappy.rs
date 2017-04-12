@@ -23,12 +23,13 @@ fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
         .and_then(|min_len| {
             if min_len > 0 {
                 let off = dst.len();
-                dst.reserve(off + min_len);
-                let buf = unsafe {
-                    slice::from_raw_parts_mut(dst.as_mut_slice()[off..].as_mut_ptr(), min_len)
-                };
-                let uncompressed_len = try!(snap::Decoder::new().decompress(src, buf));
-                unsafe { dst.set_len(off + uncompressed_len) }
+                dst.reserve(min_len);
+                unsafe {
+                    let ptr = dst.as_mut_slice()[off..].as_mut_ptr();
+                    let buf = slice::from_raw_parts_mut(ptr, min_len);
+                    let uncompressed_len = try!(snap::Decoder::new().decompress(src, buf));
+                    dst.set_len(off + uncompressed_len)
+                }
             }
             Ok(())
         })
