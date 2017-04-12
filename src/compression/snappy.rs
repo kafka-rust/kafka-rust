@@ -1,4 +1,3 @@
-use std::slice;
 use std::io::{self, Read};
 
 use byteorder::{BigEndian, ByteOrder};
@@ -23,13 +22,12 @@ fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
         .and_then(|min_len| {
             if min_len > 0 {
                 let off = dst.len();
-                dst.reserve(min_len);
-                unsafe {
-                    let ptr = dst.as_mut_slice()[off..].as_mut_ptr();
-                    let buf = slice::from_raw_parts_mut(ptr, min_len);
-                    let uncompressed_len = try!(snap::Decoder::new().decompress(src, buf));
-                    dst.set_len(off + uncompressed_len)
-                }
+                dst.resize(off + min_len, 0);
+                let uncompressed_len = {
+                    let buf = &mut dst.as_mut_slice()[off..off + min_len];
+                    try!(snap::Decoder::new().decompress(src, buf))
+                };
+                dst.truncate(off + uncompressed_len);
             }
             Ok(())
         })
