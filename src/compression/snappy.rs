@@ -1,3 +1,4 @@
+use std::slice;
 use std::io::{self, Read};
 
 use byteorder::{BigEndian, ByteOrder};
@@ -12,7 +13,6 @@ pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
         .compress(src, &mut buf)
         .map(|len| {
                  buf.truncate(len);
-
                  buf
              })
         .map_err(|err| Error::InvalidSnappy(err))
@@ -21,14 +21,15 @@ pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
 fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
     snap::decompress_len(src)
         .and_then(|min_len| {
-            let off = dst.len();
-            dst.resize(off + min_len, 0);
-            let uncompressed_len = {
-                let buf = &mut dst.as_mut_slice()[off..off + min_len];
-
-                try!(snap::Decoder::new().decompress(src, buf))
-            };
-            dst.truncate(off + uncompressed_len);
+            if min_len > 0 {
+                let off = dst.len();
+                dst.reserve(off + min_len);
+                let buf = unsafe {
+                    slice::from_raw_parts_mut(dst.as_mut_slice()[off..].as_mut_ptr(), min_len)
+                };
+                let uncompressed_len = try!(snap::Decoder::new().decompress(src, buf));
+                unsafe { dst.set_len(off + uncompressed_len) }
+            }
             Ok(())
         })
         .map_err(|err| Error::InvalidSnappy(err))
