@@ -19,7 +19,7 @@ extern crate fnv;
 extern crate log;
 
 #[cfg(feature = "security")]
-extern crate openssl;
+extern crate native_tls;
 
 #[cfg(feature = "gzip")]
 extern crate flate2;

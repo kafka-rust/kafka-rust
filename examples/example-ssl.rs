@@ -4,18 +4,19 @@ fn main() {
 
 #[cfg(feature = "security")]
 mod example {
-    extern crate openssl;
+    extern crate native_tls;
     extern crate kafka;
     extern crate getopts;
     extern crate env_logger;
 
+    use std::io::prelude::*;
+    use std::fs::File;
     use std::env;
     use std::process;
 
     use self::kafka::client::{FetchOffset, KafkaClient, SecurityConfig};
 
-    use self::openssl::ssl::{SslContext, SslMethod, SSL_VERIFY_PEER};
-    use self::openssl::x509::X509FileType;
+    use self::native_tls::{TlsConnector, Protocol, Certificate, Pkcs12};
 
     pub fn main() {
         env_logger::init().unwrap();
@@ -29,28 +30,40 @@ mod example {
             }
         };
 
-        // ~ OpenSSL offers a variety of complex configurations. Here is an example:
-        let mut ctx = SslContext::new(SslMethod::Sslv23).unwrap();
-        ctx.set_cipher_list("DEFAULT").unwrap();
-        ctx.set_verify(SSL_VERIFY_PEER);
-        if let Some(ccert) = cfg.client_cert {
-            ctx.set_certificate_file(ccert, X509FileType::PEM).unwrap();
-        }
-        if let Some(ckey) = cfg.client_key {
-            ctx.set_private_key_file(ckey, X509FileType::PEM).unwrap();
-        }
+        // ~ NativeTls offers a variety of complex configurations. Here is an example:
+
+        let mut builder = TlsConnector::builder().unwrap();
+
+        builder
+            .supported_protocols(&[Protocol::Tlsv11, Protocol::Tlsv12])
+            .unwrap();
+
         if let Some(ca_cert) = cfg.ca_cert {
-            ctx.set_CA_file(ca_cert).unwrap();
-        } else {
-            // ~ allow client specify the CAs through the default paths:
-            // "These locations are read from the SSL_CERT_FILE and
-            // SSL_CERT_DIR environment variables if present, or defaults
-            // specified at OpenSSL build time otherwise."
-            ctx.set_default_verify_paths().unwrap();
+            let mut buf = vec![];
+            File::open(ca_cert)
+                .unwrap()
+                .read_to_end(&mut buf)
+                .unwrap();
+            builder
+                .add_root_certificate(Certificate::from_der(&buf).unwrap())
+                .unwrap();
+        };
+
+        if let (Some(ccert), Some(passwd)) = (cfg.client_cert, cfg.client_pass) {
+            let mut buf = vec![];
+            File::open(ccert)
+                .unwrap()
+                .read_to_end(&mut buf)
+                .unwrap();
+            builder
+                .identity(Pkcs12::from_der(&buf, &passwd).unwrap())
+                .unwrap();
         }
 
+        let connector = builder.build().unwrap();
+
         // ~ instantiate KafkaClient with the previous OpenSSL setup
-        let mut client = KafkaClient::new_secure(cfg.brokers, SecurityConfig::new(ctx));
+        let mut client = KafkaClient::new_secure(cfg.brokers, SecurityConfig::new(connector));
 
         // ~ communicate with the brokers
         match client.load_metadata_all() {
@@ -96,7 +109,7 @@ mod example {
     struct Config {
         brokers: Vec<String>,
         client_cert: Option<String>,
-        client_key: Option<String>,
+        client_pass: Option<String>,
         ca_cert: Option<String>,
     }
 
@@ -105,9 +118,12 @@ mod example {
             let mut opts = getopts::Options::new();
             opts.optflag("h", "help", "Print this help screen");
             opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
-            opts.optopt("", "ca-cert", "Specify the trusted CA certificates", "FILE");
-            opts.optopt("", "client-cert", "Specify the client certificate", "FILE");
-            opts.optopt("", "client-key", "Specify key for the client certificate", "FILE");
+            opts.optopt("", "ca-cert", "Specify the trusted CA certificates in DER format", "FILE");
+            opts.optopt("",
+                        "client-cert",
+                        "Specify the client certificate in PKCS12 format",
+                        "FILE");
+            opts.optopt("", "client-pass", "Specify password for the client certificate", "FILE");
 
             let args: Vec<_> = env::args().collect();
             let m = match opts.parse(&args[1..]) {
@@ -122,22 +138,22 @@ mod example {
 
             let brokers = m.opt_str("brokers")
                 .map(|s| {
-                    s.split(',')
-                        .map(|s| s.trim().to_owned())
-                        .filter(|s| !s.is_empty())
-                        .collect()
-                })
+                         s.split(',')
+                             .map(|s| s.trim().to_owned())
+                             .filter(|s| !s.is_empty())
+                             .collect()
+                     })
                 .unwrap_or_else(|| vec!["localhost:9092".into()]);
             if brokers.is_empty() {
                 return Err("Invalid --brokers specified!".to_owned());
             }
 
             Ok(Config {
-                brokers: brokers,
-                client_cert: m.opt_str("client-cert"),
-                client_key: m.opt_str("client-key"),
-                ca_cert: m.opt_str("ca-cert"),
-            })
+                   brokers: brokers,
+                   client_cert: m.opt_str("client-cert"),
+                   client_pass: m.opt_str("client-pass"),
+                   ca_cert: m.opt_str("ca-cert"),
+               })
         }
     }
 }

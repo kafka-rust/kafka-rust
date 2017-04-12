@@ -20,7 +20,7 @@ fnv = "1.0"
 
 flate2 = { version = "0.2", optional = true }
 snappy = { version = "0.4", optional = true }
-openssl = { version = "0.8", optional = true }
+native-tls = { version = "0.1", optional = true }
 
 
 [dev-dependencies]
@@ -32,6 +32,6 @@ time = "0.1"
 [features]
 default = ["snappy", "gzip", "security"]
 gzip = ["flate2"]
-security = ["openssl"]
+security = ["native-tls"]
 nightly = []
 integration_tests = []

@@ -416,34 +416,45 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// extern crate openssl;
+    /// extern crate native_tls;
     /// extern crate kafka;
     ///
-    /// use openssl::ssl::{SslContext, SslMethod, SSL_VERIFY_PEER};
-    /// use openssl::x509::X509FileType;
+    /// use std::io::prelude::*;
+    /// use std::fs::File;
+    ///
+    /// use native_tls::{TlsConnector, Protocol, Certificate, Pkcs12};
     /// use kafka::client::{KafkaClient, SecurityConfig};
     ///
     /// fn main() {
-    ///     let (key, cert) = ("client.key".to_string(), "client.crt".to_string());
+    ///     let (ccert, pass) = ("client.crt", "password");
     ///
-    ///     // OpenSSL offers a variety of complex configurations. Here is an example:
-    ///     let mut ctx = SslContext::new(SslMethod::Sslv23).unwrap();
-    ///     ctx.set_cipher_list("DEFAULT").unwrap();
-    ///     ctx.set_certificate_file(&cert, X509FileType::PEM).unwrap();
-    ///     ctx.set_private_key_file(&key, X509FileType::PEM).unwrap();
-    ///     ctx.set_default_verify_paths().unwrap();
-    ///     ctx.set_verify(SSL_VERIFY_PEER);
+    ///     // NativeTls offers a variety of complex configurations. Here is an example:
+    ///     let mut builder = TlsConnector::builder().unwrap();
+    ///
+    ///     builder
+    ///         .supported_protocols(&[Protocol::Tlsv11, Protocol::Tlsv12])
+    ///         .unwrap();
+    ///
+    ///     let mut buf = vec![];
+    ///     File::open(ccert)
+    ///         .unwrap()
+    ///         .read_to_end(&mut buf)
+    ///         .unwrap();
+    ///     builder
+    ///         .identity(Pkcs12::from_der(&buf, &pass).unwrap())
+    ///         .unwrap();
+    ///
+    ///     let connector = builder.build().unwrap();
     ///
     ///     let mut client = KafkaClient::new_secure(vec!("localhost:9092".to_owned()),
-    ///                                              SecurityConfig::new(ctx));
+    ///                                              SecurityConfig::new(connector));
     ///     client.load_metadata_all().unwrap();
     /// }
     /// ```
     ///
     /// See also `KafkaClient::load_metadatata_all` and
     /// `KafkaClient::load_metadata` methods, the creates
-    /// [openssl](https://crates.io/crates/openssl)
-    /// and [openssl_verify](https://crates.io/crates/openssl-verify),
+    /// [native-tls](https://crates.io/crates/native-tls),
     /// as well as
     /// [Kafka's documentation](https://kafka.apache.org/documentation.html#security_ssl).
     #[cfg(feature = "security")]
@@ -844,12 +855,14 @@ impl KafkaClient {
         for topic in topics {
             let topic = topic.as_ref();
             if let Some(ps) = state.partitions_for(topic) {
-                for (id, host) in ps.iter()
-                    .filter_map(|(id, p)| p.broker(&state).map(|b| (id, b.host()))) {
+                for (id, host) in
+                    ps.iter()
+                        .filter_map(|(id, p)| p.broker(&state).map(|b| (id, b.host()))) {
                     let entry = reqs.entry(host)
                         .or_insert_with(|| {
-                            protocol::OffsetRequest::new(correlation, &config.client_id)
-                        });
+                                            protocol::OffsetRequest::new(correlation,
+                                                                         &config.client_id)
+                                        });
                     entry.add(topic, id, time);
                 }
             }
@@ -1027,11 +1040,11 @@ impl KafkaClient {
             if let Some(broker) = state.find_broker(inp.topic, inp.partition) {
                 reqs.entry(broker)
                     .or_insert_with(|| {
-                        protocol::FetchRequest::new(correlation,
-                                                    &config.client_id,
-                                                    config.fetch_max_wait_time,
-                                                    config.fetch_min_bytes)
-                    })
+                                        protocol::FetchRequest::new(correlation,
+                                                                    &config.client_id,
+                                                                    config.fetch_max_wait_time,
+                                                                    config.fetch_min_bytes)
+                                    })
                     .add(inp.topic,
                          inp.partition,
                          inp.offset,
@@ -1245,8 +1258,8 @@ impl KafkaClient {
         }
 
         Ok(try!(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config))
-            .remove(topic)
-            .unwrap_or_else(Vec::new))
+               .remove(topic)
+               .unwrap_or_else(Vec::new))
     }
 }
 
@@ -1272,12 +1285,12 @@ impl KafkaClientInternals for KafkaClient {
                 Some(broker) => {
                     reqs.entry(broker)
                         .or_insert_with(|| {
-                            protocol::ProduceRequest::new(required_acks,
-                                                          ack_timeout,
-                                                          correlation,
-                                                          &config.client_id,
-                                                          config.compression)
-                        })
+                                            protocol::ProduceRequest::new(required_acks,
+                                                                          ack_timeout,
+                                                                          correlation,
+                                                                          &config.client_id,
+                                                                          config.compression)
+                                        })
                         .add(msg.topic, msg.partition, msg.key, msg.value)
                 }
             }
@@ -1307,7 +1320,9 @@ fn __get_group_coordinator<'a>(group: &str,
         // been called yet; if there are no connections available we can
         // try connecting to the user specified bootstrap server similar
         // to the way `load_metadata` works.
-        let conn = conn_pool.get_conn_any(now).expect("available connection");
+        let conn = conn_pool
+            .get_conn_any(now)
+            .expect("available connection");
         debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
         let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req));
         let retry_code;
