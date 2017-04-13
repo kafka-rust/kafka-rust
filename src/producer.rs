@@ -61,11 +61,12 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::hash::{Hasher, SipHasher, BuildHasher, BuildHasherDefault};
+use std::hash::{Hasher, BuildHasher, BuildHasherDefault};
 use std::time::Duration;
 use client::{self, KafkaClient};
 use error::{Error, Result};
 use ref_slice::ref_slice;
+use twox_hash::XxHash;
 
 #[cfg(feature = "security")]
 use client::SecurityConfig;
@@ -577,7 +578,7 @@ pub trait Partitioner {
 ///
 /// See `Builder::with_partitioner`.
 #[derive(Default)]
-pub struct DefaultPartitioner<H = BuildHasherDefault<SipHasher>> {
+pub struct DefaultPartitioner<H = BuildHasherDefault<XxHash>> {
     // ~ a hasher builder; used to consistently hash keys
     hash_builder: H,
     // ~ a counter incremented with each partitioned message to
