@@ -126,7 +126,7 @@ mod example {
             opts.optopt("", "ca-cert", "Specify the trusted CA certificates", "FILE");
             opts.optopt("", "client-cert", "Specify the client certificate", "FILE");
             opts.optopt("", "client-key", "Specify key for the client certificate", "FILE");
-            opts.optflag("", "verify-hostname", "Performing server name verification.");
+            opts.optflag("", "no-hostname-verification", "Do not perform server hostname verification (insecure!)");
 
             let args: Vec<_> = env::args().collect();
             let m = match opts.parse(&args[1..]) {
@@ -156,7 +156,7 @@ mod example {
                    client_cert: m.opt_str("client-cert"),
                    client_key: m.opt_str("client-key"),
                    ca_cert: m.opt_str("ca-cert"),
-                   verify_hostname: m.opt_present("verify-hostname"),
+                   verify_hostname: !m.opt_present("no-hostname-verification"),
                })
         }
     }
