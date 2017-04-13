@@ -221,7 +221,7 @@ impl Config {
         opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
         opts.optopt("", "topic", "Specify target topic", "NAME");
         opts.optopt("", "input", "Specify input file", "FILE");
-        opts.optopt("", "compression", "Compress messages [NONE, GZIP, SNAPPY]", "TYPE");
+        opts.optopt("", "compression", "Compress messages [NONE, GZIP, SNAPPY, LZ4]", "TYPE");
         opts.optopt("",
                     "required-acks",
                     "Specify amount of required broker acknowledgments [NONE, ONE, ALL]",
@@ -254,6 +254,8 @@ impl Config {
                 Some(ref s) if s.eq_ignore_ascii_case("gzip") => Compression::GZIP,
                 #[cfg(feature = "snappy")]
                 Some(ref s) if s.eq_ignore_ascii_case("snappy") => Compression::SNAPPY,
+                #[cfg(feature = "lz4")]
+                Some(ref s) if s.eq_ignore_ascii_case("lz4") => Compression::LZ4,
                 Some(s) => {
                     return Err(Error::Literal(format!("Unsupported compression type: {}", s)))
                 }

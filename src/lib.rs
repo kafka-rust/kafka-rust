@@ -19,6 +19,13 @@ extern crate twox_hash;
 #[macro_use]
 extern crate log;
 
+#[cfg(test)]
+extern crate env_logger;
+
+#[cfg(test)]
+#[macro_use]
+extern crate lazy_static;
+
 #[cfg(feature = "security")]
 extern crate openssl;
 
@@ -27,6 +34,9 @@ extern crate flate2;
 
 #[cfg(feature = "snappy")]
 extern crate snap;
+
+#[cfg(feature = "lz4")]
+extern crate lz4_compress;
 
 #[cfg(all(test, feature = "nightly"))]
 extern crate test;

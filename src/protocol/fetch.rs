@@ -15,8 +15,10 @@ use compression::Compression;
 use compression::gzip;
 #[cfg(feature = "snappy")]
 use compression::snappy::SnappyReader;
+#[cfg(feature = "lz4")]
+use compression::lz4;
 
-use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
+use super::{ApiVersion, HeaderRequest, API_KEY_FETCH, API_VERSION};
 use super::zreader::ZReader;
 use super::to_crc;
 
@@ -28,6 +30,7 @@ pub struct FetchRequest<'a, 'b> {
     pub replica: i32,
     pub max_wait_time: i32,
     pub min_bytes: i32,
+    pub api_version: ApiVersion,
     // topic -> partitions
     pub topic_partitions: HashMap<&'b str, TopicPartitionFetchRequest>,
 }
@@ -48,13 +51,17 @@ impl<'a, 'b> FetchRequest<'a, 'b> {
     pub fn new(correlation_id: i32,
                client_id: &'a str,
                max_wait_time: i32,
-               min_bytes: i32)
+               min_bytes: i32,
+               api_versions: Option<&[ApiVersion]>)
                -> FetchRequest<'a, 'b> {
         FetchRequest {
             header: HeaderRequest::new(API_KEY_FETCH, API_VERSION, correlation_id, client_id),
             replica: -1,
             max_wait_time: max_wait_time,
             min_bytes: min_bytes,
+            api_version: api_versions
+                .and_then(|versions| versions.get(API_KEY_FETCH as usize).map(|v| v.clone()))
+                .unwrap_or_default(),
             topic_partitions: HashMap::new(),
         }
     }
@@ -142,7 +149,11 @@ pub struct ResponseParser<'a, 'b, 'c>
 impl<'a, 'b, 'c> super::ResponseParser for ResponseParser<'a, 'b, 'c> {
     type T = Response;
     fn parse(&self, response: Vec<u8>) -> Result<Self::T> {
-        Response::from_vec(response, self.requests, self.validate_crc)
+        let api_version = self.requests
+            .map(|req| req.api_version.clone())
+            .unwrap_or(Default::default());
+
+        Response::from_vec(response, self.requests, self.validate_crc, &api_version)
     }
 }
 
@@ -183,12 +194,13 @@ impl Response {
     /// Kafka Protocol.
     fn from_vec(response: Vec<u8>,
                 reqs: Option<&FetchRequest>,
-                validate_crc: bool)
+                validate_crc: bool,
+                api_version: &ApiVersion)
                 -> Result<Response> {
         let slice = unsafe { mem::transmute(&response[..]) };
         let mut r = ZReader::new(slice);
         let correlation_id = try!(r.read_i32());
-        let topics = array_of!(r, Topic::read(&mut r, reqs, validate_crc));
+        let topics = array_of!(r, Topic::read(&mut r, reqs, validate_crc, api_version));
         Ok(Response {
             raw_data: response,
             correlation_id: correlation_id,
@@ -224,11 +236,12 @@ pub struct Topic<'a> {
 impl<'a> Topic<'a> {
     fn read(r: &mut ZReader<'a>,
             reqs: Option<&FetchRequest>,
-            validate_crc: bool)
+            validate_crc: bool,
+            api_version: &ApiVersion)
             -> Result<Topic<'a>> {
         let name = try!(r.read_str());
         let preqs = reqs.and_then(|reqs| reqs.get(name));
-        let partitions = array_of!(r, Partition::read(r, preqs, validate_crc));
+        let partitions = array_of!(r, Partition::read(r, preqs, validate_crc, api_version));
         Ok(Topic {
             topic: name,
             partitions: partitions,
@@ -268,7 +281,8 @@ pub struct Partition<'a> {
 impl<'a> Partition<'a> {
     fn read(r: &mut ZReader<'a>,
             preqs: Option<&TopicPartitionFetchRequest>,
-            validate_crc: bool)
+            validate_crc: bool,
+            api_version: &ApiVersion)
             -> Result<Partition<'a>> {
         let partition = try!(r.read_i32());
         let proffs = preqs.and_then(|preqs| preqs.get(partition))
@@ -278,7 +292,7 @@ impl<'a> Partition<'a> {
         // we need to parse the rest even if there was an error to
         // consume the input stream (zreader)
         let highwatermark = try!(r.read_i64());
-        let msgset = try!(MessageSet::from_slice(try!(r.read_bytes()), proffs, validate_crc));
+        let msgset = try!(MessageSet::from_slice(try!(r.read_bytes()), proffs, validate_crc, api_version));
         Ok(Partition {
             partition: partition,
             data: match error {
@@ -355,7 +369,7 @@ pub struct Message<'a> {
 
 impl<'a> MessageSet<'a> {
     #[allow(dead_code)]
-    fn from_vec(data: Vec<u8>, req_offset: i64, validate_crc: bool) -> Result<MessageSet<'a>> {
+    fn from_vec(data: Vec<u8>, req_offset: i64, validate_crc: bool, api_version: &ApiVersion) -> Result<MessageSet<'a>> {
         // since we're going to keep the original
         // uncompressed vector around without
         // further modifying it and providing
@@ -363,7 +377,8 @@ impl<'a> MessageSet<'a> {
         // this is safe
         let ms = try!(MessageSet::from_slice(unsafe { mem::transmute(&data[..]) },
                                              req_offset,
-                                             validate_crc));
+                                             validate_crc,
+                                             api_version));
         return Ok(MessageSet {
             raw_data: Cow::Owned(data),
             messages: ms.messages,
@@ -372,7 +387,8 @@ impl<'a> MessageSet<'a> {
 
     fn from_slice<'b>(raw_data: &'b [u8],
                       req_offset: i64,
-                      validate_crc: bool)
+                      validate_crc: bool,
+                      api_version: &ApiVersion)
                       -> Result<MessageSet<'b>> {
         let mut r = ZReader::new(raw_data);
         let mut msgs = Vec::new();
@@ -406,14 +422,33 @@ impl<'a> MessageSet<'a> {
                         #[cfg(feature = "gzip")]
                         c if c == Compression::GZIP as i8 => {
                             let v = try!(gzip::uncompress(pmsg.value));
-                            return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
+                            return Ok(try!(MessageSet::from_vec(v,
+                                                                req_offset,
+                                                                validate_crc,
+                                                                api_version)));
                         }
                         #[cfg(feature = "snappy")]
                         c if c == Compression::SNAPPY as i8 => {
                             use std::io::Read;
                             let mut v = Vec::new();
                             try!(try!(SnappyReader::new(pmsg.value)).read_to_end(&mut v));
-                            return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
+                            return Ok(try!(MessageSet::from_vec(v,
+                                                                req_offset,
+                                                                validate_crc,
+                                                                api_version)));
+                        }
+                        #[cfg(feature = "lz4")]
+                        c if c == Compression::LZ4 as i8 => {
+                            use std::io::Read;
+                            let mut v = Vec::new();
+                            try!(try!(lz4::Lz4Reader::new(pmsg.value,
+                                                          false,
+                                                          api_version.max_version < 2))
+                                         .read_to_end(&mut v));
+                            return Ok(try!(MessageSet::from_vec(v,
+                                                                req_offset,
+                                                                validate_crc,
+                                                                api_version)));
                         }
                         _ => return Err(Error::UnsupportedCompression),
                     }
@@ -479,10 +514,14 @@ impl<'a> ProtocolMessage<'a> {
 mod tests {
     use std::str;
 
-    use super::{FetchRequest, Response, Message};
+    use super::{API_VERSION, ApiVersion, FetchRequest, Response, Message};
     use error::{Error, KafkaCode};
 
     static FETCH1_TXT: &'static str = include_str!("../../test-data/fetch1.txt");
+
+    lazy_static! {
+        static ref DEFAULT_API_VERSION: ApiVersion = ApiVersion::default();
+    }
 
     #[cfg_attr(rustfmt, rustfmt_skip)]
     static FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821: &'static [u8] =
@@ -533,7 +572,7 @@ mod tests {
                                       response: Vec<u8>,
                                       requests: Option<&FetchRequest>,
                                       validate_crc: bool) {
-        let resp = Response::from_vec(response, requests, validate_crc);
+        let resp = Response::from_vec(response, requests, validate_crc, &DEFAULT_API_VERSION);
         let resp = resp.unwrap();
 
         let original: Vec<_> = msg_per_line.lines().collect();
@@ -566,7 +605,7 @@ mod tests {
 
     #[test]
     fn test_from_slice_nocompression_k0821() {
-        let mut req = FetchRequest::new(0, "test", -1, -1);
+        let mut req = FetchRequest::new(0, "test", -1, -1, None);
         req.add("my-topic", 0, 0, -1);
         req.add("foo-quux", 0, 100, -1);
         test_decode_new_fetch_response(FETCH1_TXT,
@@ -576,7 +615,7 @@ mod tests {
 
         // ~ pretend we asked for messages as of offset five (while
         // the server delivered the zero-offset message as well)
-        req = FetchRequest::new(0, "test", -1, -1);
+        req = FetchRequest::new(0, "test", -1, -1, None);
         req.add("my-topic", 0, 5, -1);
         test_decode_new_fetch_response(skip_lines(FETCH1_TXT, 5),
                                        FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(),
@@ -589,7 +628,7 @@ mod tests {
     #[cfg(not(feature = "snappy"))]
     #[test]
     fn test_unsupported_compression_snappy() {
-        let mut req = FetchRequest::new(0, "test", -1, -1);
+        let mut req = FetchRequest::new(0, "test", -1, -1, None);
         req.add("my-topic", 0, 0, -1);
         let r =
             Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
@@ -602,7 +641,7 @@ mod tests {
     #[cfg(feature = "snappy")]
     #[test]
     fn test_from_slice_snappy_k0821() {
-        let mut req = FetchRequest::new(0, "test", -1, -1);
+        let mut req = FetchRequest::new(0, "test", -1, -1, None);
         req.add("my-topic", 0, 0, -1);
         test_decode_new_fetch_response(FETCH1_TXT,
                                        FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(),
@@ -611,7 +650,7 @@ mod tests {
 
         // ~ pretend we asked for messages as of offset three (while
         // the server delivered the zero-offset message as well)
-        req = FetchRequest::new(0, "test", -1, -1);
+        req = FetchRequest::new(0, "test", -1, -1, None);
         req.add("my-topic", 0, 3, -1);
         test_decode_new_fetch_response(skip_lines(FETCH1_TXT, 3),
                                        FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(),
@@ -622,7 +661,7 @@ mod tests {
     #[cfg(feature = "snappy")]
     #[test]
     fn test_from_slice_snappy_k0822() {
-        let mut req = FetchRequest::new(0, "test", -1, -1);
+        let mut req = FetchRequest::new(0, "test", -1, -1, None);
         req.add("my-topic", 0, 0, -1);
         test_decode_new_fetch_response(FETCH1_TXT,
                                        FETCH1_FETCH_RESPONSE_SNAPPY_K0822.to_owned(),
@@ -633,7 +672,7 @@ mod tests {
     #[cfg(feature = "gzip")]
     #[test]
     fn test_from_slice_gzip_k0821() {
-        let mut req = FetchRequest::new(0, "test", -1, -1);
+        let mut req = FetchRequest::new(0, "test", -1, -1, None);
         req.add("my-topic", 0, 0, -1);
         test_decode_new_fetch_response(FETCH1_TXT,
                                        FETCH1_FETCH_RESPONSE_GZIP_K0821.to_owned(),
@@ -677,7 +716,8 @@ mod tests {
         // 2) with checking the crc ... parsing should fail immediately
         match Response::from_vec(FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(),
                                  None,
-                                 true) {
+                                 true,
+                                 &DEFAULT_API_VERSION) {
             Ok(_) => panic!("Expected error, but got successful response!"),
             Err(Error::Kafka(KafkaCode::CorruptMessage)) => {}
             Err(e) => panic!("Expected KafkaCode::CorruptMessage error, but got: {:?}", e),

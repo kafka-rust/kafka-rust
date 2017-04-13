@@ -21,18 +21,21 @@ twox-hash = "1.1"
 
 flate2 = { version = "0.2", optional = true }
 snap = { version = "0.2", optional = true }
+lz4-compress = { version = "0.1", optional = true }
 openssl = { version = "0.9", optional = true }
 
 [dev-dependencies]
 getopts = "0.2"
 env_logger = { version = "0.3", default-features = false }
 time = "0.1"
+lazy_static = "0.2"
 
 
 [features]
-default = ["snappy", "gzip", "security"]
+default = ["snappy", "gzip", "lz4", "security"]
 snappy = ["snap"]
 gzip = ["flate2"]
+lz4 = ["lz4-compress"]
 security = ["openssl"]
 nightly = []
 integration_tests = []

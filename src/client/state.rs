@@ -41,6 +41,8 @@ pub struct Broker {
     /// "host:port" of this broker. This information is advertised by
     /// and originating from Kafka cluster itself.
     host: String,
+    /// The version ranges of requests supported by the broker.
+    api_versions: Option<Vec<protocol::ApiVersion>>,
 }
 
 impl Broker {
@@ -55,6 +57,16 @@ impl Broker {
     #[inline]
     pub fn host(&self) -> &str {
         &self.host
+    }
+
+    pub fn api_versions(&self) -> Option<&[protocol::ApiVersion]> {
+        self.api_versions.as_ref().map(|ref v| v.as_slice())
+    }
+
+    pub fn update_api_versions(&mut self, res: protocol::ApiVersionsResponse) {
+        debug!("updating api verions from {:?}", res);
+
+        self.api_versions = Some(res.api_versions);
     }
 }
 
@@ -205,6 +217,10 @@ impl ClientState {
         }
     }
 
+    pub fn brokers(&mut self) -> &mut [Broker] {
+        self.brokers.as_mut_slice()
+    }
+
     pub fn num_topics(&self) -> usize {
         self.topic_partitions.len()
     }
@@ -235,12 +251,11 @@ impl ClientState {
         self.correlation
     }
 
-    pub fn find_broker<'a>(&'a self, topic: &str, partition_id: i32) -> Option<&'a str> {
+    pub fn find_broker<'a>(&'a self, topic: &str, partition_id: i32) -> Option<&'a Broker> {
         self.topic_partitions
             .get(topic)
             .and_then(|tp| tp.partition(partition_id))
             .and_then(|p| p.broker(self))
-            .map(|b| &b.host[..])
     }
 
     /// Clears all metadata.
@@ -326,6 +341,7 @@ impl ClientState {
                     self.brokers.push(Broker {
                         node_id: broker.node_id,
                         host: broker_host,
+                        api_versions: None,
                     });
                     // ~ track the pushed broker's index
                     e.insert(BrokerRef::new(new_index as u32));
@@ -381,6 +397,7 @@ impl ClientState {
             self.brokers.push(Broker {
                 node_id: gc.broker_id,
                 host: group_host,
+                api_versions: None,
             });
         }
         if let Some(br) = self.group_coordinators.get_mut(group) {
@@ -471,7 +488,7 @@ mod tests {
                        .map(|(id, tp)| {
                            let broker = tp.broker(&state).map(|b| (b.id(), b.host()));
                            // ~ verify that find_broker delivers the same information
-                           assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
+                           assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id).map(|b| b.host()));
                            (id, broker)
                        })
                        .collect::<Vec<_>>()

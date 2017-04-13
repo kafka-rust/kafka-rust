@@ -174,10 +174,15 @@ impl Connections {
 
     pub fn get_conn<'a>(&'a mut self, host: &str, now: Instant) -> Result<&'a mut KafkaConnection> {
         if let Some(conn) = self.conns.get_mut(host) {
-            if now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
-                debug!("Idle timeout reached: {:?}", conn.item);
+            if conn.item.closed ||
+               now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
+                if conn.item.closed {
+                    debug!("connection closed: {:?}", conn.item);
+                } else {
+                    debug!("Idle timeout reached: {:?}", conn.item);
+                    let _ = conn.item.shutdown();
+                }
                 let new_conn = try!(self.config.new_conn(self.state.next_conn_id(), host));
-                let _ = conn.item.shutdown();
                 conn.item = new_conn;
             }
             conn.last_checkout = now;
@@ -317,6 +322,8 @@ pub struct KafkaConnection {
     host: String,
     // the (wrapped) tcp stream
     stream: KafkaStream,
+
+    closed: bool,
 }
 
 impl fmt::Debug for KafkaConnection {
@@ -330,6 +337,10 @@ impl fmt::Debug for KafkaConnection {
 }
 
 impl KafkaConnection {
+    pub fn host(&self) -> &str {
+        self.host.as_str()
+    }
+
     pub fn send(&mut self, msg: &[u8]) -> Result<usize> {
         let r = self.stream.write(&msg[..]).map_err(From::from);
         trace!("Sent {} bytes to: {:?} => {:?}", msg.len(), self, r);
@@ -354,6 +365,11 @@ impl KafkaConnection {
         Ok(buffer)
     }
 
+    pub fn close(&mut self) {
+        self.closed = true;
+        let _ = self.shutdown();
+    }
+
     fn shutdown(&mut self) -> Result<()> {
         let r = self.stream.shutdown(Shutdown::Both);
         debug!("Shut down: {:?} => {:?}", self, r);
@@ -371,6 +387,7 @@ impl KafkaConnection {
                id: id,
                host: host.to_owned(),
                stream: stream,
+               closed: false,
            })
     }
 

@@ -6,11 +6,13 @@ use compression::Compression;
 use compression::gzip;
 #[cfg(feature = "snappy")]
 use compression::snappy;
+#[cfg(feature = "lz4")]
+use compression::lz4;
 
 use error::{KafkaCode, Result};
 
 use producer::{ProduceConfirm, ProducePartitionConfirm};
-use super::{HeaderRequest, HeaderResponse};
+use super::{ApiVersion, HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
 use super::to_crc;
 
@@ -24,6 +26,7 @@ pub struct ProduceRequest<'a, 'b> {
     pub timeout: i32,
     pub topic_partitions: Vec<TopicPartitionProduceRequest<'b>>,
     pub compression: Compression,
+    pub api_version: ApiVersion,
 }
 
 #[derive(Debug)]
@@ -31,12 +34,14 @@ pub struct TopicPartitionProduceRequest<'a> {
     pub topic: &'a str,
     pub partitions: Vec<PartitionProduceRequest<'a>>,
     pub compression: Compression,
+    pub api_version: ApiVersion,
 }
 
 #[derive(Debug)]
 pub struct PartitionProduceRequest<'a> {
     pub partition: i32,
     pub messages: Vec<MessageProduceRequest<'a>>,
+    pub api_version: ApiVersion,
 }
 
 #[derive(Debug)]
@@ -50,7 +55,8 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
                timeout: i32,
                correlation_id: i32,
                client_id: &'a str,
-               compression: Compression)
+               compression: Compression,
+               api_versions: Option<&'a [ApiVersion]>)
                -> ProduceRequest<'a, 'b> {
         ProduceRequest {
             header: HeaderRequest::new(API_KEY_PRODUCE, API_VERSION, correlation_id, client_id),
@@ -58,6 +64,9 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
             timeout: timeout,
             topic_partitions: vec![],
             compression: compression,
+            api_version: api_versions
+                .and_then(|versions| versions.get(API_KEY_PRODUCE as usize).map(|v| v.clone()))
+                .unwrap_or_default(),
         }
     }
 
@@ -72,18 +81,22 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
                 return;
             }
         }
-        let mut tp = TopicPartitionProduceRequest::new(topic, self.compression);
+        let mut tp = TopicPartitionProduceRequest::new(topic, self.compression, self.api_version.clone());
         tp.add(partition, key, value);
         self.topic_partitions.push(tp);
     }
 }
 
 impl<'a> TopicPartitionProduceRequest<'a> {
-    pub fn new(topic: &'a str, compression: Compression) -> TopicPartitionProduceRequest<'a> {
+    pub fn new(topic: &'a str,
+               compression: Compression,
+               api_version: ApiVersion)
+               -> TopicPartitionProduceRequest<'a> {
         TopicPartitionProduceRequest {
             topic: topic,
             partitions: vec![],
             compression: compression,
+            api_version: api_version,
         }
     }
 
@@ -94,18 +107,20 @@ impl<'a> TopicPartitionProduceRequest<'a> {
                 return;
             }
         }
-        self.partitions.push(PartitionProduceRequest::new(partition, key, value));
+        self.partitions.push(PartitionProduceRequest::new(partition, key, value, self.api_version.clone()));
     }
 }
 
 impl<'a> PartitionProduceRequest<'a> {
     pub fn new<'b>(partition: i32,
                    key: Option<&'b [u8]>,
-                   value: Option<&'b [u8]>)
+                   value: Option<&'b [u8]>,
+                   api_version: ApiVersion)
                    -> PartitionProduceRequest<'b> {
         let mut r = PartitionProduceRequest {
             partition: partition,
             messages: Vec::new(),
+            api_version: api_version,
         };
         r.add(key, value);
         r
@@ -164,6 +179,20 @@ impl<'a> PartitionProduceRequest<'a> {
                 let cdata = try!(snappy::compress(&buf));
                 try!(render_compressed(&mut buf, &cdata, compression));
             }
+            #[cfg(feature = "lz4")]
+            Compression::LZ4 => {
+                let mut cdata = Vec::new();
+                {
+                    let mut writer = try!(lz4::Lz4Writer::new(&mut cdata,
+                                                              self.api_version.max_version < 2,
+                                                              lz4::BLOCKSIZE_64KB,
+                                                              true,
+                                                              false));
+                    try!(writer.write(&buf));
+                    try!(writer.close());
+                }
+                try!(render_compressed(&mut buf, &cdata, compression));
+            }
         }
         buf.encode(out)
     }
@@ -171,7 +200,7 @@ impl<'a> PartitionProduceRequest<'a> {
 
 // ~ A helper method to render `cdata` into `out` as a compressed message.
 // ~ `out` is first cleared and then populated with the rendered message.
-#[cfg(any(feature = "snappy", feature = "gzip"))]
+#[cfg(any(feature = "snappy", feature = "gzip", feature = "lz4"))]
 fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) -> Result<()> {
     out.clear();
     let cmsg = MessageProduceRequest::new(None, Some(cdata));
