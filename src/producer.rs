@@ -547,6 +547,9 @@ pub trait Partitioner {
     fn partition(&mut self, topics: Topics, msg: &mut client::ProduceMessage);
 }
 
+/// The default hasher implementation used of `DefaultPartitioner`.
+pub type DefaultHasher = XxHash;
+
 /// As its name implies `DefaultPartitioner` is the default
 /// partitioner for `Producer`.
 ///
@@ -578,7 +581,7 @@ pub trait Partitioner {
 ///
 /// See `Builder::with_partitioner`.
 #[derive(Default)]
-pub struct DefaultPartitioner<H = BuildHasherDefault<XxHash>> {
+pub struct DefaultPartitioner<H = BuildHasherDefault<DefaultHasher>> {
     // ~ a hasher builder; used to consistently hash keys
     hash_builder: H,
     // ~ a counter incremented with each partitioned message to
@@ -659,11 +662,11 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
 
 #[cfg(test)]
 mod default_partitioner_tests {
-    use std::hash::{Hasher, SipHasher, BuildHasherDefault};
+    use std::hash::{Hasher, BuildHasherDefault};
     use std::collections::HashMap;
 
     use client;
-    use super::{DefaultPartitioner, Partitioner, Partitions, Topics};
+    use super::{DefaultPartitioner, DefaultHasher, Partitioner, Partitions, Topics};
 
     fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {
         let mut h = HashMap::new();
@@ -704,7 +707,7 @@ mod default_partitioner_tests {
                                      num_all_partitions: 2,
                                  })]);
 
-        let mut p: DefaultPartitioner<BuildHasherDefault<SipHasher>> = Default::default();
+        let mut p: DefaultPartitioner<BuildHasherDefault<DefaultHasher>> = Default::default();
 
         // ~ validate that partitioning by the same key leads to the same
         // partition
