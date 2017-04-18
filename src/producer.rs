@@ -66,7 +66,7 @@ use std::time::Duration;
 use client::{self, KafkaClient};
 use error::{Error, Result};
 use ref_slice::ref_slice;
-use twox_hash::XxHash;
+use xxhash2::State32 as XxHash;
 
 #[cfg(feature = "security")]
 use client::SecurityConfig;

@@ -14,7 +14,7 @@ extern crate byteorder;
 extern crate crc;
 extern crate ref_slice;
 extern crate fnv;
-extern crate twox_hash;
+extern crate xxhash2;
 
 #[macro_use]
 extern crate log;
