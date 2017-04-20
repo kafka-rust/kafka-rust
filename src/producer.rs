@@ -66,7 +66,7 @@ use std::time::Duration;
 use client::{self, KafkaClient};
 use error::{Error, Result};
 use ref_slice::ref_slice;
-use xxhash2::State32 as XxHash;
+use twox_hash::XxHash32;
 
 #[cfg(feature = "security")]
 use client::SecurityConfig;
@@ -548,7 +548,7 @@ pub trait Partitioner {
 }
 
 /// The default hasher implementation used of `DefaultPartitioner`.
-pub type DefaultHasher = XxHash;
+pub type DefaultHasher = XxHash32;
 
 /// As its name implies `DefaultPartitioner` is the default
 /// partitioner for `Producer`.
