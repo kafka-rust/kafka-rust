@@ -45,25 +45,27 @@ provided in the [examples directory of the
 repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
 
 
-### [Consumer] (https://spicavigo.github.io/kafka-rust/kafka/consumer/index.html)
+### Consumer
 
-This is a higher-level Consumer API for Kafka.  It provides convenient
-offset management support on behalf of a specified group.  This is the
-API a client application of this library wants to use for receiving
-messages from Kafka.
-
-
-### [Producer] (https://spicavigo.github.io/kafka-rust/kafka/producer/index.html)
-
-This is a higher-level Producer API for Kafka.  It provides convenient
-automatic partition assignment capabilities through partitioners.
-This is the API a client application of this library wants to use for
-sending messsages to Kafka.
+This is a higher-level
+[Consumer API](https://spicavigo.github.io/kafka-rust/kafka/consumer/index.html)
+for Kafka.  It provides convenient offset management support on behalf
+of a specified group.  This is the API a client application of this
+library wants to use for receiving messages from Kafka.
 
 
-### [KafkaClient] (http://spicavigo.github.io/kafka-rust/kafka/client/index.html)
+### Producer
 
-[KafkaClient](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html)
+This is a higher-level
+[Producer API](https://spicavigo.github.io/kafka-rust/kafka/producer/index.html)
+for Kafka.  It provides convenient automatic partition assignment capabilities
+through partitioners.  This is the API a client application of this library wants
+to use for sending messsages to Kafka.
+
+
+### KafkaClient
+
+[KafkaClient](http://spicavigo.github.io/kafka-rust/kafka/client/index.html)
 is the central point of this API.  However, this is a mid-level
 abstraction for Kafka rather suitable for building higher-level APIs.
 Application's typically want to use the already mentioned `Consumer`s
@@ -89,13 +91,15 @@ As usually with open source, don't hesitate to fork the repo and
 submit a pull requests if you see something to be changed.  We'll be
 happy see `kafka-rust` improving over time.
 
-#### Integration tests
+### Integration tests
+
 When working locally, the integration tests require that you must have
 Docker (1.10.0+) and docker-compose (1.6.0+) installed and run the tests via the
 included `run-all-tests` script in the `tests` directory. See the `run-all-tests`
 script itself for details on its usage.
 
-### [Creating a topic] (https://kafka.apache.org/documentation.html#quickstart)
+
+### Creating a topic
 
 Note unless otherwise explicitely stated in the documentation, this
 library will ignore requests to topics which it doesn't know about.
@@ -110,6 +114,10 @@ distribution):
 ```
 kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181  --partition 1 --replication-factor 1
 ```
+
+See also [Kafka's quickstart guide](https://kafka.apache.org/documentation.html#quickstart)
+for more information.
+
 
 ### Alternative/Related projects
 

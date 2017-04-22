@@ -12,7 +12,7 @@ use std::net::{TcpStream, Shutdown};
 use std::time::{Instant, Duration};
 
 #[cfg(feature = "security")]
-use openssl::ssl::{SslContext, SslStream};
+use openssl::ssl::SslConnector;
 
 use error::Result;
 
@@ -21,14 +21,34 @@ use error::Result;
 /// Security relevant configuration options for `KafkaClient`.
 // This will be expanded in the future. See #51.
 #[cfg(feature = "security")]
-#[derive(Debug)]
-pub struct SecurityConfig(SslContext);
+pub struct SecurityConfig {
+    connector: SslConnector,
+    verify_hostname: bool,
+}
 
 #[cfg(feature = "security")]
 impl SecurityConfig {
     /// In the future this will also support a kerbos via #51.
-    pub fn new(ssl: SslContext) -> SecurityConfig {
-        SecurityConfig(ssl)
+    pub fn new(connector: SslConnector) -> Self {
+        SecurityConfig {
+            connector: connector,
+            verify_hostname: true,
+        }
+    }
+
+    /// Initiates a client-side TLS session with/without performing hostname verification.
+    pub fn with_hostname_verification(self, verify_hostname: bool) -> SecurityConfig {
+        SecurityConfig {
+            verify_hostname: verify_hostname,
+            ..self
+        }
+    }
+}
+
+#[cfg(feature = "security")]
+impl fmt::Debug for SecurityConfig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SecurityConfig {{ verify_hostname: {} }}", self.verify_hostname)
     }
 }
 
@@ -66,18 +86,23 @@ impl Config {
     #[cfg(not(feature = "security"))]
     fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
         KafkaConnection::new(id, host, self.rw_timeout).map(|c| {
-            debug!("Established: {:?}", c);
-            c
-        })
+                                                                debug!("Established: {:?}", c);
+                                                                c
+                                                            })
     }
 
     #[cfg(feature = "security")]
     fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(id, host, self.rw_timeout, self.security_config.as_ref().map(|c| &c.0))
-            .map(|c| {
-                debug!("Established: {:?}", c);
-                c
-            })
+        KafkaConnection::new(id,
+                             host,
+                             self.rw_timeout,
+                             self.security_config
+                                 .as_ref()
+                                 .map(|c| (c.connector.clone(), c.verify_hostname)))
+                .map(|c| {
+                         debug!("Established: {:?}", c);
+                         c
+                     })
     }
 }
 
@@ -164,7 +189,8 @@ impl Connections {
             return Ok(unsafe { mem::transmute(kconn) });
         }
         let cid = self.state.next_conn_id();
-        self.conns.insert(host.to_owned(), Pooled::new(now, try!(self.config.new_conn(cid, host))));
+        self.conns
+            .insert(host.to_owned(), Pooled::new(now, try!(self.config.new_conn(cid, host))));
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
 
@@ -342,10 +368,10 @@ impl KafkaConnection {
         try!(stream.set_read_timeout(rw_timeout));
         try!(stream.set_write_timeout(rw_timeout));
         Ok(KafkaConnection {
-            id: id,
-            host: host.to_owned(),
-            stream: stream,
-        })
+               id: id,
+               host: host.to_owned(),
+               stream: stream,
+           })
     }
 
     #[cfg(not(feature = "security"))]
@@ -357,11 +383,23 @@ impl KafkaConnection {
     fn new(id: u32,
            host: &str,
            rw_timeout: Option<Duration>,
-           security: Option<&SslContext>)
+           security: Option<(SslConnector, bool)>)
            -> Result<KafkaConnection> {
         let stream = try!(TcpStream::connect(host));
         let stream = match security {
-            Some(ctx) => KafkaStream::Ssl(try!(SslStream::connect(ctx, stream))),
+            Some((connector, verify_hostname)) => {
+                let connection = if verify_hostname {
+                    let domain = match host.rfind(':') {
+                        None => host,
+                        Some(i) => &host[..i],
+                    };
+
+                    try!(connector.connect(domain, stream))
+                } else {
+                    try!(connector.danger_connect_without_providing_domain_for_certificate_verification_and_server_name_indication(stream))
+                };
+                KafkaStream::Ssl(connection)
+            }
             None => KafkaStream::Plain(stream),
         };
         KafkaConnection::from_stream(stream, id, host, rw_timeout)

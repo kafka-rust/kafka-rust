@@ -20,7 +20,7 @@ fnv = "1.0"
 
 flate2 = { version = "0.2", optional = true }
 snap = { version = "0.2", optional = true }
-openssl = { version = "0.8", optional = true }
+openssl = { version = "0.9", optional = true }
 
 [dev-dependencies]
 getopts = "0.2"
