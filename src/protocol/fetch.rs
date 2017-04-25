@@ -388,7 +388,7 @@ impl<'a> MessageSet<'a> {
                     return Err(e);
                 }
                 Ok((offset, pmsg)) => {
-                    // handle compression (denoted by the last 2 bits
+                    // handle compression (denoted by the last 3 bits
                     // of the attr field)
                     match pmsg.attr & 0x07 {
                         c if c == Compression::NONE as i8 => {
