@@ -25,7 +25,7 @@ extern crate openssl;
 extern crate flate2;
 
 #[cfg(feature = "snappy")]
-extern crate snappy;
+extern crate snap;
 
 #[cfg(all(test, feature = "nightly"))]
 extern crate test;

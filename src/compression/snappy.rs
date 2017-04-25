@@ -1,18 +1,37 @@
 use std::io::{self, Read};
 
 use byteorder::{BigEndian, ByteOrder};
-use snappy;
+use snap;
 
 use error::{Result, Error};
 
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
-    Ok(snappy::compress(src))
+    let mut buf = vec![0; snap::max_compress_len(src.len())];
+
+    snap::Encoder::new()
+        .compress(src, &mut buf)
+        .map(|len| {
+                 buf.truncate(len);
+                 buf
+             })
+        .map_err(|err| Error::InvalidSnappy(err))
 }
 
 fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
-    snappy::uncompress_to(src, dst)
-        .map(|_| ())
-        .map_err(|_| Error::InvalidInputSnappy)
+    snap::decompress_len(src)
+        .and_then(|min_len| {
+            if min_len > 0 {
+                let off = dst.len();
+                dst.resize(off + min_len, 0);
+                let uncompressed_len = {
+                    let buf = &mut dst.as_mut_slice()[off..off + min_len];
+                    try!(snap::Decoder::new().decompress(src, buf))
+                };
+                dst.truncate(off + uncompressed_len);
+            }
+            Ok(())
+        })
+        .map_err(|err| Error::InvalidSnappy(err))
 }
 
 // --------------------------------------------------------------------
@@ -43,18 +62,18 @@ fn validate_stream(mut stream: &[u8]) -> Result<&[u8]> {
         return Err(Error::UnexpectedEOF);
     }
     if &stream[..MAGIC.len()] != MAGIC {
-        return Err(Error::InvalidInputSnappy);
+        return Err(Error::InvalidSnappy(snap::Error::Header));
     }
     stream = &stream[MAGIC.len()..];
     // ~ let's be assertive and (for the moment) restrict ourselves to
     // version == 1 and compatibility == 1.
     let version = next_i32!(stream);
     if version != 1 {
-        return Err(Error::InvalidInputSnappy);
+        return Err(Error::InvalidSnappy(snap::Error::Header));
     }
     let compat = next_i32!(stream);
     if compat != 1 {
-        return Err(Error::InvalidInputSnappy);
+        return Err(Error::InvalidSnappy(snap::Error::Header));
     }
     Ok(stream)
 }
@@ -87,10 +106,10 @@ impl<'a> SnappyReader<'a> {
     pub fn new(mut stream: &[u8]) -> Result<SnappyReader> {
         stream = try!(validate_stream(stream));
         Ok(SnappyReader {
-            compressed_data: stream,
-            uncompressed_pos: 0,
-            uncompressed_chunk: Vec::new(),
-        })
+               compressed_data: stream,
+               uncompressed_pos: 0,
+               uncompressed_chunk: Vec::new(),
+           })
     }
 
     fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -116,7 +135,10 @@ impl<'a> SnappyReader<'a> {
         self.uncompressed_pos = 0;
         let chunk_size = next_i32!(self.compressed_data);
         if chunk_size <= 0 {
-            return Err(Error::InvalidInputSnappy);
+            return Err(Error::InvalidSnappy(snap::Error::UnsupportedChunkLength {
+                                                len: chunk_size as u64,
+                                                header: false,
+                                            }));
         }
         let chunk_size = chunk_size as usize;
         self.uncompressed_chunk.clear();
@@ -137,7 +159,10 @@ impl<'a> SnappyReader<'a> {
         while !self.compressed_data.is_empty() {
             let chunk_size = next_i32!(self.compressed_data);
             if chunk_size <= 0 {
-                return Err(Error::InvalidInputSnappy);
+                return Err(Error::InvalidSnappy(snap::Error::UnsupportedChunkLength {
+                                                    len: chunk_size as u64,
+                                                    header: false,
+                                                }));
             }
             let (c1, c2) = self.compressed_data.split_at(chunk_size as usize);
             try!(uncompress_to(c1, buf));
@@ -173,6 +198,7 @@ impl<'a> Read for SnappyReader<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::str;
     use std::io::Read;
 
     use error::{Error, Result};
@@ -208,11 +234,11 @@ mod tests {
         let compressed = &[12, 42, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116];
         let uncompressed = uncompress(compressed);
         assert!(uncompressed.is_err());
-        assert!(if let Some(Error::InvalidInputSnappy) = uncompressed.err() {
-            true
-        } else {
-            false
-        });
+        assert!(if let Some(Error::InvalidSnappy(_)) = uncompressed.err() {
+                    true
+                } else {
+                    false
+                });
     }
 
     static ORIGINAL: &'static str = include_str!("../../test-data/fetch1.txt");
@@ -230,7 +256,7 @@ mod tests {
                 n => buf.extend_from_slice(&tmp_buf[..n]),
             }
         }
-        assert_eq!(ORIGINAL.as_bytes(), &buf[..]);
+        assert_eq!(ORIGINAL, str::from_utf8(&buf[..]).unwrap());
     }
 
     #[test]
@@ -238,6 +264,6 @@ mod tests {
         let mut buf = Vec::new();
         let mut r = SnappyReader::new(COMPRESSED).unwrap();
         r.read_to_end(&mut buf).unwrap();
-        assert_eq!(ORIGINAL.as_bytes(), &buf[..]);
+        assert_eq!(ORIGINAL, str::from_utf8(&buf[..]).unwrap());
     }
 }
