@@ -7,6 +7,7 @@
 * This library is primarily documented through examples in its API
 documentation:
   * [master](https://spicavigo.github.io/kafka-rust/)
+  * [0.6](https://docs.rs/kafka/^0.6)
   * [0.5](https://docs.rs/kafka/^0.5)
 * Documentation about Kafka itself can be found at [its project
 home page](http://kafka.apache.org/).
@@ -21,7 +22,7 @@ expect the version number to grow quickly.)
 
 ```toml
 [dependencies]
-kafka = "0.5"
+kafka = "0.6"
 ```
 
 To build kafka-rust the usual `cargo build` should suffice.  The crate
