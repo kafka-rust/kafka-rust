@@ -1,8 +1,10 @@
 extern crate kafka;
 extern crate getopts;
 extern crate env_logger;
+#[macro_use]
+extern crate error_chain;
 
-use std::{env, fmt, process};
+use std::{env, process};
 use std::time::Duration;
 use std::io::{self, Write};
 use std::ascii::AsciiExt;
@@ -27,7 +29,7 @@ fn main() {
     }
 }
 
-fn process(cfg: Config) -> Result<(), Error> {
+fn process(cfg: Config) -> Result<()> {
     let mut c = {
         let mut cb = Consumer::from_hosts(cfg.brokers)
             .with_group(cfg.group)
@@ -70,32 +72,11 @@ fn process(cfg: Config) -> Result<(), Error> {
 }
 
 // --------------------------------------------------------------------
-
-enum Error {
-    Kafka(kafka::error::Error),
-    Io(io::Error),
-    Literal(String),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Error::Kafka(ref e) => write!(f, "kafka-error: {}", e),
-            &Error::Io(ref e) => write!(f, "io-error: {}", e),
-            &Error::Literal(ref s) => write!(f, "{}", s),
-        }
-    }
-}
-
-impl From<kafka::error::Error> for Error {
-    fn from(e: kafka::error::Error) -> Self {
-        Error::Kafka(e)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Error::Io(e)
+error_chain! {
+    foreign_links {
+        Kafka(kafka::error::Error);
+        Io(io::Error);
+        Opt(getopts::Fail);
     }
 }
 
@@ -111,7 +92,7 @@ struct Config {
 }
 
 impl Config {
-    fn from_cmdline() -> Result<Config, Error> {
+    fn from_cmdline() -> Result<Config> {
         let args: Vec<_> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
@@ -126,22 +107,22 @@ impl Config {
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => return Err(Error::Literal(e.to_string())),
+            Err(e) => bail!(e),
         };
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
-            return Err(Error::Literal(opts.usage(&brief)));
+            bail!(opts.usage(&brief));
         }
 
         macro_rules! required_list {
             ($name:expr) => {{
                 let opt = $name;
                 let xs: Vec<_> = match m.opt_str(opt) {
-                    None => return Err(Error::Literal(format!("Required option --{} missing", opt))),
+                    None => bail!(format!("Required option --{} missing", opt)),
                     Some(s) => s.split(',').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect(),
                 };
                 if xs.is_empty() {
-                    return Err(Error::Literal(format!("Invalid --{} specified!", opt)));
+                    bail!(format!("Invalid --{} specified!", opt));
                 }
                 xs
             }}
@@ -157,7 +138,7 @@ impl Config {
             } else if s.eq_ignore_ascii_case("kafka") {
                 offset_storage = GroupOffsetStorage::Kafka;
             } else {
-                return Err(Error::Literal(format!("unknown offset store: {}", s)));
+                bail!(format!("unknown offset store: {}", s));
             }
         }
         Ok(Config {

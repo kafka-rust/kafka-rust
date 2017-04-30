@@ -2,11 +2,12 @@ extern crate kafka;
 extern crate getopts;
 extern crate env_logger;
 extern crate time;
+#[macro_use]
+extern crate error_chain;
 
 use std::ascii::AsciiExt;
 use std::cmp;
 use std::env;
-use std::fmt;
 use std::io::{self, stdout, stderr, BufWriter, Write};
 use std::process;
 use std::thread;
@@ -39,7 +40,7 @@ fn main() {
     }
 }
 
-fn run(cfg: Config) -> Result<(), Error> {
+fn run(cfg: Config) -> Result<()> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
     client.set_group_offset_storage(cfg.offset_storage);
     try!(client.load_metadata_all());
@@ -49,7 +50,7 @@ fn run(cfg: Config) -> Result<(), Error> {
         let ts = client.topics();
         let num_topics = ts.len();
         if num_topics == 0 {
-            return Err(Error::Literal("no topics available".to_owned()));
+            bail!("no topics available");
         }
         let mut names: Vec<&str> = Vec::with_capacity(ts.len());
         names.extend(ts.names());
@@ -59,12 +60,12 @@ fn run(cfg: Config) -> Result<(), Error> {
         for name in names {
             let _ = write!(buf, "topic: {}\n", name);
         }
-        return Err(Error::Literal("choose a topic".to_owned()));
+        bail!("choose a topic");
     }
 
     // ~ otherwise let's loop over the topic partition offsets
     let num_partitions = match client.topics().partitions(&cfg.topic) {
-        None => return Err(Error::Literal(format!("no such topic: {}", &cfg.topic))),
+        None => bail!(format!("no such topic: {}", &cfg.topic)),
         Some(partitions) => partitions.len(),
     };
     let mut state = State::new(num_partitions, cfg.commited_not_consumed);
@@ -119,7 +120,7 @@ impl State {
                          client: &mut KafkaClient,
                          topic: &str,
                          group: &str)
-                         -> Result<(), Error> {
+                         -> Result<()> {
         // ~ get the latest topic offsets
         let latests = try!(client.fetch_topic_offsets(topic, FetchOffset::Latest));
 
@@ -190,7 +191,7 @@ impl<W: Write> Printer<W> {
         }
     }
 
-    fn print_head(&mut self, num_partitions: usize) -> Result<(), io::Error> {
+    fn print_head(&mut self, num_partitions: usize) -> Result<()> {
         self.out_buf.clear();
         {
             // ~ format
@@ -221,14 +222,15 @@ impl<W: Write> Printer<W> {
         }
         {
             // ~ print
-            self.out.write_all(self.out_buf.as_bytes())
+            try!(self.out.write_all(self.out_buf.as_bytes()));
+            Ok(())
         }
     }
 
     fn print_offsets(&mut self,
                      time: &time::Tm,
                      partitions: &[Partition])
-                     -> Result<(), io::Error> {
+                     -> Result<()> {
         self.out_buf.clear();
         {
             // ~ format
@@ -282,7 +284,8 @@ impl<W: Write> Printer<W> {
             }
         }
         self.out_buf.push('\n');
-        self.out.write_all(self.out_buf.as_bytes())
+        try!(self.out.write_all(self.out_buf.as_bytes()));
+        Ok(())
     }
 }
 
@@ -300,7 +303,7 @@ struct Config {
 }
 
 impl Config {
-    fn from_cmdline() -> Result<Config, Error> {
+    fn from_cmdline() -> Result<Config> {
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
@@ -319,11 +322,11 @@ impl Config {
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => return Err(Error::Literal(e.to_string())),
+            Err(e) => bail!(e),
         };
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
-            return Err(Error::Literal(opts.usage(&brief)));
+            bail!(opts.usage(&brief));
         }
         let mut offset_storage = GroupOffsetStorage::Zookeeper;
         if let Some(s) = m.opt_str("storage") {
@@ -332,14 +335,14 @@ impl Config {
             } else if s.eq_ignore_ascii_case("kafka") {
                 offset_storage = GroupOffsetStorage::Kafka;
             } else {
-                return Err(Error::Literal(format!("unknown offset store: {}", s)));
+                bail!(format!("unknown offset store: {}", s));
             }
         }
         let mut period = stdtime::Duration::from_secs(5);
         if let Some(s) = m.opt_str("sleep") {
             match s.parse::<u64>() {
                 Ok(n) if n != 0 => period = stdtime::Duration::from_secs(n),
-                _ => return Err(Error::Literal(format!("not a number greater than zero: {}", s))),
+                _ => bail!(format!("not a number greater than zero: {}", s)),
             }
         }
         Ok(Config {
@@ -363,30 +366,10 @@ impl Config {
 
 // --------------------------------------------------------------------
 
-enum Error {
-    Kafka(kafka::error::Error),
-    Io(io::Error),
-    Literal(String),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Error::Kafka(ref e) => write!(f, "kafka-error: {}", e),
-            &Error::Io(ref e) => write!(f, "io-error: {}", e),
-            &Error::Literal(ref s) => write!(f, "{}", s),
-        }
-    }
-}
-
-impl From<kafka::error::Error> for Error {
-    fn from(e: kafka::error::Error) -> Self {
-        Error::Kafka(e)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Error::Io(e)
+error_chain! {
+    foreign_links {
+        Kafka(kafka::error::Error);
+        Io(io::Error);
+        Opt(getopts::Fail);
     }
 }

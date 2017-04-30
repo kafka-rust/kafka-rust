@@ -7,7 +7,7 @@
 //!   you with more power but also more resposibility
 //!
 //! See module level documentation corresponding to each client individually.
-
+#![recursion_limit="128"]
 #![cfg_attr(feature = "nightly", feature(test))]
 
 extern crate byteorder;
@@ -15,6 +15,9 @@ extern crate crc;
 extern crate ref_slice;
 extern crate fnv;
 extern crate twox_hash;
+
+#[macro_use]
+extern crate error_chain;
 
 #[macro_use]
 extern crate log;

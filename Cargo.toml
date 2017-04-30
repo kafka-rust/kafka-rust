@@ -18,6 +18,7 @@ log = "0.3"
 ref_slice = "1.0"
 fnv = "1.0"
 twox-hash = "1.1"
+error-chain = "0.10"
 
 flate2 = { version = "0.2", optional = true }
 snap = { version = "0.2", optional = true }

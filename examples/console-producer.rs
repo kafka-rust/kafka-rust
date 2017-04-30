@@ -1,8 +1,10 @@
 extern crate kafka;
 extern crate getopts;
 extern crate env_logger;
+#[macro_use]
+extern crate error_chain;
 
-use std::{env, fmt, process};
+use std::{env, process};
 use std::fs::File;
 use std::str::FromStr;
 use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
@@ -34,14 +36,14 @@ fn main() {
     }
 }
 
-fn produce(cfg: &Config) -> Result<(), Error> {
+fn produce(cfg: &Config) -> Result<()> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
     client.set_client_id("kafka-rust-console-producer".into());
     try!(client.load_metadata_all());
 
     // ~ verify that the remote brokers do know about the target topic
     if !client.topics().contains(&cfg.topic) {
-        return Err(Error::Literal(format!("No such topic at {:?}: {}", cfg.brokers, cfg.topic)));
+        bail!(format!("No such topic at {:?}: {}", cfg.brokers, cfg.topic));
     }
     match cfg.input_file {
         None => {
@@ -56,7 +58,7 @@ fn produce(cfg: &Config) -> Result<(), Error> {
     }
 }
 
-fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<(), Error> {
+fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<()> {
     let mut producer = try!(Producer::from_client(client)
         .with_ack_timeout(cfg.ack_timeout)
         .with_required_acks(cfg.required_acks)
@@ -94,7 +96,7 @@ impl DerefMut for Trimmed {
 fn produce_impl_nobatch(producer: &mut Producer,
                         src: &mut BufRead,
                         cfg: &Config)
-                        -> Result<(), Error> {
+                        -> Result<()> {
     let mut stderr = stderr();
     let mut rec = Record::from_value(&cfg.topic, Trimmed(String::new()));
     loop {
@@ -118,7 +120,7 @@ fn produce_impl_nobatch(producer: &mut Producer,
 fn produce_impl_inbatches(producer: &mut Producer,
                           src: &mut BufRead,
                           cfg: &Config)
-                          -> Result<(), Error> {
+                          -> Result<()> {
     assert!(cfg.batch_size > 1);
 
     // ~ a buffer of prepared records to be send in a batch to Kafka
@@ -154,13 +156,13 @@ fn produce_impl_inbatches(producer: &mut Producer,
     Ok(())
 }
 
-fn send_batch(producer: &mut Producer, batch: &[Record<(), Trimmed>]) -> Result<(), Error> {
+fn send_batch(producer: &mut Producer, batch: &[Record<(), Trimmed>]) -> Result<()> {
     let rs = try!(producer.send_all(batch));
 
     for r in rs {
         for tpc in r.partition_confirms {
             if let Err(code) = tpc.offset {
-                return Err(Error::Kafka(kafka::error::Error::Kafka(code)));
+                bail!(ErrorKind::Kafka(kafka::error::ErrorKind::Kafka(code)));
             }
         }
     }
@@ -170,31 +172,13 @@ fn send_batch(producer: &mut Producer, batch: &[Record<(), Trimmed>]) -> Result<
 
 // --------------------------------------------------------------------
 
-enum Error {
-    Kafka(kafka::error::Error),
-    Io(io::Error),
-    Literal(String),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Error::Kafka(ref e) => write!(f, "kafka-error: {}", e),
-            &Error::Io(ref e) => write!(f, "io-error: {}", e),
-            &Error::Literal(ref s) => write!(f, "{}", s),
-        }
+error_chain! {
+    links {
+        Kafka(kafka::error::Error, kafka::error::ErrorKind);
     }
-}
-
-impl From<kafka::error::Error> for Error {
-    fn from(e: kafka::error::Error) -> Self {
-        Error::Kafka(e)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Error::Io(e)
+    foreign_links {
+        Io(io::Error);
+        Opt(getopts::Fail);
     }
 }
 
@@ -212,7 +196,7 @@ struct Config {
 }
 
 impl Config {
-    fn from_cmdline() -> Result<Config, Error> {
+    fn from_cmdline() -> Result<Config> {
         use std::ascii::AsciiExt;
 
         let args: Vec<String> = env::args().collect();
@@ -232,11 +216,11 @@ impl Config {
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => return Err(Error::Literal(e.to_string())),
+            Err(e) => bail!(e),
         };
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
-            return Err(Error::Literal(opts.usage(&brief)));
+            bail!(opts.usage(&brief));
         }
         Ok(Config {
             brokers: m.opt_str("brokers")
@@ -255,7 +239,7 @@ impl Config {
                 #[cfg(feature = "snappy")]
                 Some(ref s) if s.eq_ignore_ascii_case("snappy") => Compression::SNAPPY,
                 Some(s) => {
-                    return Err(Error::Literal(format!("Unsupported compression type: {}", s)))
+                    bail!(format!("Unsupported compression type: {}", s))
                 }
             },
             required_acks: match m.opt_str("required-acks") {
@@ -264,7 +248,7 @@ impl Config {
                 Some(ref s) if s.eq_ignore_ascii_case("one") => RequiredAcks::One,
                 Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
                 Some(s) => {
-                    return Err(Error::Literal(format!("Unknown --required-acks argument: {}", s)))
+                    bail!(format!("Unknown --required-acks argument: {}", s))
                 }
             },
             batch_size: try!(to_number(m.opt_str("batch-size"), 1)),
@@ -276,13 +260,13 @@ impl Config {
     }
 }
 
-fn to_number<N: FromStr>(s: Option<String>, _default: N) -> Result<N, Error> {
+fn to_number<N: FromStr>(s: Option<String>, _default: N) -> Result<N> {
     match s {
         None => Ok(_default),
         Some(s) => {
             match s.parse::<N>() {
                 Ok(n) => Ok(n),
-                Err(_) => return Err(Error::Literal(format!("Not a number: {}", s))),
+                Err(_) => bail!(format!("Not a number: {}", s)),
             }
         }
     }

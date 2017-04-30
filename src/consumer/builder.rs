@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use client::{self, KafkaClient, FetchOffset, GroupOffsetStorage};
-use error::{Error, Result};
+use error::{ErrorKind, Result};
 
 use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
 use super::config::Config;
@@ -223,7 +223,7 @@ impl Builder {
     pub fn create(self) -> Result<Consumer> {
         // ~ fail immediately if there's no topic to be consumed
         if self.assignments.is_empty() {
-            return Err(Error::NoTopicsAssigned);
+            bail!(ErrorKind::NoTopicsAssigned);
         }
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {

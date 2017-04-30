@@ -64,7 +64,7 @@ use std::fmt;
 use std::hash::{Hasher, BuildHasher, BuildHasherDefault};
 use std::time::Duration;
 use client::{self, KafkaClient};
-use error::{Error, Result};
+use error::{ErrorKind, Result};
 use ref_slice::ref_slice;
 use twox_hash::XxHash32;
 
@@ -271,7 +271,7 @@ impl<P: Partitioner> Producer<P> {
                 .unwrap()
                 .offset
                 .map(|_| ())
-                .map_err(Error::Kafka)
+                .map_err(|err| ErrorKind::Kafka(err).into())
         }
     }
 

@@ -7,7 +7,7 @@ use fnv::FnvHasher;
 
 use client::{KafkaClient, FetchGroupOffset, FetchOffset};
 use client::metadata::Topics;
-use error::{Error, Result, KafkaCode};
+use error::{ErrorKind, Result, KafkaCode};
 
 use super::assignment::{Assignment, AssignmentRef, Assignments};
 use super::config::Config;
@@ -145,7 +145,7 @@ fn determine_partitions<'a>(assignment: &'a Assignment,
         // ~ fail if the underlying topic is unkonwn to the given client
         None => {
             debug!("determine_partitions: no such topic: {} (all metadata: {:?})", topic, metadata);
-            return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+            bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
         }
         Some(tp) => tp,
     };
@@ -168,7 +168,7 @@ fn determine_partitions<'a>(assignment: &'a Assignment,
                            topic,
                            p,
                            metadata);
-                    return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+                    bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(_) => ps.push(p),
             };
@@ -267,7 +267,7 @@ fn load_fetch_states(client: &mut KafkaClient,
                 None => {
                     debug!("load_fetch_states: failed to load fallback offsets for: {}",
                            s.assignment.topic());
-                    return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+                    bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(offsets) => {
                     for p in &s.partitions {
@@ -317,7 +317,7 @@ fn load_fetch_states(client: &mut KafkaClient,
                                        &config.group,
                                        s.assignment.topic(),
                                        p);
-                                return Err(Error::Kafka(KafkaCode::Unknown));
+                                bail!(ErrorKind::Kafka(KafkaCode::Unknown));
                             }
                         }
                     }

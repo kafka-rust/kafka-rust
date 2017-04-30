@@ -2,11 +2,11 @@ use std::io::{Read, Write};
 use std::default::Default;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use error::{Result, Error};
+use error::{Result, ErrorKind};
 
 // Helper macro to safely convert an usize expression into a signed
 // integer.  If the conversion is not possible the macro issues a
-// `return Err(Error::CodecError)`, otherwise returns the expression
+// `CodecError`, otherwise returns the expression
 // in the requested target type.
 macro_rules! try_usize_to_int {
     // ~ $ttype should actually be a 'ty' ... but rust complains for
@@ -17,7 +17,7 @@ macro_rules! try_usize_to_int {
         if (x as u64) <= (maxv as u64) {
             x as $ttype
         } else {
-            return Err(Error::CodecError)
+            bail!(ErrorKind::CodecError)
         }
     }}
 }
@@ -197,7 +197,7 @@ impl FromByte for String {
         self.reserve(length as usize);
         let _ = buffer.take(length as u64).read_to_string(self);
         if self.len() != length as usize {
-            return Err(Error::UnexpectedEOF);
+            bail!(ErrorKind::UnexpectedEOF);
         }
         Ok(())
     }
@@ -240,7 +240,7 @@ impl FromByte for Vec<u8> {
         match buffer.take(length as u64).read_to_end(self) {
             Ok(size) => {
                 if size < length as usize {
-                    return Err(Error::UnexpectedEOF);
+                    bail!(ErrorKind::UnexpectedEOF);
                 } else {
                     Ok(())
                 }

@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 
 use codecs::{self, ToByte, FromByte};
-use error::{self, Error, Result, KafkaCode};
+use error::{self, Error, ErrorKind, Result, KafkaCode};
 use utils::PartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
@@ -188,7 +188,7 @@ pub struct PartitionOffsetFetchResponse {
 impl PartitionOffsetFetchResponse {
     pub fn get_offsets(&self) -> Result<PartitionOffset> {
         match Error::from_protocol(self.error) {
-            Some(Error::Kafka(KafkaCode::UnknownTopicOrPartition)) => {
+            Some(Error(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition), _)) => {
                 // ~ occurs only on protocol v0 when no offset available
                 // for the group in question; we'll align the behavior
                 // with protocol v1.

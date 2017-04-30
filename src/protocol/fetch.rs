@@ -9,7 +9,7 @@ use std::hash::BuildHasherDefault;
 use fnv::FnvHasher;
 
 use codecs::ToByte;
-use error::{Error, KafkaCode, Result};
+use error::{Error, ErrorKind, KafkaCode, Result};
 use compression::Compression;
 #[cfg(feature = "gzip")]
 use compression::gzip;
@@ -381,7 +381,7 @@ impl<'a> MessageSet<'a> {
                 // this is the last messages which might be
                 // incomplete; a valid case to be handled by
                 // consumers
-                Err(Error::UnexpectedEOF) => {
+                Err(Error(ErrorKind::UnexpectedEOF, _)) => {
                     break;
                 }
                 Err(e) => {
@@ -415,7 +415,7 @@ impl<'a> MessageSet<'a> {
                             try!(try!(SnappyReader::new(pmsg.value)).read_to_end(&mut v));
                             return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
                         }
-                        _ => return Err(Error::UnsupportedCompression),
+                        _ => bail!(ErrorKind::UnsupportedCompression),
                     }
                 }
             };
@@ -451,13 +451,13 @@ impl<'a> ProtocolMessage<'a> {
         // ~ optionally validate the crc checksum
         let msg_crc = try!(r.read_i32());
         if validate_crc && to_crc(r.rest()) as i32 != msg_crc {
-            return Err(Error::Kafka(KafkaCode::CorruptMessage));
+            bail!(ErrorKind::Kafka(KafkaCode::CorruptMessage));
         }
         // ~ we support parsing only messages with the "zero"
         // magic_byte; this covers kafka 0.8 and 0.9.
         let msg_magic = try!(r.read_i8());
         if msg_magic != 0 {
-            return Err(Error::UnsupportedProtocol);
+            bail!(ErrorKind::UnsupportedProtocol);
         }
         let msg_attr = try!(r.read_i8());
         let msg_key = try!(r.read_bytes());
@@ -480,7 +480,7 @@ mod tests {
     use std::str;
 
     use super::{FetchRequest, Response, Message};
-    use error::{Error, KafkaCode};
+    use error::{Error, ErrorKind, KafkaCode};
 
     static FETCH1_TXT: &'static str = include_str!("../../test-data/fetch1.txt");
 
@@ -594,7 +594,7 @@ mod tests {
         let r =
             Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
         assert!(match r {
-            Err(Error::UnsupportedCompression) => true,
+            bail!(ErrorKind::UnsupportedCompression) => true,
             _ => false,
         });
     }
@@ -679,7 +679,7 @@ mod tests {
                                  None,
                                  true) {
             Ok(_) => panic!("Expected error, but got successful response!"),
-            Err(Error::Kafka(KafkaCode::CorruptMessage)) => {}
+            Err(Error(ErrorKind::Kafka(KafkaCode::CorruptMessage), _)) => {}
             Err(e) => panic!("Expected KafkaCode::CorruptMessage error, but got: {:?}", e),
         }
     }

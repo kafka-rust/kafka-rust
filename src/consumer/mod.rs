@@ -65,7 +65,7 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::slice;
 
 use client::{KafkaClient, FetchPartition, CommitOffset};
-use error::{Error, KafkaCode, Result};
+use error::{ErrorKind, KafkaCode, Result};
 use client::fetch;
 
 // public re-exports
@@ -173,7 +173,7 @@ impl Consumer {
             Some(tp) => {
                 let s = match self.state.fetch_offsets.get(&tp) {
                     Some(fstate) => fstate,
-                    None => return (1, Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition))),
+                    None => return (1, Err(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition).into())),
                 };
                 let topic = self.state.topic_name(tp.topic_ref);
                 debug!("fetching messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
@@ -298,7 +298,7 @@ impl Consumer {
                                 // fetch size ... this is will fail
                                 // forever ... signal the problem to
                                 // the user
-                                return Err(Error::Kafka(KafkaCode::MessageSizeTooLarge));
+                                bail!(ErrorKind::Kafka(KafkaCode::MessageSizeTooLarge));
                             }
                             // ~ if this consumer is subscribed to one
                             // partition only, there's no need to push
@@ -354,7 +354,7 @@ impl Consumer {
     /// being consumed by this consumer.
     pub fn consume_message(&mut self, topic: &str, partition: i32, offset: i64) -> Result<()> {
         let topic_ref = match self.state.topic_ref(topic) {
-            None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+            None => bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition)),
             Some(topic_ref) => topic_ref,
         };
         let tp = state::TopicPartition {

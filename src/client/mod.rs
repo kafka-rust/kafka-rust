@@ -21,7 +21,7 @@ pub use utils::PartitionOffset;
 pub use self::network::SecurityConfig;
 
 use codecs::{ToByte, FromByte};
-use error::{Result, Error, KafkaCode};
+use error::{Result, Error, ErrorKind, KafkaCode};
 use protocol::{self, ResponseParser};
 
 use client_internals::KafkaClientInternals;
@@ -815,7 +815,7 @@ impl KafkaClient {
                 }
             }
         }
-        Err(Error::NoHostReachable)
+        bail!(ErrorKind::NoHostReachable)
     }
 
     /// Fetch offsets for a list of topics
@@ -901,7 +901,7 @@ impl KafkaClient {
                 }
                 if let Some((partition, code)) = err {
                     let topic = KafkaClient::get_key_from_entry(entry);
-                    return Err(Error::TopicPartitionError(topic, partition, code));
+                    bail!(ErrorKind::TopicPartitionError(topic, partition, code));
                 }
                 if let hash_map::Entry::Vacant(e) = entry {
                     // unwrap is ok because if it is Vacant, it would have
@@ -945,7 +945,7 @@ impl KafkaClient {
         let mut m = try!(self.fetch_offsets(&[topic], offset));
         let offs = m.remove(topic).unwrap_or(vec![]);
         if offs.is_empty() {
-            Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition))
+            bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition))
         } else {
             Ok(offs)
         }
@@ -1148,7 +1148,7 @@ impl KafkaClient {
             if self.state.contains_topic_partition(o.topic, o.partition) {
                 req.add(o.topic, o.partition, o.offset, "");
             } else {
-                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+                bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
         if req.topic_partitions.is_empty() {
@@ -1216,7 +1216,7 @@ impl KafkaClient {
             if self.state.contains_topic_partition(p.topic, p.partition) {
                 req.add(p.topic, p.partition);
             } else {
-                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+                bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
         __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
@@ -1243,7 +1243,7 @@ impl KafkaClient {
                                                         &self.config.client_id);
 
         match self.state.partitions_for(topic) {
-            None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+            None => bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition)),
             Some(tp) => {
                 for (id, _) in tp {
                     req.add(topic, id);
@@ -1275,7 +1275,7 @@ impl KafkaClientInternals for KafkaClient {
         for msg in messages {
             let msg = msg.as_ref();
             match state.find_broker(msg.topic, msg.partition) {
-                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+                None => bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition)),
                 Some(broker) => {
                     reqs.entry(broker)
                         .or_insert_with(|| {
@@ -1324,7 +1324,7 @@ fn __get_group_coordinator<'a>(group: &str,
             Ok(r) => {
                 return Ok(state.set_group_coordinator(group, &r));
             }
-            Err(Error::Kafka(e @ KafkaCode::GroupCoordinatorNotAvailable)) => {
+            Err(Error(ErrorKind::Kafka(e @ KafkaCode::GroupCoordinatorNotAvailable), _)) => {
                 retry_code = e;
             }
             Err(e) => {
@@ -1338,7 +1338,7 @@ fn __get_group_coordinator<'a>(group: &str,
             attempt += 1;
             __retry_sleep(config);
         } else {
-            return Err(Error::Kafka(retry_code));
+            bail!(ErrorKind::Kafka(retry_code));
         }
     }
 }
@@ -1380,7 +1380,7 @@ fn __commit_offsets(req: protocol::OffsetCommitRequest,
                     }
                     Some(code) => {
                         // ~ immediately abort with the error
-                        return Err(Error::Kafka(code));
+                        bail!(ErrorKind::Kafka(code));
                     }
                 }
             }
@@ -1431,11 +1431,11 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                     Ok(o) => {
                         partition_offsets.push(o);
                     }
-                    Err(Error::Kafka(e @ KafkaCode::GroupLoadInProgress)) => {
+                    Err(Error(ErrorKind::Kafka(e @ KafkaCode::GroupLoadInProgress), _)) => {
                         retry_code = Some(e);
                         break 'rproc;
                     }
-                    Err(Error::Kafka(e @ KafkaCode::NotCoordinatorForGroup)) => {
+                    Err(Error(ErrorKind::Kafka(e @ KafkaCode::NotCoordinatorForGroup), _)) => {
                         debug!("fetch_group_offsets: resetting group coordinator for '{}'",
                                req.group);
                         state.remove_group_coordinator(&req.group);
@@ -1463,7 +1463,7 @@ fn __fetch_group_offsets(req: protocol::OffsetFetchRequest,
                     attempt += 1;
                     __retry_sleep(config)
                 } else {
-                    return Err(Error::Kafka(e));
+                    bail!(ErrorKind::Kafka(e));
                 }
             }
             None => {

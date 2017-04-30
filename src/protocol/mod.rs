@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use codecs::{ToByte, FromByte};
 use crc::crc32;
-use error::{Error, KafkaCode, Result};
+use error::{Error, ErrorKind, KafkaCode, Result};
 
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {
@@ -98,7 +98,7 @@ fn test_kafka_code_from_protocol() {
 // a (sub-) module private method for error
 impl Error {
     fn from_protocol(n: i16) -> Option<Error> {
-        KafkaCode::from_protocol(n).map(Error::Kafka)
+        KafkaCode::from_protocol(n).map(|err| ErrorKind::Kafka(err).into())
     }
 }
 
@@ -166,7 +166,7 @@ pub fn to_millis_i32(d: Duration) -> Result<i32> {
     use std::i32;
     let m = d.as_secs().saturating_mul(1_000).saturating_add((d.subsec_nanos() / 1_000_000) as u64);
     if m > i32::MAX as u64 {
-        Err(Error::InvalidDuration)
+        bail!(ErrorKind::InvalidDuration)
     } else {
         Ok(m as i32)
     }
@@ -178,7 +178,7 @@ fn test_to_millis_i32() {
 
     fn assert_invalid(d: Duration) {
         match to_millis_i32(d) {
-            Err(Error::InvalidDuration) => {}
+            Err(Error(ErrorKind::InvalidDuration, _)) => {}
             other => panic!("Expected Err(InvalidDuration) but got {:?}", other),
         }
     }

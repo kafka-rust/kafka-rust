@@ -35,7 +35,7 @@ fn test_consumer_non_existent_topic() {
         .unwrap_err();
 
     let error_code = match consumer_err {
-        error::Error::Kafka(code) => code,
+        error::Error(error::ErrorKind::Kafka(code), _) => code,
         _ => panic!("Should have received Kafka error"),
     };
 

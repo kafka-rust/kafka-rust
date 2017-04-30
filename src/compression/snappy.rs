@@ -3,7 +3,7 @@ use std::io::{self, Read};
 use byteorder::{BigEndian, ByteOrder};
 use snap;
 
-use error::{Result, Error};
+use error::{Result, Error, ErrorKind};
 
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
     let mut buf = vec![0; snap::max_compress_len(src.len())];
@@ -14,7 +14,7 @@ pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
                  buf.truncate(len);
                  buf
              })
-        .map_err(|err| Error::InvalidSnappy(err))
+        .map_err(|err| ErrorKind::InvalidSnappy(err).into())
 }
 
 fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
@@ -31,7 +31,7 @@ fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
             }
             Ok(())
         })
-        .map_err(|err| Error::InvalidSnappy(err))
+        .map_err(|err| ErrorKind::InvalidSnappy(err).into())
 }
 
 // --------------------------------------------------------------------
@@ -43,7 +43,7 @@ const MAGIC: &'static [u8] = &[0x82, b'S', b'N', b'A', b'P', b'P', b'Y', 0];
 macro_rules! next_i32 {
     ($slice:expr) => {{
         if $slice.len() < 4 {
-            return Err(Error::UnexpectedEOF);
+            bail!(ErrorKind::UnexpectedEOF);
         }
         { let n = BigEndian::read_i32($slice);
           $slice = &$slice[4..];
@@ -59,21 +59,21 @@ macro_rules! next_i32 {
 fn validate_stream(mut stream: &[u8]) -> Result<&[u8]> {
     // ~ check the "header magic"
     if stream.len() < MAGIC.len() {
-        return Err(Error::UnexpectedEOF);
+        bail!(ErrorKind::UnexpectedEOF);
     }
     if &stream[..MAGIC.len()] != MAGIC {
-        return Err(Error::InvalidSnappy(snap::Error::Header));
+        bail!(ErrorKind::InvalidSnappy(snap::Error::Header));
     }
     stream = &stream[MAGIC.len()..];
     // ~ let's be assertive and (for the moment) restrict ourselves to
     // version == 1 and compatibility == 1.
     let version = next_i32!(stream);
     if version != 1 {
-        return Err(Error::InvalidSnappy(snap::Error::Header));
+        bail!(ErrorKind::InvalidSnappy(snap::Error::Header));
     }
     let compat = next_i32!(stream);
     if compat != 1 {
-        return Err(Error::InvalidSnappy(snap::Error::Header));
+        bail!(ErrorKind::InvalidSnappy(snap::Error::Header));
     }
     Ok(stream)
 }
@@ -135,10 +135,10 @@ impl<'a> SnappyReader<'a> {
         self.uncompressed_pos = 0;
         let chunk_size = next_i32!(self.compressed_data);
         if chunk_size <= 0 {
-            return Err(Error::InvalidSnappy(snap::Error::UnsupportedChunkLength {
-                                                len: chunk_size as u64,
-                                                header: false,
-                                            }));
+            bail!(ErrorKind::InvalidSnappy(snap::Error::UnsupportedChunkLength {
+                                                      len: chunk_size as u64,
+                                                      header: false,
+                                                  }));
         }
         let chunk_size = chunk_size as usize;
         self.uncompressed_chunk.clear();
@@ -159,10 +159,10 @@ impl<'a> SnappyReader<'a> {
         while !self.compressed_data.is_empty() {
             let chunk_size = next_i32!(self.compressed_data);
             if chunk_size <= 0 {
-                return Err(Error::InvalidSnappy(snap::Error::UnsupportedChunkLength {
-                                                    len: chunk_size as u64,
-                                                    header: false,
-                                                }));
+                bail!(ErrorKind::InvalidSnappy(snap::Error::UnsupportedChunkLength {
+                                                          len: chunk_size as u64,
+                                                          header: false,
+                                                      }));
             }
             let (c1, c2) = self.compressed_data.split_at(chunk_size as usize);
             try!(uncompress_to(c1, buf));
@@ -177,9 +177,9 @@ macro_rules! to_io_error {
         match $expr {
             Ok(n) => Ok(n),
             // ~ pass io errors through directly
-            Err(Error::Io(io_error)) => Err(io_error),
+            Err(Error(ErrorKind::Io(io_error), _)) => Err(io_error),
             // ~ wrapp our other errors
-            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
+            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.description())),
         }
     }
 }
@@ -201,7 +201,7 @@ mod tests {
     use std::str;
     use std::io::Read;
 
-    use error::{Error, Result};
+    use error::{Error, ErrorKind, Result};
     use super::{compress, uncompress_to, SnappyReader};
 
     fn uncompress(src: &[u8]) -> Result<Vec<u8>> {
@@ -234,7 +234,7 @@ mod tests {
         let compressed = &[12, 42, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116];
         let uncompressed = uncompress(compressed);
         assert!(uncompressed.is_err());
-        assert!(if let Some(Error::InvalidSnappy(_)) = uncompressed.err() {
+        assert!(if let Some(Error(ErrorKind::InvalidSnappy(_), _)) = uncompressed.err() {
                     true
                 } else {
                     false
