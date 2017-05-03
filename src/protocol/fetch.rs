@@ -514,7 +514,7 @@ impl<'a> ProtocolMessage<'a> {
 mod tests {
     use std::str;
 
-    use super::{API_VERSION, ApiVersion, FetchRequest, Response, Message};
+    use super::{ApiVersion, FetchRequest, Response, Message};
     use error::{Error, KafkaCode};
 
     static FETCH1_TXT: &'static str = include_str!("../../test-data/fetch1.txt");

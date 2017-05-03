@@ -2,7 +2,6 @@ use std::mem;
 use std::cmp;
 use std::io;
 use std::io::prelude::*;
-use std::ops::Range;
 use std::hash::Hasher;
 
 use lz4_compress;
@@ -26,7 +25,6 @@ fn xxhash32(src: &[u8], seed: u32) -> u32 {
 }
 
 pub const LZ4_MAGIC: u32 = 0x184D2204;
-pub const LZ4_FRAME_SKIPPABLE: Range<u32> = 0x184D2A50..0x184D2A5F;
 pub const LZ4_FRAME_INCOMPRESSIBLE_MASK: u32 = 0x80000000;
 pub const FLAG_VERSION_SHIFT: u8 = 6;
 pub const FLAG_INDEPENDENT_SHIFT: u8 = 5;
@@ -159,8 +157,6 @@ impl Lz4Frame {
             n @ _ => ((n ^ LZ4_FRAME_INCOMPRESSIBLE_MASK) as usize, None),
         };
 
-        debug!("reading {} bytes block", block_size);
-
         if block_size == 0 {
             if self.content_checksum() {
                 try!(reader.read_u32::<LittleEndian>()); // TODO: verify this content checksum
@@ -174,7 +170,9 @@ impl Lz4Frame {
                 &mut buf[off..]
             };
 
-            try!(reader.read(read_buf));
+            let read = try!(reader.read(read_buf));
+
+            trace!("read {} bytes: {:?}", read, &read_buf[..cmp::min(16, read)]);
 
             if self.block_checksum() &&
                try!(reader.read_u32::<LittleEndian>()) != xxhash32(read_buf, 0) {
@@ -183,13 +181,15 @@ impl Lz4Frame {
         }
 
         if let Some(data) = compressed_data.as_ref() {
-            let mut uncompressed_data = try!(uncompress(data).map_err(|_| {
+            let mut uncompressed_data = try!(uncompress(&data[..block_size]).map_err(|_| {
                                                   io::Error::new(io::ErrorKind::InvalidData,
                                                                  "lz4 decode error")
                                               }));
             let uncompressed_size = uncompressed_data.len();
 
-            debug!("uncompress {} bytes block: {:?}", uncompressed_size, &uncompressed_data[..16]);
+            debug!("uncompress {} bytes block: {:?}",
+                   uncompressed_size,
+                   &uncompressed_data[..cmp::min(16, uncompressed_data.len())]);
 
             buf.append(&mut uncompressed_data);
 
@@ -200,7 +200,7 @@ impl Lz4Frame {
     }
 
     pub fn write_block<W: Write>(&mut self, writer: &mut W, buf: &[u8]) -> io::Result<usize> {
-        debug!("write {} bytes block: {:?}", buf.len(), &buf[..16]);
+        debug!("write {} bytes block: {:?}", buf.len(), &buf[..cmp::min(16, buf.len())]);
 
         let compressed_data = compress(buf);
         try!(writer.write_u32::<LittleEndian>(compressed_data.len() as u32));
@@ -344,7 +344,9 @@ impl<'a, W: Write> Lz4Writer<'a, W> {
 
     fn write_block(&mut self) -> io::Result<()> {
         if !self.buf.is_empty() {
-            debug!("compress {} bytes block: {:?}", self.buf.len(), &self.buf[..16]);
+            debug!("compress {} bytes block: {:?}",
+                   self.buf.len(),
+                   &self.buf[..cmp::min(16, self.buf.len())]);
 
             try!(self.frame.write_block(&mut self.writer, &self.buf[..]));
 
@@ -460,10 +462,6 @@ fn test_read_frame() {
 
 #[test]
 fn test_read_block() {
-    use env_logger;
-
-    env_logger::init().unwrap();
-
     let flag = (1 << FLAG_VERSION_SHIFT) | (1 << FLAG_INDEPENDENT_SHIFT) |
                (1 << FLAG_BLOCK_CHECKSUM_SHIFT);
     let bd = BLOCKSIZE_256KB << BLOCKSIZE_SHIFT;

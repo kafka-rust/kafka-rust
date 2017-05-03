@@ -826,10 +826,16 @@ impl KafkaClient {
             debug!("fetch_api_versions: requesting API versions for {}", broker.host());
             if let Ok(conn) = self.conn_pool.get_conn(broker.host(), now) {
                 let req = protocol::ApiVersionsRequest::new(correlation, &self.config.client_id);
-                __send_request(conn, req)
-                    .and_then(|_| __get_response::<protocol::ApiVersionsResponse>(conn))
+                let _ = __send_request(conn, req)
+                    .and_then(|_| {
+                        let read_timeout = try!(conn.read_timeout());
+                        try!(conn.set_read_timeout(Some(Duration::from_secs(1))));
+                        let res = __get_response::<protocol::ApiVersionsResponse>(conn);
+                        try!(conn.set_read_timeout(read_timeout));
+                        res
+                    })
                     .map(|res| broker.update_api_versions(res))
-                    .map_err(|err| conn.close());
+                    .map_err(|_| conn.close());
             }
         }
         Ok(())

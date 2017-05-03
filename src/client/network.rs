@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{Read, Write};
+use std::ops::{Deref, DerefMut};
 use std::mem;
 use std::net::{TcpStream, Shutdown};
 use std::time::{Instant, Duration};
@@ -201,8 +202,14 @@ impl Connections {
 
     pub fn get_conn_any(&mut self, now: Instant) -> Option<&mut KafkaConnection> {
         for (host, conn) in &mut self.conns {
-            if now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
-                debug!("Idle timeout reached: {:?}", conn.item);
+            if conn.item.closed ||
+               now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
+                if conn.item.closed {
+                    debug!("connection closed: {:?}", conn.item);
+                } else {
+                    debug!("Idle timeout reached: {:?}", conn.item);
+                    let _ = conn.item.shutdown();
+                }
                 let new_conn_id = self.state.next_conn_id();
                 let new_conn = match self.config.new_conn(new_conn_id, host.as_str()) {
                     Ok(new_conn) => {
@@ -275,6 +282,14 @@ mod openssled {
             }
         }
 
+        pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
+            self.get_ref().read_timeout()
+        }
+
+        pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
+            self.get_ref().write_timeout()
+        }
+
         pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
             self.get_ref().set_read_timeout(dur)
         }
@@ -333,6 +348,20 @@ impl fmt::Debug for KafkaConnection {
                self.id,
                self.stream.is_secured(),
                self.host)
+    }
+}
+
+impl Deref for KafkaConnection {
+    type Target = KafkaStream;
+
+    fn deref(&self) -> &Self::Target {
+        &self.stream
+    }
+}
+
+impl DerefMut for KafkaConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.stream
     }
 }
 

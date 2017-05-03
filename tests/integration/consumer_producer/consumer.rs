@@ -13,7 +13,8 @@ fn test_consumer_poll() {
     // send a message and then poll it and ensure it is the correct message
     let correct_message_contents = "test_consumer_poll".as_bytes();
     let mut producer = test_producer();
-    producer.send(&Record::from_value(TEST_TOPIC_NAME, correct_message_contents))
+    producer
+        .send(&Record::from_value(TEST_TOPIC_NAME, correct_message_contents))
         .unwrap();
 
     messages = consumer.poll().unwrap();
@@ -24,6 +25,8 @@ fn test_consumer_poll() {
 
     let message_content = message_set.messages()[0].value;
     assert_eq!(correct_message_contents, message_content, "incorrect message contents");
+
+    consumer.commit_consumed().unwrap();
 }
 
 /// Consuming from a non-existent topic should fail.
