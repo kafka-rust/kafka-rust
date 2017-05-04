@@ -52,6 +52,10 @@ pub enum Error {
     #[cfg(feature = "snappy")]
     InvalidSnappy(::snap::Error),
 
+    /// Failure to decode a LZ4 compressed response from Kafka
+    #[cfg(feature = "lz4")]
+    InvalidInputLz4(String),
+
     /// Failure to decode a response due to an insufficient number of bytes available
     UnexpectedEOF,
 
@@ -247,6 +251,8 @@ impl Clone for Error {
             &Error::UnsupportedCompression => Error::UnsupportedCompression,
             #[cfg(feature = "snappy")]
             &Error::InvalidSnappy(ref err) => from_snap_error_ref(err),
+            #[cfg(feature = "lz4")]
+            &Error::InvalidInputLz4(ref reason) => Error::InvalidInputLz4(reason.clone()),
             &Error::UnexpectedEOF => Error::UnexpectedEOF,
             &Error::CodecError => Error::CodecError,
             &Error::StringDecodeError => Error::StringDecodeError,
@@ -370,6 +376,8 @@ impl error::Error for Error {
             Error::UnsupportedCompression => "Unsupported compression format",
             #[cfg(feature = "snappy")]
             Error::InvalidSnappy(ref err) => error::Error::description(err),
+            #[cfg(feature = "lz4")]
+            Error::InvalidInputLz4(_) => "LZ4 decode error",
             Error::UnexpectedEOF => "Unexpected EOF",
             Error::CodecError => "Encoding/Decoding error",
             Error::StringDecodeError => "String decoding error",
@@ -405,6 +413,8 @@ impl fmt::Display for Error {
             Error::UnsupportedCompression => write!(f, "Unsupported compression format"),
             #[cfg(feature = "snappy")]
             Error::InvalidSnappy(ref err) => write!(f, "Snappy error, {}", err),
+            #[cfg(feature = "lz4")]
+            Error::InvalidInputLz4(ref reason) => write!(f, "LZ4 decode error, {}", reason),
             Error::UnexpectedEOF => write!(f, "Unexpected EOF"),
             Error::CodecError => write!(f, "Encoding/Decoding Error"),
             Error::StringDecodeError => write!(f, "String decoding error"),

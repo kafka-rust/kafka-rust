@@ -4,13 +4,16 @@ use kafka;
 use kafka::consumer::Consumer;
 use std::time::Duration;
 
-pub fn test_producer() -> Producer {
+pub fn test_producer_builder() -> kafka::producer::Builder {
     Producer::from_hosts(vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()])
         .with_ack_timeout(Duration::from_secs(1))
         .with_required_acks(RequiredAcks::One)
-        .create()
-        .unwrap()
 }
+
+pub fn test_producer() -> Producer {
+    test_producer_builder().create().unwrap()
+}
+
 
 /// Return a Consumer builder with some defaults
 pub fn test_consumer_builder() -> kafka::consumer::Builder {
@@ -28,3 +31,4 @@ pub fn test_consumer() -> Consumer {
 
 mod producer;
 mod consumer;
+mod compression;

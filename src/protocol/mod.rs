@@ -27,7 +27,8 @@ pub mod fetch;
 pub use self::fetch::FetchRequest;
 pub use self::produce::{ProduceRequest, ProduceResponse};
 pub use self::offset::{OffsetRequest, OffsetResponse};
-pub use self::metadata::{MetadataRequest, MetadataResponse};
+pub use self::metadata::{ApiVersion, ApiVersionsRequest, ApiVersionsResponse, MetadataRequest,
+                         MetadataResponse};
 pub use self::consumer::{GroupCoordinatorRequest, GroupCoordinatorResponse, OffsetFetchVersion,
                          OffsetFetchRequest, OffsetFetchResponse, OffsetCommitVersion,
                          OffsetCommitRequest, OffsetCommitResponse};
@@ -42,9 +43,10 @@ const API_KEY_METADATA: i16 = 3;
 const API_KEY_OFFSET_COMMIT: i16 = 8;
 const API_KEY_OFFSET_FETCH: i16 = 9;
 const API_KEY_GROUP_COORDINATOR: i16 = 10;
+const API_KEY_API_VERSIONS: i16 = 18;
 
 // the default version of Kafka API we are requesting
-const API_VERSION: i16 = 0;
+pub const API_VERSION: i16 = 0;
 
 // --------------------------------------------------------------------
 

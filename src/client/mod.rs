@@ -749,7 +749,8 @@ impl KafkaClient {
     #[inline]
     pub fn load_metadata_all(&mut self) -> Result<()> {
         self.reset_metadata();
-        self.load_metadata::<&str>(&[])
+        try!(self.load_metadata::<&str>(&[]));
+        self.load_api_versions()
     }
 
     /// Reloads metadata for a list of supplied topics.
@@ -816,6 +817,28 @@ impl KafkaClient {
             }
         }
         Err(Error::NoHostReachable)
+    }
+
+    fn load_api_versions(&mut self) -> Result<()> {
+        let correlation = self.state.next_correlation_id();
+        let now = Instant::now();
+        for broker in self.state.brokers().iter_mut() {
+            debug!("fetch_api_versions: requesting API versions for {}", broker.host());
+            if let Ok(conn) = self.conn_pool.get_conn(broker.host(), now) {
+                let req = protocol::ApiVersionsRequest::new(correlation, &self.config.client_id);
+                let _ = __send_request(conn, req)
+                    .and_then(|_| {
+                        let read_timeout = try!(conn.read_timeout());
+                        try!(conn.set_read_timeout(Some(Duration::from_secs(1))));
+                        let res = __get_response::<protocol::ApiVersionsResponse>(conn);
+                        try!(conn.set_read_timeout(read_timeout));
+                        res
+                    })
+                    .map(|res| broker.update_api_versions(res))
+                    .map_err(|_| conn.close());
+            }
+        }
+        Ok(())
     }
 
     /// Fetch offsets for a list of topics
@@ -1032,12 +1055,13 @@ impl KafkaClient {
         for inp in input {
             let inp = inp.as_ref();
             if let Some(broker) = state.find_broker(inp.topic, inp.partition) {
-                reqs.entry(broker)
+                reqs.entry(broker.host())
                     .or_insert_with(|| {
                                         protocol::FetchRequest::new(correlation,
                                                                     &config.client_id,
                                                                     config.fetch_max_wait_time,
-                                                                    config.fetch_min_bytes)
+                                                                    config.fetch_min_bytes,
+                                                                    broker.api_versions())
                                     })
                     .add(inp.topic,
                          inp.partition,
@@ -1277,13 +1301,14 @@ impl KafkaClientInternals for KafkaClient {
             match state.find_broker(msg.topic, msg.partition) {
                 None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
                 Some(broker) => {
-                    reqs.entry(broker)
+                    reqs.entry(broker.host())
                         .or_insert_with(|| {
                                             protocol::ProduceRequest::new(required_acks,
                                                                           ack_timeout,
                                                                           correlation,
                                                                           &config.client_id,
-                                                                          config.compression)
+                                                                          config.compression,
+                                                                          broker.api_versions())
                                         })
                         .add(msg.topic, msg.partition, msg.key, msg.value)
                 }

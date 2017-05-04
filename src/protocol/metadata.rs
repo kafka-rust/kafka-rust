@@ -4,7 +4,64 @@ use error::Result;
 use codecs::{AsStrings, ToByte, FromByte};
 
 use super::{HeaderRequest, HeaderResponse};
-use super::{API_KEY_METADATA, API_VERSION};
+use super::{API_KEY_API_VERSIONS, API_KEY_METADATA, API_VERSION};
+
+#[derive(Debug)]
+pub struct ApiVersionsRequest<'a> {
+    pub header: HeaderRequest<'a>,
+}
+
+impl<'a> ApiVersionsRequest<'a> {
+    pub fn new(correlation_id: i32, client_id: &'a str) -> ApiVersionsRequest<'a> {
+        ApiVersionsRequest {
+            header: HeaderRequest::new(API_KEY_API_VERSIONS,
+                                       API_VERSION,
+                                       correlation_id,
+                                       client_id),
+        }
+    }
+}
+impl<'a> ToByte for ApiVersionsRequest<'a> {
+    fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
+        self.header.encode(buffer)
+    }
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct ApiVersion {
+    pub api_key: i16,
+    pub min_version: i16,
+    pub max_version: i16,
+}
+
+impl FromByte for ApiVersion {
+    type R = ApiVersion;
+
+    #[allow(unused_must_use)]
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        try_multi!(self.api_key.decode(buffer),
+                   self.min_version.decode(buffer),
+                   self.max_version.decode(buffer))
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct ApiVersionsResponse {
+    pub header: HeaderResponse,
+    pub error_code: i16,
+    pub api_versions: Vec<ApiVersion>,
+}
+
+impl FromByte for ApiVersionsResponse {
+    type R = ApiVersionsResponse;
+
+    #[allow(unused_must_use)]
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        try_multi!(self.header.decode(buffer),
+                   self.error_code.decode(buffer),
+                   self.api_versions.decode(buffer))
+    }
+}
 
 #[derive(Debug)]
 pub struct MetadataRequest<'a, T: 'a> {
