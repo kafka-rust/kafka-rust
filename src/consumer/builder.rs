@@ -71,8 +71,8 @@ impl Builder {
     ///
     /// The group is allowed to be the empty string, in which case the
     /// resulting consumer will be group-less.
-    pub fn with_group(mut self, group: String) -> Builder {
-        self.group = group;
+    pub fn with_group<S: Into<String>>(mut self, group: S) -> Builder {
+        self.group = group.into();
         self
     }
 
@@ -85,8 +85,8 @@ impl Builder {
     ///
     /// This method or `with_topic_partitions` must be called at least
     /// once, to assign a topic to the consumer.
-    pub fn with_topic(mut self, topic: String) -> Builder {
-        self.assignments.insert(topic, Vec::new());
+    pub fn with_topic<S: Into<String>>(mut self, topic: S) -> Builder {
+        self.assignments.insert(topic.into(), Vec::new());
         self
     }
 
@@ -99,8 +99,8 @@ impl Builder {
     ///
     /// This method or `with_topic` must be called at least once, to
     /// assign a topic to the consumer.
-    pub fn with_topic_partitions(mut self, topic: String, partitions: &[i32]) -> Builder {
-        self.assignments.insert(topic, partitions.to_vec());
+    pub fn with_topic_partitions<S: Into<String>>(mut self, topic: S, partitions: &[i32]) -> Builder {
+        self.assignments.insert(topic.into(), partitions.to_vec());
         self
     }
 
