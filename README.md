@@ -6,7 +6,6 @@
 
 * This library is primarily documented through examples in its API
 documentation:
-  * [master](https://spicavigo.github.io/kafka-rust/)
   * [0.6](https://docs.rs/kafka/^0.6)
   * [0.5](https://docs.rs/kafka/^0.5)
 * Documentation about Kafka itself can be found at [its project
@@ -40,53 +39,53 @@ new features from the Kafka 0.9 release are just in their beginnings.
 ### Examples
 
 As mentioned, the [cargo generated
-documentation](https://spicavigo.github.io/kafka-rust/) constains some
-examples.  Further, standalone, compilable example programs are
-provided in the [examples directory of the
+documentation](https://docs.rs/kafka/) constains some examples.
+Further, standalone, compilable example programs are provided in the
+[examples directory of the
 repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
 
 
 ### Consumer
 
-This is a higher-level
-[Consumer API](https://spicavigo.github.io/kafka-rust/kafka/consumer/index.html)
-for Kafka.  It provides convenient offset management support on behalf
-of a specified group.  This is the API a client application of this
-library wants to use for receiving messages from Kafka.
+This is a higher-level consumer API for Kafka and is provided by the
+module `kafka::consumer`.  It provides convenient offset management
+support on behalf of a specified group.  This is the API a client
+application of this library wants to use for receiving messages from
+Kafka.
 
 
 ### Producer
 
-This is a higher-level
-[Producer API](https://spicavigo.github.io/kafka-rust/kafka/producer/index.html)
-for Kafka.  It provides convenient automatic partition assignment capabilities
-through partitioners.  This is the API a client application of this library wants
-to use for sending messsages to Kafka.
+This is a higher-level producer API for Kafka and is provided by the
+module `kafka::producer`.  It provides convenient automatic partition
+assignment capabilities through partitioners.  This is the API a
+client application of this library wants to use for sending messsages
+to Kafka.
 
 
 ### KafkaClient
 
-[KafkaClient](http://spicavigo.github.io/kafka-rust/kafka/client/index.html)
-is the central point of this API.  However, this is a mid-level
-abstraction for Kafka rather suitable for building higher-level APIs.
-Application's typically want to use the already mentioned `Consumer`s
-and `Producer`s.  Nevertheless, `KafkaClient`'s main methods are:
+`KafkaClient` in the `kafka::client` module is the central point of
+this API.  However, this is a mid-level abstraction for Kafka rather
+suitable for building higher-level APIs.  Application's typically want
+to use the already mentioned `Consumer`s and `Producer`s.
+Nevertheless, `KafkaClient`'s main features are:
 
-* [Loading metadata](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.load_metadata_all)
-* [Fetching topic offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_offsets)
-* [Sending messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.produce_messages)
-* [Fetching messages](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_messages)
-* [Committing a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.commit_offsets)
-* [Fetching a consumer group's offsets](https://spicavigo.github.io/kafka-rust/kafka/client/struct.KafkaClient.html#method.fetch_group_offsets)
+* Loading metadata
+* Fetching topic offsets
+* Sending messages
+* Fetching messages
+* Committing a consumer group's offsets
+* Fetching a consumer group's offsets
 
 
 ### Bugs / Features / Contributing
 
-There's still a lot of room for improvements on `kafka-rust`.  Not
-everything works right at the moment.  Have a look into the [issue
+There's still a lot of potential for improvements on `kafka-rust`.
+Not everything works right at the moment.  Have a look into the [issue
 tracker](https://github.com/spicavigo/kafka-rust/issues) and feel free
 to contribute by reporting new problems or contributing to existing
-ones.  Any constructive contribution is warmly welcome!
+ones.  Any constructive feedback is warmly welcome!
 
 As usually with open source, don't hesitate to fork the repo and
 submit a pull requests if you see something to be changed.  We'll be
