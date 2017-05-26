@@ -60,11 +60,11 @@ fn produce(cfg: &Config) -> Result<()> {
 
 fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<()> {
     let mut producer = try!(Producer::from_client(client)
-        .with_ack_timeout(cfg.ack_timeout)
-        .with_required_acks(cfg.required_acks)
-        .with_compression(cfg.compression)
-        .with_connection_idle_timeout(cfg.conn_idle_timeout)
-        .create());
+                                .with_ack_timeout(cfg.ack_timeout)
+                                .with_required_acks(cfg.required_acks)
+                                .with_compression(cfg.compression)
+                                .with_connection_idle_timeout(cfg.conn_idle_timeout)
+                                .create());
     if cfg.batch_size < 2 {
         produce_impl_nobatch(&mut producer, src, cfg)
     } else {
@@ -93,10 +93,7 @@ impl DerefMut for Trimmed {
     }
 }
 
-fn produce_impl_nobatch(producer: &mut Producer,
-                        src: &mut BufRead,
-                        cfg: &Config)
-                        -> Result<()> {
+fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config) -> Result<()> {
     let mut stderr = stderr();
     let mut rec = Record::from_value(&cfg.topic, Trimmed(String::new()));
     loop {
@@ -117,10 +114,7 @@ fn produce_impl_nobatch(producer: &mut Producer,
 // This implementation wants to be efficient.  It buffers N lines from
 // the source and sends these in batches to Kafka.  Line buffers
 // across batches are re-used for the sake of avoiding allocations.
-fn produce_impl_inbatches(producer: &mut Producer,
-                          src: &mut BufRead,
-                          cfg: &Config)
-                          -> Result<()> {
+fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Config) -> Result<()> {
     assert!(cfg.batch_size > 1);
 
     // ~ a buffer of prepared records to be send in a batch to Kafka
@@ -223,40 +217,35 @@ impl Config {
             bail!(opts.usage(&brief));
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
-                .unwrap_or_else(|| "localhost:9092".to_owned())
-                .split(',')
-                .map(|s| s.trim().to_owned())
-                .collect(),
-            topic: m.opt_str("topic")
-                .unwrap_or_else(|| "my-topic".to_owned()),
-            input_file: m.opt_str("input"),
-            compression: match m.opt_str("compression") {
-                None => Compression::NONE,
-                Some(ref s) if s.eq_ignore_ascii_case("none") => Compression::NONE,
-                #[cfg(feature = "gzip")]
+               brokers: m.opt_str("brokers")
+                   .unwrap_or_else(|| "localhost:9092".to_owned())
+                   .split(',')
+                   .map(|s| s.trim().to_owned())
+                   .collect(),
+               topic: m.opt_str("topic").unwrap_or_else(|| "my-topic".to_owned()),
+               input_file: m.opt_str("input"),
+               compression: match m.opt_str("compression") {
+                   None => Compression::NONE,
+                   Some(ref s) if s.eq_ignore_ascii_case("none") => Compression::NONE,
+                   #[cfg(feature = "gzip")]
                 Some(ref s) if s.eq_ignore_ascii_case("gzip") => Compression::GZIP,
-                #[cfg(feature = "snappy")]
+                   #[cfg(feature = "snappy")]
                 Some(ref s) if s.eq_ignore_ascii_case("snappy") => Compression::SNAPPY,
-                Some(s) => {
-                    bail!(format!("Unsupported compression type: {}", s))
-                }
-            },
-            required_acks: match m.opt_str("required-acks") {
-                None => RequiredAcks::One,
-                Some(ref s) if s.eq_ignore_ascii_case("none") => RequiredAcks::None,
-                Some(ref s) if s.eq_ignore_ascii_case("one") => RequiredAcks::One,
-                Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
-                Some(s) => {
-                    bail!(format!("Unknown --required-acks argument: {}", s))
-                }
-            },
-            batch_size: try!(to_number(m.opt_str("batch-size"), 1)),
-            conn_idle_timeout: Duration::from_millis(try!(to_number(m.opt_str("idle-timeout"),
+                   Some(s) => bail!(format!("Unsupported compression type: {}", s)),
+               },
+               required_acks: match m.opt_str("required-acks") {
+                   None => RequiredAcks::One,
+                   Some(ref s) if s.eq_ignore_ascii_case("none") => RequiredAcks::None,
+                   Some(ref s) if s.eq_ignore_ascii_case("one") => RequiredAcks::One,
+                   Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
+                   Some(s) => bail!(format!("Unknown --required-acks argument: {}", s)),
+               },
+               batch_size: try!(to_number(m.opt_str("batch-size"), 1)),
+               conn_idle_timeout: Duration::from_millis(try!(to_number(m.opt_str("idle-timeout"),
                                                      DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS))),
-            ack_timeout: Duration::from_millis(try!(to_number(m.opt_str("ack-timeout"),
-                                                              DEFAULT_ACK_TIMEOUT_MILLIS))),
-        })
+               ack_timeout: Duration::from_millis(try!(to_number(m.opt_str("ack-timeout"),
+                                                                 DEFAULT_ACK_TIMEOUT_MILLIS))),
+           })
     }
 }
 

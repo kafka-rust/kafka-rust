@@ -136,9 +136,9 @@ impl<'a> SnappyReader<'a> {
         let chunk_size = next_i32!(self.compressed_data);
         if chunk_size <= 0 {
             bail!(ErrorKind::InvalidSnappy(snap::Error::UnsupportedChunkLength {
-                                                      len: chunk_size as u64,
-                                                      header: false,
-                                                  }));
+                                               len: chunk_size as u64,
+                                               header: false,
+                                           }));
         }
         let chunk_size = chunk_size as usize;
         self.uncompressed_chunk.clear();
@@ -160,9 +160,9 @@ impl<'a> SnappyReader<'a> {
             let chunk_size = next_i32!(self.compressed_data);
             if chunk_size <= 0 {
                 bail!(ErrorKind::InvalidSnappy(snap::Error::UnsupportedChunkLength {
-                                                          len: chunk_size as u64,
-                                                          header: false,
-                                                      }));
+                                                   len: chunk_size as u64,
+                                                   header: false,
+                                               }));
             }
             let (c1, c2) = self.compressed_data.split_at(chunk_size as usize);
             try!(uncompress_to(c1, buf));

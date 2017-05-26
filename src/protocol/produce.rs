@@ -94,7 +94,8 @@ impl<'a> TopicPartitionProduceRequest<'a> {
                 return;
             }
         }
-        self.partitions.push(PartitionProduceRequest::new(partition, key, value));
+        self.partitions
+            .push(PartitionProduceRequest::new(partition, key, value));
     }
 }
 

@@ -252,9 +252,9 @@ impl Builder {
         let state = try!(State::new(&mut client, &config, assignment::from_map(self.assignments)));
         debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}", config, state);
         Ok(Consumer {
-            client: client,
-            state: state,
-            config: config,
-        })
+               client: client,
+               state: state,
+               config: config,
+           })
     }
 }

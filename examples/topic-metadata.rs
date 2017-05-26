@@ -61,8 +61,9 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
     let (topic_width, offsets) = {
         let mut topic_width = 0;
         let mut m = HashMap::with_capacity(topics.len());
-        let mut offsets = try!(client.fetch_offsets(&topics, FetchOffset::Latest)
-            .map_err(|e| e.to_string()));
+        let mut offsets = try!(client
+                                   .fetch_offsets(&topics, FetchOffset::Latest)
+                                   .map_err(|e| e.to_string()));
         for (topic, offsets) in offsets {
             topic_width = cmp::max(topic_width, topic.len());
             let mut offs = Vec::with_capacity(offsets.len());
@@ -77,8 +78,11 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
                 // partition=1 we might have obtained an offset.  this
                 // allows us later to use the partition as an index
                 // into the table.
-                let num_partitions =
-                    client.topics().partitions(&topic).map(|ps| ps.len()).unwrap_or(0);
+                let num_partitions = client
+                    .topics()
+                    .partitions(&topic)
+                    .map(|ps| ps.len())
+                    .unwrap_or(0);
                 for _ in 0..num_partitions {
                     offs.push(Offsets::default());
                 }
@@ -91,8 +95,9 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
             m.insert(topic, offs);
         }
 
-        offsets = try!(client.fetch_offsets(&topics, FetchOffset::Earliest)
-            .map_err(|e| e.to_string()));
+        offsets = try!(client
+                           .fetch_offsets(&topics, FetchOffset::Earliest)
+                           .map_err(|e| e.to_string()));
 
         for (topic, offsets) in offsets {
             let mut offs = m.get_mut(&topic).expect("unknown topic");
@@ -115,7 +120,8 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
     let md = client.topics();
     let host_width = if cfg.host {
         2 +
-        topics.iter()
+        topics
+            .iter()
             .filter_map(|t| md.partitions(t))
             .flat_map(|t| t)
             .map(|p| p.leader().map(|b| b.host().len()).unwrap_or(0))
@@ -168,7 +174,8 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
                         .leader()
                         .map(|b| (b.id(), b.host()))
                         .unwrap_or((-1, ""));
-                    let _ = write!(out_buf, "{1:0$} {2:>4} {3:>4}", topic_width, topic, pi, leader_id);
+                    let _ =
+                        write!(out_buf, "{1:0$} {2:>4} {3:>4}", topic_width, topic, pi, leader_id);
                     if cfg.host {
                         fmt_buf.clear();
                         let _ = write!(fmt_buf, "({})", leader_host);
@@ -223,19 +230,19 @@ impl Config {
             return Err(opts.usage(&brief));
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
-                .unwrap_or_else(|| "localhost:9092".to_owned())
-                .split(',')
-                .map(|s| s.trim().to_owned())
-                .collect(),
-            topics: match m.opt_str("topics") {
-                None => Vec::new(),
-                Some(s) => s.split(',').map(|s| s.trim().to_owned()).collect(),
-            },
-            header: !m.opt_present("no-header"),
-            host: !m.opt_present("no-host"),
-            size: !m.opt_present("no-size"),
-            topic_separators: !m.opt_present("no-empty-lines"),
-        })
+               brokers: m.opt_str("brokers")
+                   .unwrap_or_else(|| "localhost:9092".to_owned())
+                   .split(',')
+                   .map(|s| s.trim().to_owned())
+                   .collect(),
+               topics: match m.opt_str("topics") {
+                   None => Vec::new(),
+                   Some(s) => s.split(',').map(|s| s.trim().to_owned()).collect(),
+               },
+               header: !m.opt_present("no-header"),
+               host: !m.opt_present("no-host"),
+               size: !m.opt_present("no-size"),
+               topic_separators: !m.opt_present("no-empty-lines"),
+           })
     }
 }

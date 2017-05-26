@@ -41,10 +41,8 @@ mod example {
             if let (Some(ccert), Some(ckey)) = (cfg.client_cert, cfg.client_key) {
                 info!("loading cert-file={}, key-file={}", ccert, ckey);
 
-                ctx.set_certificate_file(ccert, X509_FILETYPE_PEM)
-                    .unwrap();
-                ctx.set_private_key_file(ckey, X509_FILETYPE_PEM)
-                    .unwrap();
+                ctx.set_certificate_file(ccert, X509_FILETYPE_PEM).unwrap();
+                ctx.set_private_key_file(ckey, X509_FILETYPE_PEM).unwrap();
                 ctx.check_private_key().unwrap();
             }
 
@@ -126,7 +124,9 @@ mod example {
             opts.optopt("", "ca-cert", "Specify the trusted CA certificates", "FILE");
             opts.optopt("", "client-cert", "Specify the client certificate", "FILE");
             opts.optopt("", "client-key", "Specify key for the client certificate", "FILE");
-            opts.optflag("", "no-hostname-verification", "Do not perform server hostname verification (insecure!)");
+            opts.optflag("",
+                         "no-hostname-verification",
+                         "Do not perform server hostname verification (insecure!)");
 
             let args: Vec<_> = env::args().collect();
             let m = match opts.parse(&args[1..]) {

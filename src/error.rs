@@ -267,19 +267,19 @@ fn from_snap_error_ref(err: &::snap::Error) -> ErrorKind {
         &::snap::Error::Empty => ErrorKind::InvalidSnappy(::snap::Error::Empty),
         &::snap::Error::Header => ErrorKind::InvalidSnappy(::snap::Error::Header),
         &::snap::Error::HeaderMismatch {
-             expected_len,
-             got_len,
-         } => {
+            expected_len,
+            got_len,
+        } => {
             ErrorKind::InvalidSnappy(::snap::Error::HeaderMismatch {
                                          expected_len: expected_len,
                                          got_len: got_len,
                                      })
         }
         &::snap::Error::Literal {
-             len,
-             src_len,
-             dst_len,
-         } => {
+            len,
+            src_len,
+            dst_len,
+        } => {
             ErrorKind::InvalidSnappy(::snap::Error::Literal {
                                          len: len,
                                          src_len: src_len,

@@ -59,7 +59,8 @@ impl<'a> TopicPartitionOffsetRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32, time: i64) {
-        self.partitions.push(PartitionOffsetRequest::new(partition, time));
+        self.partitions
+            .push(PartitionOffsetRequest::new(partition, time));
     }
 }
 
@@ -127,9 +128,9 @@ impl PartitionOffsetResponse {
                 };
 
                 Ok(PartitionOffset {
-                    partition: self.partition,
-                    offset: offset,
-                })
+                       partition: self.partition,
+                       offset: offset,
+                   })
             }
         }
     }

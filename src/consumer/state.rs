@@ -87,7 +87,10 @@ impl State {
                 }
                 subs
             };
-            let n = subscriptions.iter().map(|s| s.partitions.len()).fold(0, |acc, n| acc + n);
+            let n = subscriptions
+                .iter()
+                .map(|s| s.partitions.len())
+                .fold(0, |acc, n| acc + n);
             let consumed =
                 try!(load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n));
             let fetch_next =
@@ -95,11 +98,11 @@ impl State {
             (consumed, fetch_next)
         };
         Ok(State {
-            assignments: assignments,
-            fetch_offsets: fetch_offsets,
-            retry_partitions: VecDeque::new(),
-            consumed_offsets: consumed_offsets,
-        })
+               assignments: assignments,
+               fetch_offsets: fetch_offsets,
+               retry_partitions: VecDeque::new(),
+               consumed_offsets: consumed_offsets,
+           })
     }
 
     pub fn topic_name(&self, assignment: AssignmentRef) -> &str {
@@ -176,9 +179,9 @@ fn determine_partitions<'a>(assignment: &'a Assignment,
         ps
     };
     Ok(Subscription {
-        assignment: assignment,
-        partitions: ps,
-    })
+           assignment: assignment,
+           partitions: ps,
+       })
 }
 
 // Fetches the so-far commited/consumed offsets for the configured
@@ -197,20 +200,22 @@ fn load_consumed_offsets(client: &mut KafkaClient,
         return Ok(offs);
     }
     // ~ otherwise try load them for the group
-    let tpos = try!(client.fetch_group_offsets(group,
-                                               subscriptions.iter()
-                                                   .flat_map(|s| {
-                                                       let topic = s.assignment.topic();
-                                                       s.partitions.iter().map(move |&p| {
-                                                           FetchGroupOffset::new(topic, p)
-                                                       })
-                                                   })));
+    let tpos =
+        try!(client.fetch_group_offsets(group,
+                                        subscriptions
+                                            .iter()
+                                            .flat_map(|s| {
+            let topic = s.assignment.topic();
+            s.partitions
+                .iter()
+                .map(move |&p| FetchGroupOffset::new(topic, p))
+        })));
     for (topic, pos) in tpos {
         for po in pos {
             if po.offset != -1 {
                 offs.insert(TopicPartition {
-                                topic_ref: assignments.topic_ref(&topic)
-                                    .expect("non-assigned topic"),
+                                topic_ref:
+                                    assignments.topic_ref(&topic).expect("non-assigned topic"),
                                 partition: po.partition,
                             },
                             ConsumedOffset {
@@ -261,7 +266,8 @@ fn load_fetch_states(client: &mut KafkaClient,
         let offsets =
             try!(load_partition_offsets(client, &subscription_topics, config.fallback_offset));
         for s in subscriptions {
-            let topic_ref = assignments.topic_ref(s.assignment.topic())
+            let topic_ref = assignments
+                .topic_ref(s.assignment.topic())
                 .expect("unassigned subscription");
             match offsets.get(s.assignment.topic()) {
                 None => {
@@ -293,13 +299,18 @@ fn load_fetch_states(client: &mut KafkaClient,
         // consumed_offset verify it is in the earliest/latest range
         // and use that consumed_offset+1 as the fetch_message.
         for s in subscriptions {
-            let topic_ref = assignments.topic_ref(s.assignment.topic())
+            let topic_ref = assignments
+                .topic_ref(s.assignment.topic())
                 .expect("unassigned subscription");
             for p in &s.partitions {
-                let l_off =
-                    *latest.get(s.assignment.topic()).and_then(|ps| ps.get(p)).unwrap_or(&-1);
-                let e_off =
-                    *earliest.get(s.assignment.topic()).and_then(|ps| ps.get(p)).unwrap_or(&-1);
+                let l_off = *latest
+                                 .get(s.assignment.topic())
+                                 .and_then(|ps| ps.get(p))
+                                 .unwrap_or(&-1);
+                let e_off = *earliest
+                                 .get(s.assignment.topic())
+                                 .and_then(|ps| ps.get(p))
+                                 .unwrap_or(&-1);
 
                 let tp = TopicPartition {
                     topic_ref: topic_ref,

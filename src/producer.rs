@@ -266,7 +266,8 @@ impl<P: Partitioner> Producer<P> {
             let mut produce_confirm = rs.pop().unwrap();
 
             assert_eq!(1, produce_confirm.partition_confirms.len());
-            produce_confirm.partition_confirms
+            produce_confirm
+                .partition_confirms
                 .pop()
                 .unwrap()
                 .offset
@@ -289,7 +290,8 @@ impl<P: Partitioner> Producer<P> {
 
         client.internal_produce_messages(config.required_acks,
                                          config.ack_timeout,
-                                         recs.into_iter().map(|r| {
+                                         recs.into_iter()
+                                             .map(|r| {
             let mut m = client::ProduceMessage {
                 key: to_option(r.key.as_bytes()),
                 value: to_option(r.value.as_bytes()),
@@ -321,9 +323,9 @@ impl<P> State<P> {
                        });
         }
         Ok(State {
-            partitions: ids,
-            partitioner: partitioner,
-        })
+               partitions: ids,
+               partitioner: partitioner,
+           })
     }
 }
 
@@ -469,10 +471,10 @@ impl<P> Builder<P> {
         // ~ create producer state
         let state = try!(State::new(&mut client, self.partitioner));
         Ok(Producer {
-            client: client,
-            state: state,
-            config: producer_config,
-        })
+               client: client,
+               state: state,
+               config: producer_config,
+           })
     }
 }
 

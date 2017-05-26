@@ -77,7 +77,8 @@ impl TopicPartitionFetchRequest {
     }
 
     pub fn add(&mut self, partition: i32, offset: i64, max_bytes: i32) {
-        self.partitions.insert(partition, PartitionFetchRequest::new(offset, max_bytes));
+        self.partitions
+            .insert(partition, PartitionFetchRequest::new(offset, max_bytes));
     }
 
     pub fn get(&self, partition: i32) -> Option<&PartitionFetchRequest> {
@@ -190,10 +191,10 @@ impl Response {
         let correlation_id = try!(r.read_i32());
         let topics = array_of!(r, Topic::read(&mut r, reqs, validate_crc));
         Ok(Response {
-            raw_data: response,
-            correlation_id: correlation_id,
-            topics: topics,
-        })
+               raw_data: response,
+               correlation_id: correlation_id,
+               topics: topics,
+           })
     }
 
     /// Retrieves the id corresponding to the fetch messages request
@@ -230,9 +231,9 @@ impl<'a> Topic<'a> {
         let preqs = reqs.and_then(|reqs| reqs.get(name));
         let partitions = array_of!(r, Partition::read(r, preqs, validate_crc));
         Ok(Topic {
-            topic: name,
-            partitions: partitions,
-        })
+               topic: name,
+               partitions: partitions,
+           })
     }
 
     /// Retrieves the identifier/name of the represented topic.
@@ -271,7 +272,8 @@ impl<'a> Partition<'a> {
             validate_crc: bool)
             -> Result<Partition<'a>> {
         let partition = try!(r.read_i32());
-        let proffs = preqs.and_then(|preqs| preqs.get(partition))
+        let proffs = preqs
+            .and_then(|preqs| preqs.get(partition))
             .map(|preq| preq.offset)
             .unwrap_or(0);
         let error = Error::from_protocol(try!(r.read_i16()));
@@ -280,17 +282,17 @@ impl<'a> Partition<'a> {
         let highwatermark = try!(r.read_i64());
         let msgset = try!(MessageSet::from_slice(try!(r.read_bytes()), proffs, validate_crc));
         Ok(Partition {
-            partition: partition,
-            data: match error {
-                Some(error) => Err(error),
-                None => {
-                    Ok(Data {
-                        highwatermark_offset: highwatermark,
-                        message_set: msgset,
-                    })
-                }
-            },
-        })
+               partition: partition,
+               data: match error {
+                   Some(error) => Err(error),
+                   None => {
+                       Ok(Data {
+                              highwatermark_offset: highwatermark,
+                              message_set: msgset,
+                          })
+                   }
+               },
+           })
     }
 
     /// Retrieves the identifier of the represented partition.
@@ -365,9 +367,9 @@ impl<'a> MessageSet<'a> {
                                              req_offset,
                                              validate_crc));
         return Ok(MessageSet {
-            raw_data: Cow::Owned(data),
-            messages: ms.messages,
-        });
+                      raw_data: Cow::Owned(data),
+                      messages: ms.messages,
+                  });
     }
 
     fn from_slice<'b>(raw_data: &'b [u8],
@@ -396,10 +398,10 @@ impl<'a> MessageSet<'a> {
                             // than the request one
                             if offset >= req_offset {
                                 msgs.push(Message {
-                                    offset: offset,
-                                    key: pmsg.key,
-                                    value: pmsg.value,
-                                });
+                                              offset: offset,
+                                              key: pmsg.key,
+                                              value: pmsg.value,
+                                          });
                             }
                         }
                         // XXX handle recursive compression in future
@@ -421,9 +423,9 @@ impl<'a> MessageSet<'a> {
             };
         }
         Ok(MessageSet {
-            raw_data: Cow::Borrowed(raw_data),
-            messages: msgs,
-        })
+               raw_data: Cow::Borrowed(raw_data),
+               messages: msgs,
+           })
     }
 
     fn next_message<'b>(r: &mut ZReader<'b>,
@@ -466,10 +468,10 @@ impl<'a> ProtocolMessage<'a> {
         debug_assert!(r.is_empty());
 
         Ok(ProtocolMessage {
-            attr: msg_attr,
-            key: msg_key,
-            value: msg_val,
-        })
+               attr: msg_attr,
+               key: msg_key,
+               value: msg_val,
+           })
     }
 }
 
@@ -594,9 +596,9 @@ mod tests {
         let r =
             Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
         assert!(match r {
-            bail!(ErrorKind::UnsupportedCompression) => true,
-            _ => false,
-        });
+                    bail!(ErrorKind::UnsupportedCompression) => true,
+                    _ => false,
+                });
     }
 
     #[cfg(feature = "snappy")]
@@ -669,11 +671,11 @@ mod tests {
         // 1) without checking the crc ... since only the crc field is
         // artificially falsified ... we expect the rest of the
         // message to be parsed correctly
-        test_decode_new_fetch_response(
-            FETCH2_TXT,
-            FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(),
-            None,
-            false);
+        test_decode_new_fetch_response(FETCH2_TXT,
+                                       FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900
+                                           .to_owned(),
+                                       None,
+                                       false);
         // 2) with checking the crc ... parsing should fail immediately
         match Response::from_vec(FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900.to_owned(),
                                  None,
@@ -696,19 +698,20 @@ mod tests {
             reqs.add("my-topic", 0, 0, -1);
             b.bytes = data.len() as u64;
             b.iter(|| {
-                let data = data.clone();
-                let r = black_box(Response::from_vec(data, Some(&reqs), validate_crc).unwrap());
-                let v = black_box(into_messages(&r));
-                v.len()
-            });
+                       let data = data.clone();
+                       let r = black_box(Response::from_vec(data, Some(&reqs), validate_crc)
+                                             .unwrap());
+                       let v = black_box(into_messages(&r));
+                       v.len()
+                   });
         }
 
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821(b: &mut Bencher) {
-            bench_decode_new_fetch_response(
-                b,
-                super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(),
-                false)
+            bench_decode_new_fetch_response(b,
+                                            super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821
+                                                .to_owned(),
+                                            false)
         }
 
         #[cfg(feature = "snappy")]
@@ -737,10 +740,10 @@ mod tests {
 
         #[bench]
         fn bench_decode_new_fetch_response_nocompression_k0821_validate_crc(b: &mut Bencher) {
-            bench_decode_new_fetch_response(
-                b,
-                super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821.to_owned(),
-                true)
+            bench_decode_new_fetch_response(b,
+                                            super::FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821
+                                                .to_owned(),
+                                            true)
         }
 
         #[cfg(feature = "snappy")]

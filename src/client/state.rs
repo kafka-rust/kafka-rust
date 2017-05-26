@@ -169,11 +169,13 @@ pub struct TopicPartitionIter<'a> {
 impl<'a> Iterator for TopicPartitionIter<'a> {
     type Item = (i32, &'a TopicPartition);
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|tp| {
-            let partition_id = self.partition_id;
-            self.partition_id += 1;
-            (partition_id, tp)
-        })
+        self.iter
+            .next()
+            .map(|tp| {
+                     let partition_id = self.partition_id;
+                     self.partition_id += 1;
+                     (partition_id, tp)
+                 })
     }
 }
 
@@ -214,7 +216,10 @@ impl ClientState {
     }
 
     pub fn contains_topic_partition(&self, topic: &str, partition_id: i32) -> bool {
-        self.topic_partitions.get(topic).map(|tp| tp.partition(partition_id)).is_some()
+        self.topic_partitions
+            .get(topic)
+            .map(|tp| tp.partition(partition_id))
+            .is_some()
     }
 
     pub fn topic_names(&self) -> TopicNames {
@@ -281,7 +286,7 @@ impl ClientState {
                 }
                 Entry::Vacant(e) => {
                     &mut e.insert(TopicPartitions::new_with_partitions(t.partitions.len()))
-                        .partitions
+                             .partitions
                 }
             };
             // ~ sync the partitions vector with the new information
@@ -323,10 +328,11 @@ impl ClientState {
                 Entry::Vacant(e) => {
                     // ~ insert the new broker
                     let new_index = self.brokers.len();
-                    self.brokers.push(Broker {
-                        node_id: broker.node_id,
-                        host: broker_host,
-                    });
+                    self.brokers
+                        .push(Broker {
+                                  node_id: broker.node_id,
+                                  host: broker_host,
+                              });
                     // ~ track the pushed broker's index
                     e.insert(BrokerRef::new(new_index as u32));
                 }
@@ -378,10 +384,11 @@ impl ClientState {
         // ~ if not found, add it to the list of known brokers
         if broker_ref._index == UNKNOWN_BROKER_INDEX {
             broker_ref._index = self.brokers.len() as u32;
-            self.brokers.push(Broker {
-                node_id: gc.broker_id,
-                host: group_host,
-            });
+            self.brokers
+                .push(Broker {
+                          node_id: gc.broker_id,
+                          host: group_host,
+                      });
         }
         if let Some(br) = self.group_coordinators.get_mut(group) {
             if br._index != broker_ref._index {
@@ -467,14 +474,15 @@ mod tests {
         assert_eq!(expected.len(), partitions.len());
         assert_eq!(expected.len() == 0, partitions.is_empty());
         assert_eq!(expected,
-                   &partitions.iter()
-                       .map(|(id, tp)| {
-                           let broker = tp.broker(&state).map(|b| (b.id(), b.host()));
-                           // ~ verify that find_broker delivers the same information
-                           assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
-                           (id, broker)
-                       })
-                       .collect::<Vec<_>>()
+                   &partitions
+                        .iter()
+                        .map(|(id, tp)| {
+                                 let broker = tp.broker(&state).map(|b| (b.id(), b.host()));
+                                 // ~ verify that find_broker delivers the same information
+                                 assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
+                                 (id, broker)
+                             })
+                        .collect::<Vec<_>>()
                         [..]);
     }
 

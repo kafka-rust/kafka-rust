@@ -133,7 +133,8 @@ impl<'a> TopicPartitionOffsetFetchRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32) {
-        self.partitions.push(PartitionOffsetFetchRequest::new(partition));
+        self.partitions
+            .push(PartitionOffsetFetchRequest::new(partition));
     }
 }
 
@@ -193,16 +194,16 @@ impl PartitionOffsetFetchResponse {
                 // for the group in question; we'll align the behavior
                 // with protocol v1.
                 Ok(PartitionOffset {
-                    partition: self.partition,
-                    offset: -1,
-                })
+                       partition: self.partition,
+                       offset: -1,
+                   })
             }
             Some(e) => Err(e),
             None => {
                 Ok(PartitionOffset {
-                    partition: self.partition,
-                    offset: self.offset,
-                })
+                       partition: self.partition,
+                       offset: self.offset,
+                   })
             }
         }
     }
@@ -318,7 +319,8 @@ impl<'a> TopicPartitionOffsetCommitRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32, offset: i64, metadata: &'a str) {
-        self.partitions.push(PartitionOffsetCommitRequest::new(partition, offset, metadata))
+        self.partitions
+            .push(PartitionOffsetCommitRequest::new(partition, offset, metadata))
     }
 }
 

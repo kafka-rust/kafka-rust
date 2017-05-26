@@ -6,7 +6,9 @@ use kafka::producer::Record;
 #[test]
 fn test_producer_send() {
     let mut producer = test_producer();
-    producer.send(&Record::from_value(TEST_TOPIC_NAME, "foo".as_bytes())).unwrap();
+    producer
+        .send(&Record::from_value(TEST_TOPIC_NAME, "foo".as_bytes()))
+        .unwrap();
 }
 
 /// Sending to a non-existent topic should fail.
@@ -14,8 +16,9 @@ fn test_producer_send() {
 fn test_producer_send_non_existent_topic() {
     let mut producer = test_producer();
 
-    let error_code = match producer.send(&Record::from_value("non-topic", "foo".as_bytes()))
-        .unwrap_err() {
+    let error_code = match producer
+              .send(&Record::from_value("non-topic", "foo".as_bytes()))
+              .unwrap_err() {
         error::Error(error::ErrorKind::Kafka(code), _) => code,
         _ => panic!("Should have received Kafka error"),
     };

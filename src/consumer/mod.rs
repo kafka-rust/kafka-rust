@@ -173,7 +173,9 @@ impl Consumer {
             Some(tp) => {
                 let s = match self.state.fetch_offsets.get(&tp) {
                     Some(fstate) => fstate,
-                    None => return (1, Err(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition).into())),
+                    None => {
+                        return (1, Err(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition).into()))
+                    }
                 };
                 let topic = self.state.topic_name(tp.topic_ref);
                 debug!("fetching messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
@@ -190,13 +192,14 @@ impl Consumer {
                 let client = &mut self.client;
                 let state = &self.state;
                 debug!("fetching messages: (fetch-offsets: {:?})", state.fetch_offsets_debug());
-                let reqs = state.fetch_offsets
+                let reqs = state
+                    .fetch_offsets
                     .iter()
                     .map(|(tp, s)| {
-                        let topic = state.topic_name(tp.topic_ref);
-                        FetchPartition::new(topic, tp.partition, s.offset)
-                            .with_max_bytes(s.max_bytes)
-                    });
+                             let topic = state.topic_name(tp.topic_ref);
+                             FetchPartition::new(topic, tp.partition, s.offset)
+                                 .with_max_bytes(s.max_bytes)
+                         });
                 (state.fetch_offsets.len() as u32, client.fetch_messages(reqs))
             }
         }
@@ -321,9 +324,9 @@ impl Consumer {
         // consumption
 
         Ok(MessageSets {
-            responses: resps,
-            empty: empty,
-        })
+               responses: resps,
+               empty: empty,
+           })
     }
 
     /// Retrieves the offset of the last "consumed" message in the
@@ -333,11 +336,13 @@ impl Consumer {
         self.state
             .topic_ref(topic)
             .and_then(|tref| {
-                self.state.consumed_offsets.get(&state::TopicPartition {
-                    topic_ref: tref,
-                    partition: partition,
-                })
-            })
+                          self.state
+                              .consumed_offsets
+                              .get(&state::TopicPartition {
+                                       topic_ref: tref,
+                                       partition: partition,
+                                   })
+                      })
             .map(|co| co.offset)
     }
 
@@ -364,9 +369,9 @@ impl Consumer {
         match self.state.consumed_offsets.entry(tp) {
             Entry::Vacant(v) => {
                 v.insert(state::ConsumedOffset {
-                    offset: offset,
-                    dirty: true,
-                });
+                             offset: offset,
+                             dirty: true,
+                         });
             }
             Entry::Occupied(mut v) => {
                 let o = v.get_mut();
@@ -405,13 +410,14 @@ impl Consumer {
                self.state.consumed_offsets_debug());
         let (client, state) = (&mut self.client, &mut self.state);
         try!(client.commit_offsets(&self.config.group,
-                                   state.consumed_offsets
+                                   state
+                                       .consumed_offsets
                                        .iter()
                                        .filter(|&(_, o)| o.dirty)
                                        .map(|(tp, o)| {
-                                           let topic = state.topic_name(tp.topic_ref);
-                                           CommitOffset::new(topic, tp.partition, o.offset)
-                                       })));
+                                                let topic = state.topic_name(tp.topic_ref);
+                                                CommitOffset::new(topic, tp.partition, o.offset)
+                                            })));
         for (_, co) in &mut state.consumed_offsets {
             if co.dirty {
                 co.dirty = false;
@@ -448,9 +454,11 @@ impl MessageSets {
     pub fn iter(&self) -> MessageSetsIter {
         let mut responses = self.responses.iter();
         let mut topics = responses.next().map(|r| r.topics().iter());
-        let (curr_topic, partitions) = topics.as_mut()
-            .and_then(|t| t.next())
-            .map_or((None, None), |t| (Some(t.topic()), Some(t.partitions().iter())));
+        let (curr_topic, partitions) =
+            topics
+                .as_mut()
+                .and_then(|t| t.next())
+                .map_or((None, None), |t| (Some(t.topic()), Some(t.partitions().iter())));
         MessageSetsIter {
             responses: responses,
             topics: topics,
@@ -512,10 +520,10 @@ impl<'a> Iterator for MessageSetsIter<'a> {
                             continue;
                         } else {
                             return Some(MessageSet {
-                                topic: self.curr_topic,
-                                partition: p.partition(),
-                                messages: msgs,
-                            });
+                                            topic: self.curr_topic,
+                                            partition: p.partition(),
+                                            messages: msgs,
+                                        });
                         }
                     }
                 }

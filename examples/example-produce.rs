@@ -49,11 +49,11 @@ fn produce_message<'a, 'b>(data: &'a [u8],
     // partition - which causes the producer to find out one on its
     // own using its underlying partitioner.
     try!(producer.send(&Record {
-        topic: topic,
-        partition: -1,
-        key: (),
-        value: data,
-    }));
+                           topic: topic,
+                           partition: -1,
+                           key: (),
+                           value: data,
+                       }));
 
     // ~ we can achieve exactly the same as above in a shorter way with
     // the following call

@@ -142,16 +142,16 @@ impl Config {
             }
         }
         Ok(Config {
-            brokers: brokers,
-            group: m.opt_str("group").unwrap_or_else(|| String::new()),
-            topics: topics,
-            no_commit: m.opt_present("no-commit"),
-            offset_storage: offset_storage,
-            fallback_offset: if m.opt_present("earliest") {
-                FetchOffset::Earliest
-            } else {
-                FetchOffset::Latest
-            },
-        })
+               brokers: brokers,
+               group: m.opt_str("group").unwrap_or_else(|| String::new()),
+               topics: topics,
+               no_commit: m.opt_present("no-commit"),
+               offset_storage: offset_storage,
+               fallback_offset: if m.opt_present("earliest") {
+                   FetchOffset::Earliest
+               } else {
+                   FetchOffset::Latest
+               },
+           })
     }
 }
