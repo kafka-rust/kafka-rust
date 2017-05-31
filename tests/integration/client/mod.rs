@@ -3,10 +3,14 @@ use kafka::client::KafkaClient;
 
 #[test]
 fn test_kafka_client_load_metadata() {
-    let mut client = KafkaClient::new(vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()]);
+    let hosts = vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()];
+    let mut client = KafkaClient::new(hosts.clone());
     client.load_metadata_all().unwrap();
 
     let topics = client.topics();
+
+    // sanity check the hosts
+    assert_eq!(hosts.as_ref() as &[String], client.hosts());
 
     // names
     let topic_names: Vec<&str> = topics.names()
