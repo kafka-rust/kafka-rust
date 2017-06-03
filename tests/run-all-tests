@@ -29,6 +29,7 @@ start_docker() {
 
   # wait for Kafka to be ready and the test topic to be created
   ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test\"'"
+  ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test2\"'"
 }
 
 setup() {

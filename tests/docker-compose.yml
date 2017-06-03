@@ -15,5 +15,5 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper
       KAFKA_ADVERTISED_HOST_NAME: localhost
       KAFKA_ADVERTISED_PORT: 9092
-      KAFKA_CREATE_TOPICS: kafka-rust-test:2:1
+      KAFKA_CREATE_TOPICS: kafka-rust-test:2:1,kafka-rust-test2:2:1
       KAFKA_BROKER_ID: 0
