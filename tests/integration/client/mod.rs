@@ -6,7 +6,7 @@
 use super::*;
 use std::collections::HashSet;
 use std::time::Duration;
-use kafka::client::{KafkaClient, FetchPartition, ProduceMessage, RequiredAcks};
+use kafka::client::{KafkaClient, PartitionOffset, FetchPartition, ProduceMessage, RequiredAcks};
 use kafka::client::fetch::Response;
 
 fn flatten_fetched_messages(resps: &Vec<Response>) -> Vec<(&str, i32, &[u8])> {
@@ -65,9 +65,7 @@ fn test_kafka_client_load_metadata() {
 
 #[test]
 fn test_produce_fetch_messages() {
-    let hosts = vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()];
-    let mut client = KafkaClient::new(hosts.clone());
-    client.load_metadata_all().unwrap();
+    let mut client = new_ready_kafka_client();
 
     // first send the messages and verify correct confirmation responses
     // from kafka
@@ -123,4 +121,36 @@ fn test_produce_fetch_messages() {
     assert!(correct_messages
                 .into_iter()
                 .all(|c_msg| messages.contains(&c_msg)));
+}
+
+#[test]
+fn test_commit_offset() {
+    let mut client = new_ready_kafka_client();
+
+    for &(partition, offset) in
+        &[(TEST_TOPIC_PARTITIONS[0], 100),
+          (TEST_TOPIC_PARTITIONS[1], 200),
+          (TEST_TOPIC_PARTITIONS[0], 300),
+          (TEST_TOPIC_PARTITIONS[1], 400),
+          (TEST_TOPIC_PARTITIONS[0], 500),
+          (TEST_TOPIC_PARTITIONS[1], 600)] {
+
+
+        client
+            .commit_offset(TEST_GROUP_NAME, TEST_TOPIC_NAME, partition, offset)
+            .unwrap();
+
+        let partition_offsets: HashSet<PartitionOffset> = client
+            .fetch_group_topic_offsets(TEST_GROUP_NAME, TEST_TOPIC_NAME)
+            .unwrap()
+            .into_iter()
+            .collect();
+
+        let correct_partition_offset = PartitionOffset {
+            partition: partition,
+            offset: offset,
+        };
+
+        assert!(partition_offsets.contains(&correct_partition_offset));
+    }
 }
