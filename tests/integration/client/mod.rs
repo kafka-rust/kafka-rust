@@ -6,7 +6,8 @@
 use super::*;
 use std::collections::HashSet;
 use std::time::Duration;
-use kafka::client::{KafkaClient, PartitionOffset, FetchPartition, ProduceMessage, RequiredAcks};
+use kafka::client::{KafkaClient, CommitOffset, PartitionOffset, FetchPartition, ProduceMessage,
+                    RequiredAcks};
 use kafka::client::fetch::Response;
 
 fn flatten_fetched_messages(resps: &Vec<Response>) -> Vec<(&str, i32, &[u8])> {
@@ -155,5 +156,76 @@ fn test_commit_offset() {
         };
 
         assert!(partition_offsets.contains(&correct_partition_offset));
+    }
+}
+
+#[test]
+fn test_commit_offsets() {
+    let mut client = new_ready_kafka_client();
+
+    let commits = [
+        [
+            CommitOffset {
+                topic: TEST_TOPIC_NAME,
+                partition: TEST_TOPIC_PARTITIONS[0],
+                offset: 100,
+            },
+            CommitOffset {
+                topic: TEST_TOPIC_NAME,
+                partition: TEST_TOPIC_PARTITIONS[1],
+                offset: 200,
+            },
+        ],
+        [
+            CommitOffset {
+                topic: TEST_TOPIC_NAME,
+                partition: TEST_TOPIC_PARTITIONS[0],
+                offset: 300,
+            },
+            CommitOffset {
+                topic: TEST_TOPIC_NAME,
+                partition: TEST_TOPIC_PARTITIONS[1],
+                offset: 400,
+            },
+        ],
+        [
+            CommitOffset {
+                topic: TEST_TOPIC_NAME,
+                partition: TEST_TOPIC_PARTITIONS[0],
+                offset: 500,
+            },
+            CommitOffset {
+                topic: TEST_TOPIC_NAME,
+                partition: TEST_TOPIC_PARTITIONS[1],
+                offset: 600,
+            },
+        ],
+    ];
+
+    for commit_pair in &commits {
+
+        client.commit_offsets(TEST_GROUP_NAME, commit_pair).unwrap();
+
+        let partition_offsets: HashSet<PartitionOffset> = client
+            .fetch_group_topic_offsets(TEST_GROUP_NAME, TEST_TOPIC_NAME)
+            .unwrap()
+            .into_iter()
+            .collect();
+
+        println!("partition_offsets: {:?}", partition_offsets);
+
+        let correct_partition_offsets: HashSet<PartitionOffset> = vec![
+            PartitionOffset {
+                partition: commit_pair[0].partition,
+                offset: commit_pair[0].offset,
+            },
+            PartitionOffset {
+                partition: commit_pair[1].partition,
+                offset: commit_pair[1].offset,
+            },
+        ].into_iter()
+            .collect();
+
+        assert_eq!(correct_partition_offsets, partition_offsets);
     }
 }
