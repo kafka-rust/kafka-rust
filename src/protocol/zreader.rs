@@ -184,8 +184,26 @@ fn test_read_i64() {
 
 #[test]
 fn test_read_str() {
-    let data = &[0u8, 5, b'h', b'e', b'l', b'l', b'o', 0u8, 7, b',', b' ', b'w', b'o', b'r', b'l',
-                 b'd', 255 /* a "null" string */, 28]; // some byte
+    let data = &[
+        0u8,
+        5,
+        b'h',
+        b'e',
+        b'l',
+        b'l',
+        b'o',
+        0u8,
+        7,
+        b',',
+        b' ',
+        b'w',
+        b'o',
+        b'r',
+        b'l',
+        b'd',
+        255, /* a "null" string */
+        28,
+    ]; // some byte
 
     let mut r = ZReader::new(data);
     assert_eq!("hello", r.read_str().unwrap());

@@ -63,9 +63,10 @@ mod example {
 
         // ~ instantiate KafkaClient with the previous OpenSSL setup
         let mut client =
-            KafkaClient::new_secure(cfg.brokers,
-                                    SecurityConfig::new(connector)
-                                        .with_hostname_verification(cfg.verify_hostname));
+            KafkaClient::new_secure(
+                cfg.brokers,
+                SecurityConfig::new(connector).with_hostname_verification(cfg.verify_hostname),
+            );
 
         // ~ communicate with the brokers
         match client.load_metadata_all() {
@@ -124,9 +125,11 @@ mod example {
             opts.optopt("", "ca-cert", "Specify the trusted CA certificates", "FILE");
             opts.optopt("", "client-cert", "Specify the client certificate", "FILE");
             opts.optopt("", "client-key", "Specify key for the client certificate", "FILE");
-            opts.optflag("",
-                         "no-hostname-verification",
-                         "Do not perform server hostname verification (insecure!)");
+            opts.optflag(
+                "",
+                "no-hostname-verification",
+                "Do not perform server hostname verification (insecure!)",
+            );
 
             let args: Vec<_> = env::args().collect();
             let m = match opts.parse(&args[1..]) {
@@ -141,23 +144,23 @@ mod example {
 
             let brokers = m.opt_str("brokers")
                 .map(|s| {
-                         s.split(',')
-                             .map(|s| s.trim().to_owned())
-                             .filter(|s| !s.is_empty())
-                             .collect()
-                     })
+                    s.split(',')
+                        .map(|s| s.trim().to_owned())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
                 .unwrap_or_else(|| vec!["localhost:9092".into()]);
             if brokers.is_empty() {
                 return Err("Invalid --brokers specified!".to_owned());
             }
 
             Ok(Config {
-                   brokers: brokers,
-                   client_cert: m.opt_str("client-cert"),
-                   client_key: m.opt_str("client-key"),
-                   ca_cert: m.opt_str("ca-cert"),
-                   verify_hostname: !m.opt_present("no-hostname-verification"),
-               })
+                brokers: brokers,
+                client_cert: m.opt_str("client-cert"),
+                client_key: m.opt_str("client-key"),
+                ca_cert: m.opt_str("ca-cert"),
+                verify_hostname: !m.opt_present("no-hostname-verification"),
+            })
         }
     }
 }

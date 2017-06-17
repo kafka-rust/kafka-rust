@@ -46,12 +46,13 @@ pub struct MessageProduceRequest<'a> {
 }
 
 impl<'a, 'b> ProduceRequest<'a, 'b> {
-    pub fn new(required_acks: i16,
-               timeout: i32,
-               correlation_id: i32,
-               client_id: &'a str,
-               compression: Compression)
-               -> ProduceRequest<'a, 'b> {
+    pub fn new(
+        required_acks: i16,
+        timeout: i32,
+        correlation_id: i32,
+        client_id: &'a str,
+        compression: Compression,
+    ) -> ProduceRequest<'a, 'b> {
         ProduceRequest {
             header: HeaderRequest::new(API_KEY_PRODUCE, API_VERSION, correlation_id, client_id),
             required_acks: required_acks,
@@ -61,11 +62,13 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
         }
     }
 
-    pub fn add(&mut self,
-               topic: &'b str,
-               partition: i32,
-               key: Option<&'b [u8]>,
-               value: Option<&'b [u8]>) {
+    pub fn add(
+        &mut self,
+        topic: &'b str,
+        partition: i32,
+        key: Option<&'b [u8]>,
+        value: Option<&'b [u8]>,
+    ) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
                 tp.add(partition, key, value);
@@ -94,16 +97,20 @@ impl<'a> TopicPartitionProduceRequest<'a> {
                 return;
             }
         }
-        self.partitions
-            .push(PartitionProduceRequest::new(partition, key, value));
+        self.partitions.push(PartitionProduceRequest::new(
+            partition,
+            key,
+            value,
+        ));
     }
 }
 
 impl<'a> PartitionProduceRequest<'a> {
-    pub fn new<'b>(partition: i32,
-                   key: Option<&'b [u8]>,
-                   value: Option<&'b [u8]>)
-                   -> PartitionProduceRequest<'b> {
+    pub fn new<'b>(
+        partition: i32,
+        key: Option<&'b [u8]>,
+        value: Option<&'b [u8]>,
+    ) -> PartitionProduceRequest<'b> {
         let mut r = PartitionProduceRequest {
             partition: partition,
             messages: Vec::new(),
@@ -119,10 +126,12 @@ impl<'a> PartitionProduceRequest<'a> {
 
 impl<'a, 'b> ToByte for ProduceRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(self.header.encode(buffer),
-                   self.required_acks.encode(buffer),
-                   self.timeout.encode(buffer),
-                   self.topic_partitions.encode(buffer))
+        try_multi!(
+            self.header.encode(buffer),
+            self.required_acks.encode(buffer),
+            self.timeout.encode(buffer),
+            self.topic_partitions.encode(buffer)
+        )
     }
 }
 
@@ -315,8 +324,10 @@ impl FromByte for PartitionProduceResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.partition.decode(buffer),
-                   self.error.decode(buffer),
-                   self.offset.decode(buffer))
+        try_multi!(
+            self.partition.decode(buffer),
+            self.error.decode(buffer),
+            self.offset.decode(buffer)
+        )
     }
 }

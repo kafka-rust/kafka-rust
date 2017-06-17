@@ -189,12 +189,14 @@ impl<'a, V> Record<'a, (), V> {
 
 impl<'a, K: fmt::Debug, V: fmt::Debug> fmt::Debug for Record<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
-               self.topic,
-               self.partition,
-               self.key,
-               self.value)
+        write!(
+            f,
+            "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
+            self.topic,
+            self.partition,
+            self.key,
+            self.value
+        )
     }
 }
 
@@ -252,8 +254,9 @@ impl Producer {
 impl<P: Partitioner> Producer<P> {
     /// Synchronously send the specified message to Kafka.
     pub fn send<'a, K, V>(&mut self, rec: &Record<'a, K, V>) -> Result<()>
-        where K: AsBytes,
-              V: AsBytes
+    where
+        K: AsBytes,
+        V: AsBytes,
     {
         let mut rs = try!(self.send_all(ref_slice(rec)));
 
@@ -280,27 +283,29 @@ impl<P: Partitioner> Producer<P> {
     /// that all of the specified records have been successfully delivered,
     /// inspection of the offsets on the returned confirms is necessary.
     pub fn send_all<'a, K, V>(&mut self, recs: &[Record<'a, K, V>]) -> Result<Vec<ProduceConfirm>>
-        where K: AsBytes,
-              V: AsBytes
+    where
+        K: AsBytes,
+        V: AsBytes,
     {
         let partitioner = &mut self.state.partitioner;
         let partitions = &self.state.partitions;
         let client = &mut self.client;
         let config = &self.config;
 
-        client.internal_produce_messages(config.required_acks,
-                                         config.ack_timeout,
-                                         recs.into_iter()
-                                             .map(|r| {
-            let mut m = client::ProduceMessage {
-                key: to_option(r.key.as_bytes()),
-                value: to_option(r.value.as_bytes()),
-                topic: r.topic,
-                partition: r.partition,
-            };
-            partitioner.partition(Topics::new(partitions), &mut m);
-            m
-        }))
+        client.internal_produce_messages(
+            config.required_acks,
+            config.ack_timeout,
+            recs.into_iter().map(|r| {
+                let mut m = client::ProduceMessage {
+                    key: to_option(r.key.as_bytes()),
+                    value: to_option(r.value.as_bytes()),
+                    topic: r.topic,
+                    partition: r.partition,
+                };
+                partitioner.partition(Topics::new(partitions), &mut m);
+                m
+            }),
+        )
     }
 }
 
@@ -316,16 +321,18 @@ impl<P> State<P> {
         let mut ids = HashMap::with_capacity(ts.len());
         for t in ts {
             let ps = t.partitions();
-            ids.insert(t.name().to_owned(),
-                       Partitions {
-                           available_ids: ps.available_ids(),
-                           num_all_partitions: ps.len() as u32,
-                       });
+            ids.insert(
+                t.name().to_owned(),
+                Partitions {
+                    available_ids: ps.available_ids(),
+                    num_all_partitions: ps.len() as u32,
+                },
+            );
         }
         Ok(State {
-               partitions: ids,
-               partitioner: partitioner,
-           })
+            partitions: ids,
+            partitioner: partitioner,
+        })
     }
 }
 
@@ -352,8 +359,9 @@ impl Builder {
             hosts: hosts,
             compression: client::DEFAULT_COMPRESSION,
             ack_timeout: Duration::from_millis(DEFAULT_ACK_TIMEOUT_MILLIS),
-            conn_idle_timeout:
-                Duration::from_millis(client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
+            conn_idle_timeout: Duration::from_millis(
+                client::DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
+            ),
             required_acks: DEFAULT_REQUIRED_ACKS,
             partitioner: DefaultPartitioner::default(),
             security_config: None,
@@ -471,10 +479,10 @@ impl<P> Builder<P> {
         // ~ create producer state
         let state = try!(State::new(&mut client, self.partitioner));
         Ok(Producer {
-               client: client,
-               state: state,
-               config: producer_config,
-           })
+            client: client,
+            state: state,
+            config: producer_config,
+        })
     }
 }
 
@@ -602,7 +610,8 @@ impl DefaultPartitioner {
     }
 
     pub fn with_default_hasher<B>() -> DefaultPartitioner<BuildHasherDefault<B>>
-        where B: Hasher + Default
+    where
+        B: Hasher + Default,
     {
         DefaultPartitioner {
             hash_builder: BuildHasherDefault::<B>::default(),
@@ -678,11 +687,12 @@ mod default_partitioner_tests {
         h
     }
 
-    fn assert_partitioning<P: Partitioner>(topics: &HashMap<String, Partitions>,
-                                           p: &mut P,
-                                           topic: &str,
-                                           key: &str)
-                                           -> i32 {
+    fn assert_partitioning<P: Partitioner>(
+        topics: &HashMap<String, Partitions>,
+        p: &mut P,
+        topic: &str,
+        key: &str,
+    ) -> i32 {
         let mut msg = client::ProduceMessage {
             key: Some(key.as_bytes()),
             value: None,
@@ -698,16 +708,22 @@ mod default_partitioner_tests {
     /// Validate consistent partitioning on a message's key
     #[test]
     fn test_key_partitioning() {
-        let h = topics_map(vec![("foo",
-                                 Partitions {
-                                     available_ids: vec![0, 1, 4],
-                                     num_all_partitions: 5,
-                                 }),
-                                ("bar",
-                                 Partitions {
-                                     available_ids: vec![0, 1],
-                                     num_all_partitions: 2,
-                                 })]);
+        let h = topics_map(vec![
+            (
+                "foo",
+                Partitions {
+                    available_ids: vec![0, 1, 4],
+                    num_all_partitions: 5,
+                }
+            ),
+            (
+                "bar",
+                Partitions {
+                    available_ids: vec![0, 1],
+                    num_all_partitions: 2,
+                }
+            ),
+        ]);
 
         let mut p: DefaultPartitioner<BuildHasherDefault<DefaultHasher>> = Default::default();
 
@@ -744,16 +760,22 @@ mod default_partitioner_tests {
         // this must compile
         let mut p = DefaultPartitioner::with_default_hasher::<MyCustomHasher>();
 
-        let h = topics_map(vec![("confirms",
-                                 Partitions {
-                                     available_ids: vec![0, 1],
-                                     num_all_partitions: 2,
-                                 }),
-                                ("contents",
-                                 Partitions {
-                                     available_ids: vec![0, 1, 9],
-                                     num_all_partitions: 10,
-                                 })]);
+        let h = topics_map(vec![
+            (
+                "confirms",
+                Partitions {
+                    available_ids: vec![0, 1],
+                    num_all_partitions: 2,
+                }
+            ),
+            (
+                "contents",
+                Partitions {
+                    available_ids: vec![0, 1, 9],
+                    num_all_partitions: 10,
+                }
+            ),
+        ]);
 
         // verify also the partitioner derives the correct partition
         // ... this is hash modulo num_all_partitions. here it is a

@@ -116,18 +116,19 @@ impl State {
         }
     }
 
-    fn update_partitions(&mut self,
-                         client: &mut KafkaClient,
-                         topic: &str,
-                         group: &str)
-                         -> Result<()> {
+    fn update_partitions(
+        &mut self,
+        client: &mut KafkaClient,
+        topic: &str,
+        group: &str,
+    ) -> Result<()> {
         // ~ get the latest topic offsets
         let latests = try!(client.fetch_topic_offsets(topic, FetchOffset::Latest));
 
         for l in latests {
-            let off = self.offsets
-                .get_mut(l.partition as usize)
-                .expect("[topic offset] non-existent partition");
+            let off = self.offsets.get_mut(l.partition as usize).expect(
+                "[topic offset] non-existent partition",
+            );
             off.prev_latest = off.curr_latest;
             off.curr_latest = l.offset;
         }
@@ -136,9 +137,9 @@ impl State {
             // ~ get the current group offsets
             let groups = try!(client.fetch_group_topic_offsets(group, topic));
             for g in groups {
-                let off = self.offsets
-                    .get_mut(g.partition as usize)
-                    .expect("[group offset] non-existent partition");
+                let off = self.offsets.get_mut(g.partition as usize).expect(
+                    "[group offset] non-existent partition",
+                );
 
                 // ~ it's quite likely that we fetched group offsets
                 // which are a bit ahead of the topic's latest offset
@@ -311,11 +312,13 @@ impl Config {
         opts.optopt("", "sleep", "Specify the sleep time", "SECS");
         opts.optflag("", "partitions", "Print each partition instead of the summary");
         opts.optflag("", "no-growth", "Don't print offset growth");
-        opts.optflag("",
-                     "committed-not-yet-consumed",
-                     "Assume commited group offsets specify \
+        opts.optflag(
+            "",
+            "committed-not-yet-consumed",
+            "Assume commited group offsets specify \
                       messages the group will start consuming \
-                      (including those at these offsets)");
+                      (including those at these offsets)",
+        );
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -343,19 +346,19 @@ impl Config {
             }
         }
         Ok(Config {
-               brokers: m.opt_str("brokers")
-                   .unwrap_or_else(|| "localhost:9092".to_owned())
-                   .split(',')
-                   .map(|s| s.trim().to_owned())
-                   .collect(),
-               topic: m.opt_str("topic").unwrap_or_else(|| String::new()),
-               group: m.opt_str("group").unwrap_or_else(|| String::new()),
-               offset_storage: offset_storage,
-               period: period,
-               commited_not_consumed: m.opt_present("committed-not-yet-consumed"),
-               summary: !m.opt_present("partitions"),
-               diff: !m.opt_present("no-growth"),
-           })
+            brokers: m.opt_str("brokers")
+                .unwrap_or_else(|| "localhost:9092".to_owned())
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .collect(),
+            topic: m.opt_str("topic").unwrap_or_else(|| String::new()),
+            group: m.opt_str("group").unwrap_or_else(|| String::new()),
+            offset_storage: offset_storage,
+            period: period,
+            commited_not_consumed: m.opt_present("committed-not-yet-consumed"),
+            summary: !m.opt_present("partitions"),
+            diff: !m.opt_present("no-growth"),
+        })
     }
 }
 

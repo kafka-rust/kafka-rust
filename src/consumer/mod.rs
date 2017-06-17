@@ -135,10 +135,9 @@ impl Consumer {
         let mut h: HashMap<String, Vec<i32>> =
             HashMap::with_capacity(self.state.assignments.as_slice().len());
         // ~ expand subscriptions to (topic-name, partition id)
-        let tps = self.state
-            .fetch_offsets
-            .keys()
-            .map(|tp| (self.state.topic_name(tp.topic_ref), tp.partition));
+        let tps = self.state.fetch_offsets.keys().map(|tp| {
+            (self.state.topic_name(tp.topic_ref), tp.partition)
+        });
         // ~ group by topic-name
         for tp in tps {
             // ~ allocate topic-name only once per topic
@@ -183,28 +182,28 @@ impl Consumer {
                     }
                 };
                 let topic = self.state.topic_name(tp.topic_ref);
-                debug!("fetching messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
-                       topic,
-                       tp.partition,
-                       s);
-                (1,
-                 self.client.fetch_messages_for_partition(&FetchPartition::new(topic,
-                                                                               tp.partition,
-                                                                               s.offset)
-                     .with_max_bytes(s.max_bytes)))
+                debug!(
+                    "fetching messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
+                    topic,
+                    tp.partition,
+                    s
+                );
+                (
+                    1,
+                    self.client.fetch_messages_for_partition(
+                        &FetchPartition::new(topic, tp.partition, s.offset)
+                            .with_max_bytes(s.max_bytes),
+                    ),
+                )
             }
             None => {
                 let client = &mut self.client;
                 let state = &self.state;
                 debug!("fetching messages: (fetch-offsets: {:?})", state.fetch_offsets_debug());
-                let reqs = state
-                    .fetch_offsets
-                    .iter()
-                    .map(|(tp, s)| {
-                             let topic = state.topic_name(tp.topic_ref);
-                             FetchPartition::new(topic, tp.partition, s.offset)
-                                 .with_max_bytes(s.max_bytes)
-                         });
+                let reqs = state.fetch_offsets.iter().map(|(tp, s)| {
+                    let topic = state.topic_name(tp.topic_ref);
+                    FetchPartition::new(topic, tp.partition, s.offset).with_max_bytes(s.max_bytes)
+                });
                 (state.fetch_offsets.len() as u32, client.fetch_messages(reqs))
             }
         }
@@ -216,20 +215,20 @@ impl Consumer {
     // ~ num_partitions_queried: the original number of partitions requested/queried for
     //   the responses
     // ~ resps: the responses to post process
-    fn process_fetch_responses(&mut self,
-                               num_partitions_queried: u32,
-                               resps: Vec<fetch::Response>)
-                               -> Result<MessageSets> {
+    fn process_fetch_responses(
+        &mut self,
+        num_partitions_queried: u32,
+        resps: Vec<fetch::Response>,
+    ) -> Result<MessageSets> {
         let single_partition_consumer = self.single_partition_consumer();
         let mut empty = true;
         let mut retry_partitions = &mut self.state.retry_partitions;
 
         for resp in &resps {
             for t in resp.topics() {
-                let topic_ref = self.state
-                    .assignments
-                    .topic_ref(t.topic())
-                    .expect("unknown topic in response");
+                let topic_ref = self.state.assignments.topic_ref(t.topic()).expect(
+                    "unknown topic in response",
+                );
 
                 for p in t.partitions() {
                     let tp = state::TopicPartition {
@@ -249,10 +248,9 @@ impl Consumer {
                         &Ok(ref data) => data,
                     };
 
-                    let mut fetch_state = self.state
-                        .fetch_offsets
-                        .get_mut(&tp)
-                        .expect("non-requested partition");
+                    let mut fetch_state = self.state.fetch_offsets.get_mut(&tp).expect(
+                        "non-requested partition",
+                    );
                     // ~ book keeping
                     if let Some(last_msg) = data.messages().last() {
                         fetch_state.offset = last_msg.offset + 1;
@@ -264,20 +262,24 @@ impl Consumer {
                         if fetch_state.max_bytes != self.client.fetch_max_bytes_per_partition() {
                             let prev_max_bytes = fetch_state.max_bytes;
                             fetch_state.max_bytes = self.client.fetch_max_bytes_per_partition();
-                            debug!("reset max_bytes for {}:{} from {} to {}",
-                                   t.topic(),
-                                   tp.partition,
-                                   prev_max_bytes,
-                                   fetch_state.max_bytes);
+                            debug!(
+                                "reset max_bytes for {}:{} from {} to {}",
+                                t.topic(),
+                                tp.partition,
+                                prev_max_bytes,
+                                fetch_state.max_bytes
+                            );
                         }
                     } else {
-                        debug!("no data received for {}:{} (max_bytes: {} / fetch_offset: {} / \
+                        debug!(
+                            "no data received for {}:{} (max_bytes: {} / fetch_offset: {} / \
                                 highwatermark_offset: {})",
-                               t.topic(),
-                               tp.partition,
-                               fetch_state.max_bytes,
-                               fetch_state.offset,
-                               data.highwatermark_offset());
+                            t.topic(),
+                            tp.partition,
+                            fetch_state.max_bytes,
+                            fetch_state.offset,
+                            data.highwatermark_offset()
+                        );
 
                         // ~ when a partition is empty but has a
                         // highwatermark-offset equal to or greater
@@ -294,11 +296,13 @@ impl Consumer {
                                 } else {
                                     fetch_state.max_bytes = incr_max_bytes;
                                 }
-                                debug!("increased max_bytes for {}:{} from {} to {}",
-                                       t.topic(),
-                                       tp.partition,
-                                       prev_max_bytes,
-                                       fetch_state.max_bytes);
+                                debug!(
+                                    "increased max_bytes for {}:{} from {} to {}",
+                                    t.topic(),
+                                    tp.partition,
+                                    prev_max_bytes,
+                                    fetch_state.max_bytes
+                                );
                             } else if num_partitions_queried == 1 {
                                 // ~ this was a single partition
                                 // request and we didn't get anything
@@ -329,9 +333,9 @@ impl Consumer {
         // consumption
 
         Ok(MessageSets {
-               responses: resps,
-               empty: empty,
-           })
+            responses: resps,
+            empty: empty,
+        })
     }
 
     /// Retrieves the offset of the last "consumed" message in the
@@ -341,13 +345,11 @@ impl Consumer {
         self.state
             .topic_ref(topic)
             .and_then(|tref| {
-                          self.state
-                              .consumed_offsets
-                              .get(&state::TopicPartition {
-                                       topic_ref: tref,
-                                       partition: partition,
-                                   })
-                      })
+                self.state.consumed_offsets.get(&state::TopicPartition {
+                    topic_ref: tref,
+                    partition: partition,
+                })
+            })
             .map(|co| co.offset)
     }
 
@@ -374,9 +376,9 @@ impl Consumer {
         match self.state.consumed_offsets.entry(tp) {
             Entry::Vacant(v) => {
                 v.insert(state::ConsumedOffset {
-                             offset: offset,
-                             dirty: true,
-                         });
+                    offset: offset,
+                    dirty: true,
+                });
             }
             Entry::Occupied(mut v) => {
                 let o = v.get_mut();
@@ -410,19 +412,25 @@ impl Consumer {
             debug!("commit_consumed: ignoring commit request since no group defined");
             return Ok(());
         }
-        debug!("commit_consumed: commiting dirty-only consumer offsets (group: {} / offsets: {:?}",
-               self.config.group,
-               self.state.consumed_offsets_debug());
+        debug!(
+            "commit_consumed: commiting dirty-only consumer offsets (group: {} / offsets: {:?}",
+            self.config.group,
+            self.state.consumed_offsets_debug()
+        );
         let (client, state) = (&mut self.client, &mut self.state);
-        try!(client.commit_offsets(&self.config.group,
-                                   state
-                                       .consumed_offsets
-                                       .iter()
-                                       .filter(|&(_, o)| o.dirty)
-                                       .map(|(tp, o)| {
-                                                let topic = state.topic_name(tp.topic_ref);
-                                                CommitOffset::new(topic, tp.partition, o.offset)
-                                            })));
+        try!(
+            client.commit_offsets(
+                &self.config.group,
+                state
+                    .consumed_offsets
+                    .iter()
+                    .filter(|&(_, o)| o.dirty)
+                    .map(|(tp, o)| {
+                        let topic = state.topic_name(tp.topic_ref);
+                        CommitOffset::new(topic, tp.partition, o.offset)
+                    }),
+            )
+        );
         for (_, co) in &mut state.consumed_offsets {
             if co.dirty {
                 co.dirty = false;
@@ -459,11 +467,12 @@ impl MessageSets {
     pub fn iter(&self) -> MessageSetsIter {
         let mut responses = self.responses.iter();
         let mut topics = responses.next().map(|r| r.topics().iter());
-        let (curr_topic, partitions) =
-            topics
-                .as_mut()
-                .and_then(|t| t.next())
-                .map_or((None, None), |t| (Some(t.topic()), Some(t.partitions().iter())));
+        let (curr_topic, partitions) = topics.as_mut().and_then(|t| t.next()).map_or(
+            (None, None),
+            |t| {
+                (Some(t.topic()), Some(t.partitions().iter()))
+            },
+        );
         MessageSetsIter {
             responses: responses,
             topics: topics,
@@ -525,10 +534,10 @@ impl<'a> Iterator for MessageSetsIter<'a> {
                             continue;
                         } else {
                             return Some(MessageSet {
-                                            topic: self.curr_topic,
-                                            partition: p.partition(),
-                                            messages: msgs,
-                                        });
+                                topic: self.curr_topic,
+                                partition: p.partition(),
+                                messages: msgs,
+                            });
                         }
                     }
                 }

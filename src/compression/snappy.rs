@@ -11,9 +11,9 @@ pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
     snap::Encoder::new()
         .compress(src, &mut buf)
         .map(|len| {
-                 buf.truncate(len);
-                 buf
-             })
+            buf.truncate(len);
+            buf
+        })
         .map_err(|err| ErrorKind::InvalidSnappy(err).into())
 }
 
@@ -80,7 +80,25 @@ fn validate_stream(mut stream: &[u8]) -> Result<&[u8]> {
 
 #[test]
 fn test_validate_stream() {
-    let header = [0x82, 0x53, 0x4e, 0x41, 0x50, 0x50, 0x59, 0x00, 0, 0, 0, 1, 0, 0, 0, 1, 0x56];
+    let header = [
+        0x82,
+        0x53,
+        0x4e,
+        0x41,
+        0x50,
+        0x50,
+        0x59,
+        0x00,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0x56,
+    ];
     // ~ this must not result in a panic
     let rest = validate_stream(&header).unwrap();
     // ~ the rest of the input after the parsed header must be
@@ -106,10 +124,10 @@ impl<'a> SnappyReader<'a> {
     pub fn new(mut stream: &[u8]) -> Result<SnappyReader> {
         stream = try!(validate_stream(stream));
         Ok(SnappyReader {
-               compressed_data: stream,
-               uncompressed_pos: 0,
-               uncompressed_chunk: Vec::new(),
-           })
+            compressed_data: stream,
+            uncompressed_pos: 0,
+            uncompressed_chunk: Vec::new(),
+        })
     }
 
     fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -136,9 +154,9 @@ impl<'a> SnappyReader<'a> {
         let chunk_size = next_i32!(self.compressed_data);
         if chunk_size <= 0 {
             bail!(ErrorKind::InvalidSnappy(snap::Error::UnsupportedChunkLength {
-                                               len: chunk_size as u64,
-                                               header: false,
-                                           }));
+                len: chunk_size as u64,
+                header: false,
+            }));
         }
         let chunk_size = chunk_size as usize;
         self.uncompressed_chunk.clear();
@@ -160,9 +178,9 @@ impl<'a> SnappyReader<'a> {
             let chunk_size = next_i32!(self.compressed_data);
             if chunk_size <= 0 {
                 bail!(ErrorKind::InvalidSnappy(snap::Error::UnsupportedChunkLength {
-                                                   len: chunk_size as u64,
-                                                   header: false,
-                                               }));
+                    len: chunk_size as u64,
+                    header: false,
+                }));
             }
             let (c1, c2) = self.compressed_data.split_at(chunk_size as usize);
             try!(uncompress_to(c1, buf));
@@ -216,14 +234,44 @@ mod tests {
     fn test_compress() {
         let msg = "This is test".as_bytes();
         let compressed = compress(msg).unwrap();
-        let expected = &[12, 44, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116];
+        let expected = &[
+            12,
+            44,
+            84,
+            104,
+            105,
+            115,
+            32,
+            105,
+            115,
+            32,
+            116,
+            101,
+            115,
+            116,
+        ];
         assert_eq!(&compressed, expected);
     }
 
     #[test]
     fn test_uncompress() {
         // The vector should uncompress to "This is test"
-        let compressed = &[12, 44, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116];
+        let compressed = &[
+            12,
+            44,
+            84,
+            104,
+            105,
+            115,
+            32,
+            105,
+            115,
+            32,
+            116,
+            101,
+            115,
+            116,
+        ];
         let uncompressed = String::from_utf8(uncompress(compressed).unwrap()).unwrap();
         assert_eq!(&uncompressed, "This is test");
     }
@@ -231,14 +279,29 @@ mod tests {
     #[test]
     fn test_uncompress_invalid_input() {
         // The vector is an invalid snappy message (second byte modified on purpose)
-        let compressed = &[12, 42, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116];
+        let compressed = &[
+            12,
+            42,
+            84,
+            104,
+            105,
+            115,
+            32,
+            105,
+            115,
+            32,
+            116,
+            101,
+            115,
+            116,
+        ];
         let uncompressed = uncompress(compressed);
         assert!(uncompressed.is_err());
         assert!(if let Some(Error(ErrorKind::InvalidSnappy(_), _)) = uncompressed.err() {
-                    true
-                } else {
-                    false
-                });
+            true
+        } else {
+            false
+        });
     }
 
     static ORIGINAL: &'static str = include_str!("../../test-data/fetch1.txt");

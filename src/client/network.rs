@@ -86,23 +86,24 @@ impl Config {
     #[cfg(not(feature = "security"))]
     fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
         KafkaConnection::new(id, host, self.rw_timeout).map(|c| {
-                                                                debug!("Established: {:?}", c);
-                                                                c
-                                                            })
+            debug!("Established: {:?}", c);
+            c
+        })
     }
 
     #[cfg(feature = "security")]
     fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(id,
-                             host,
-                             self.rw_timeout,
-                             self.security_config
-                                 .as_ref()
-                                 .map(|c| (c.connector.clone(), c.verify_hostname)))
-                .map(|c| {
-                         debug!("Established: {:?}", c);
-                         c
-                     })
+        KafkaConnection::new(
+            id,
+            host,
+            self.rw_timeout,
+            self.security_config.as_ref().map(|c| {
+                (c.connector.clone(), c.verify_hostname)
+            }),
+        ).map(|c| {
+            debug!("Established: {:?}", c);
+            c
+        })
     }
 }
 
@@ -149,10 +150,11 @@ impl Connections {
     }
 
     #[cfg(feature = "security")]
-    pub fn new_with_security(rw_timeout: Option<Duration>,
-                             idle_timeout: Duration,
-                             security: Option<SecurityConfig>)
-                             -> Connections {
+    pub fn new_with_security(
+        rw_timeout: Option<Duration>,
+        idle_timeout: Duration,
+        security: Option<SecurityConfig>,
+    ) -> Connections {
         Connections {
             conns: HashMap::new(),
             state: State::new(),
@@ -189,8 +191,13 @@ impl Connections {
             return Ok(unsafe { mem::transmute(kconn) });
         }
         let cid = self.state.next_conn_id();
-        self.conns
-            .insert(host.to_owned(), Pooled::new(now, try!(self.config.new_conn(cid, host))));
+        self.conns.insert(
+            host.to_owned(),
+            Pooled::new(
+                now,
+                try!(self.config.new_conn(cid, host)),
+            ),
+        );
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
 
@@ -321,11 +328,13 @@ pub struct KafkaConnection {
 
 impl fmt::Debug for KafkaConnection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "KafkaConnection {{ id: {}, secured: {}, host: \"{}\" }}",
-               self.id,
-               self.stream.is_secured(),
-               self.host)
+        write!(
+            f,
+            "KafkaConnection {{ id: {}, secured: {}, host: \"{}\" }}",
+            self.id,
+            self.stream.is_secured(),
+            self.host
+        )
     }
 }
 
@@ -360,18 +369,19 @@ impl KafkaConnection {
         r.map_err(From::from)
     }
 
-    fn from_stream(stream: KafkaStream,
-                   id: u32,
-                   host: &str,
-                   rw_timeout: Option<Duration>)
-                   -> Result<KafkaConnection> {
+    fn from_stream(
+        stream: KafkaStream,
+        id: u32,
+        host: &str,
+        rw_timeout: Option<Duration>,
+    ) -> Result<KafkaConnection> {
         try!(stream.set_read_timeout(rw_timeout));
         try!(stream.set_write_timeout(rw_timeout));
         Ok(KafkaConnection {
-               id: id,
-               host: host.to_owned(),
-               stream: stream,
-           })
+            id: id,
+            host: host.to_owned(),
+            stream: stream,
+        })
     }
 
     #[cfg(not(feature = "security"))]
@@ -380,11 +390,12 @@ impl KafkaConnection {
     }
 
     #[cfg(feature = "security")]
-    fn new(id: u32,
-           host: &str,
-           rw_timeout: Option<Duration>,
-           security: Option<(SslConnector, bool)>)
-           -> Result<KafkaConnection> {
+    fn new(
+        id: u32,
+        host: &str,
+        rw_timeout: Option<Duration>,
+        security: Option<(SslConnector, bool)>,
+    ) -> Result<KafkaConnection> {
         let stream = try!(TcpStream::connect(host));
         let stream = match security {
             Some((connector, verify_hostname)) => {

@@ -59,8 +59,9 @@ impl<'a> TopicPartitionOffsetRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32, time: i64) {
-        self.partitions
-            .push(PartitionOffsetRequest::new(partition, time));
+        self.partitions.push(
+            PartitionOffsetRequest::new(partition, time),
+        );
     }
 }
 
@@ -76,9 +77,11 @@ impl PartitionOffsetRequest {
 
 impl<'a> ToByte for OffsetRequest<'a> {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.header.encode(buffer),
-                   self.replica.encode(buffer),
-                   self.topic_partitions.encode(buffer))
+        try_multi!(
+            self.header.encode(buffer),
+            self.replica.encode(buffer),
+            self.topic_partitions.encode(buffer)
+        )
     }
 }
 
@@ -90,9 +93,11 @@ impl<'a> ToByte for TopicPartitionOffsetRequest<'a> {
 
 impl ToByte for PartitionOffsetRequest {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.partition.encode(buffer),
-                   self.time.encode(buffer),
-                   self.max_offsets.encode(buffer))
+        try_multi!(
+            self.partition.encode(buffer),
+            self.time.encode(buffer),
+            self.max_offsets.encode(buffer)
+        )
     }
 }
 
@@ -128,9 +133,9 @@ impl PartitionOffsetResponse {
                 };
 
                 Ok(PartitionOffset {
-                       partition: self.partition,
-                       offset: offset,
-                   })
+                    partition: self.partition,
+                    offset: offset,
+                })
             }
         }
     }
@@ -159,8 +164,10 @@ impl FromByte for PartitionOffsetResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.partition.decode(buffer),
-                   self.error.decode(buffer),
-                   self.offset.decode(buffer))
+        try_multi!(
+            self.partition.decode(buffer),
+            self.error.decode(buffer),
+            self.offset.decode(buffer)
+        )
     }
 }

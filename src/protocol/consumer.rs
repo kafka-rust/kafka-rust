@@ -16,15 +16,18 @@ pub struct GroupCoordinatorRequest<'a, 'b> {
 }
 
 impl<'a, 'b> GroupCoordinatorRequest<'a, 'b> {
-    pub fn new(group: &'b str,
-               correlation_id: i32,
-               client_id: &'a str)
-               -> GroupCoordinatorRequest<'a, 'b> {
+    pub fn new(
+        group: &'b str,
+        correlation_id: i32,
+        client_id: &'a str,
+    ) -> GroupCoordinatorRequest<'a, 'b> {
         GroupCoordinatorRequest {
-            header: HeaderRequest::new(API_KEY_GROUP_COORDINATOR,
-                                       API_VERSION,
-                                       correlation_id,
-                                       client_id),
+            header: HeaderRequest::new(
+                API_KEY_GROUP_COORDINATOR,
+                API_VERSION,
+                correlation_id,
+                client_id,
+            ),
             group: group,
         }
     }
@@ -58,11 +61,13 @@ impl FromByte for GroupCoordinatorResponse {
     type R = GroupCoordinatorResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.header.decode(buffer),
-                   self.error.decode(buffer),
-                   self.broker_id.decode(buffer),
-                   self.host.decode(buffer),
-                   self.port.decode(buffer))
+        try_multi!(
+            self.header.decode(buffer),
+            self.error.decode(buffer),
+            self.broker_id.decode(buffer),
+            self.host.decode(buffer),
+            self.port.decode(buffer)
+        )
     }
 }
 
@@ -96,16 +101,19 @@ pub struct PartitionOffsetFetchRequest {
 }
 
 impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
-    pub fn new(group: &'b str,
-               version: OffsetFetchVersion,
-               correlation_id: i32,
-               client_id: &'a str)
-               -> OffsetFetchRequest<'a, 'b, 'c> {
+    pub fn new(
+        group: &'b str,
+        version: OffsetFetchVersion,
+        correlation_id: i32,
+        client_id: &'a str,
+    ) -> OffsetFetchRequest<'a, 'b, 'c> {
         OffsetFetchRequest {
-            header: HeaderRequest::new(API_KEY_OFFSET_FETCH,
-                                       version as i16,
-                                       correlation_id,
-                                       client_id),
+            header: HeaderRequest::new(
+                API_KEY_OFFSET_FETCH,
+                version as i16,
+                correlation_id,
+                client_id,
+            ),
             group: group,
             topic_partitions: vec![],
         }
@@ -133,8 +141,9 @@ impl<'a> TopicPartitionOffsetFetchRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32) {
-        self.partitions
-            .push(PartitionOffsetFetchRequest::new(partition));
+        self.partitions.push(
+            PartitionOffsetFetchRequest::new(partition),
+        );
     }
 }
 
@@ -146,9 +155,11 @@ impl PartitionOffsetFetchRequest {
 
 impl<'a, 'b, 'c> ToByte for OffsetFetchRequest<'a, 'b, 'c> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(self.header.encode(buffer),
-                   self.group.encode(buffer),
-                   self.topic_partitions.encode(buffer))
+        try_multi!(
+            self.header.encode(buffer),
+            self.group.encode(buffer),
+            self.topic_partitions.encode(buffer)
+        )
     }
 }
 
@@ -194,16 +205,16 @@ impl PartitionOffsetFetchResponse {
                 // for the group in question; we'll align the behavior
                 // with protocol v1.
                 Ok(PartitionOffset {
-                       partition: self.partition,
-                       offset: -1,
-                   })
+                    partition: self.partition,
+                    offset: -1,
+                })
             }
             Some(e) => Err(e),
             None => {
                 Ok(PartitionOffset {
-                       partition: self.partition,
-                       offset: self.offset,
-                   })
+                    partition: self.partition,
+                    offset: self.offset,
+                })
             }
         }
     }
@@ -229,10 +240,12 @@ impl FromByte for PartitionOffsetFetchResponse {
     type R = PartitionOffsetFetchResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.partition.decode(buffer),
-                   self.offset.decode(buffer),
-                   self.metadata.decode(buffer),
-                   self.error.decode(buffer))
+        try_multi!(
+            self.partition.decode(buffer),
+            self.offset.decode(buffer),
+            self.metadata.decode(buffer),
+            self.error.decode(buffer)
+        )
     }
 }
 
@@ -282,16 +295,19 @@ pub struct PartitionOffsetCommitRequest<'a> {
 }
 
 impl<'a, 'b> OffsetCommitRequest<'a, 'b> {
-    pub fn new(group: &'b str,
-               version: OffsetCommitVersion,
-               correlation_id: i32,
-               client_id: &'a str)
-               -> OffsetCommitRequest<'a, 'b> {
+    pub fn new(
+        group: &'b str,
+        version: OffsetCommitVersion,
+        correlation_id: i32,
+        client_id: &'a str,
+    ) -> OffsetCommitRequest<'a, 'b> {
         OffsetCommitRequest {
-            header: HeaderRequest::new(API_KEY_OFFSET_COMMIT,
-                                       version as i16,
-                                       correlation_id,
-                                       client_id),
+            header: HeaderRequest::new(
+                API_KEY_OFFSET_COMMIT,
+                version as i16,
+                correlation_id,
+                client_id,
+            ),
             group: group,
             topic_partitions: vec![],
         }
@@ -319,8 +335,11 @@ impl<'a> TopicPartitionOffsetCommitRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32, offset: i64, metadata: &'a str) {
-        self.partitions
-            .push(PartitionOffsetCommitRequest::new(partition, offset, metadata))
+        self.partitions.push(PartitionOffsetCommitRequest::new(
+            partition,
+            offset,
+            metadata,
+        ))
     }
 }
 
@@ -354,15 +373,17 @@ impl<'a, 'b> ToByte for OffsetCommitRequest<'a, 'b> {
             }
         }
         codecs::encode_as_array(buffer, &self.topic_partitions, |buffer, tp| {
-            try_multi!(tp.topic.encode(buffer),
-                       codecs::encode_as_array(buffer, &tp.partitions, |buffer, p| {
-                try!(p.partition.encode(buffer));
-                try!(p.offset.encode(buffer));
-                if v == OffsetCommitVersion::V1 {
-                    try!((-1i64).encode(buffer));
-                }
-                p.metadata.encode(buffer)
-            }))
+            try_multi!(
+                tp.topic.encode(buffer),
+                codecs::encode_as_array(buffer, &tp.partitions, |buffer, p| {
+                    try!(p.partition.encode(buffer));
+                    try!(p.offset.encode(buffer));
+                    if v == OffsetCommitVersion::V1 {
+                        try!((-1i64).encode(buffer));
+                    }
+                    p.metadata.encode(buffer)
+                })
+            )
         })
     }
 }

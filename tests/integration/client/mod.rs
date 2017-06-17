@@ -69,10 +69,12 @@ fn test_produce_fetch_messages() {
 
     // first send the messages and verify correct confirmation responses
     // from kafka
-    let req = vec![ProduceMessage::new(TEST_TOPIC_NAME, 0, None, Some("a".as_bytes())),
-                   ProduceMessage::new(TEST_TOPIC_NAME, 1, None, Some("b".as_bytes())),
-                   ProduceMessage::new(TEST_TOPIC_NAME_2, 0, None, Some("c".as_bytes())),
-                   ProduceMessage::new(TEST_TOPIC_NAME_2, 1, None, Some("d".as_bytes()))];
+    let req = vec![
+        ProduceMessage::new(TEST_TOPIC_NAME, 0, None, Some("a".as_bytes())),
+        ProduceMessage::new(TEST_TOPIC_NAME, 1, None, Some("b".as_bytes())),
+        ProduceMessage::new(TEST_TOPIC_NAME_2, 0, None, Some("c".as_bytes())),
+        ProduceMessage::new(TEST_TOPIC_NAME_2, 1, None, Some("d".as_bytes())),
+    ];
 
     let resp = client
         .produce_messages(RequiredAcks::All, Duration::from_millis(1000), req)
@@ -87,24 +89,20 @@ fn test_produce_fetch_messages() {
         assert!(confirm.topic == TEST_TOPIC_NAME || confirm.topic == TEST_TOPIC_NAME_2);
         assert_eq!(2, confirm.partition_confirms.len());
 
-        assert!(confirm
-                    .partition_confirms
-                    .iter()
-                    .any(|part_confirm| {
-                             part_confirm.partition == 0 && part_confirm.offset.is_ok()
-                         }));
+        assert!(confirm.partition_confirms.iter().any(|part_confirm| {
+            part_confirm.partition == 0 && part_confirm.offset.is_ok()
+        }));
 
-        assert!(confirm
-                    .partition_confirms
-                    .iter()
-                    .any(|part_confirm| {
-                             part_confirm.partition == 1 && part_confirm.offset.is_ok()
-                         }));
+        assert!(confirm.partition_confirms.iter().any(|part_confirm| {
+            part_confirm.partition == 1 && part_confirm.offset.is_ok()
+        }));
 
         for part_confirm in confirm.partition_confirms.iter() {
-            fetches.push(FetchPartition::new(confirm.topic.as_ref(),
-                                             part_confirm.partition,
-                                             part_confirm.offset.unwrap()));
+            fetches.push(FetchPartition::new(
+                confirm.topic.as_ref(),
+                part_confirm.partition,
+                part_confirm.offset.unwrap(),
+            ));
         }
     }
 
@@ -113,14 +111,16 @@ fn test_produce_fetch_messages() {
     let fetch_resps = client.fetch_messages(fetches).unwrap();
     let messages = flatten_fetched_messages(&fetch_resps);
 
-    let correct_messages = vec![(TEST_TOPIC_NAME, 0, "a".as_bytes()),
-                                (TEST_TOPIC_NAME, 1, "b".as_bytes()),
-                                (TEST_TOPIC_NAME_2, 0, "c".as_bytes()),
-                                (TEST_TOPIC_NAME_2, 1, "d".as_bytes())];
+    let correct_messages = vec![
+        (TEST_TOPIC_NAME, 0, "a".as_bytes()),
+        (TEST_TOPIC_NAME, 1, "b".as_bytes()),
+        (TEST_TOPIC_NAME_2, 0, "c".as_bytes()),
+        (TEST_TOPIC_NAME_2, 1, "d".as_bytes()),
+    ];
 
-    assert!(correct_messages
-                .into_iter()
-                .all(|c_msg| messages.contains(&c_msg)));
+    assert!(correct_messages.into_iter().all(|c_msg| {
+        messages.contains(&c_msg)
+    }));
 }
 
 #[test]
@@ -128,12 +128,15 @@ fn test_commit_offset() {
     let mut client = new_ready_kafka_client();
 
     for &(partition, offset) in
-        &[(TEST_TOPIC_PARTITIONS[0], 100),
-          (TEST_TOPIC_PARTITIONS[1], 200),
-          (TEST_TOPIC_PARTITIONS[0], 300),
-          (TEST_TOPIC_PARTITIONS[1], 400),
-          (TEST_TOPIC_PARTITIONS[0], 500),
-          (TEST_TOPIC_PARTITIONS[1], 600)] {
+        &[
+            (TEST_TOPIC_PARTITIONS[0], 100),
+            (TEST_TOPIC_PARTITIONS[1], 200),
+            (TEST_TOPIC_PARTITIONS[0], 300),
+            (TEST_TOPIC_PARTITIONS[1], 400),
+            (TEST_TOPIC_PARTITIONS[0], 500),
+            (TEST_TOPIC_PARTITIONS[1], 600),
+        ]
+    {
 
 
         client

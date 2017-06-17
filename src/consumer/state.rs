@@ -60,24 +60,27 @@ pub struct State {
 
 impl<'a> fmt::Debug for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "State {{ assignments: {:?}, fetch_offsets: {:?}, retry_partitions: {:?}, \
+        write!(
+            f,
+            "State {{ assignments: {:?}, fetch_offsets: {:?}, retry_partitions: {:?}, \
                 consumed_offsets: {:?} }}",
-               self.assignments,
-               self.fetch_offsets_debug(),
-               TopicPartitionsDebug {
-                   state: self,
-                   tps: &self.retry_partitions,
-               },
-               self.consumed_offsets_debug())
+            self.assignments,
+            self.fetch_offsets_debug(),
+            TopicPartitionsDebug {
+                state: self,
+                tps: &self.retry_partitions,
+            },
+            self.consumed_offsets_debug()
+        )
     }
 }
 
 impl State {
-    pub fn new(client: &mut KafkaClient,
-               config: &Config,
-               assignments: Assignments)
-               -> Result<State> {
+    pub fn new(
+        client: &mut KafkaClient,
+        config: &Config,
+        assignments: Assignments,
+    ) -> Result<State> {
         let (consumed_offsets, fetch_offsets) = {
             let subscriptions = {
                 let xs = assignments.as_slice();
@@ -87,10 +90,12 @@ impl State {
                 }
                 subs
             };
-            let n = subscriptions
-                .iter()
-                .map(|s| s.partitions.len())
-                .fold(0, |acc, n| acc + n);
+            let n = subscriptions.iter().map(|s| s.partitions.len()).fold(
+                0,
+                |acc, n| {
+                    acc + n
+                },
+            );
             let consumed =
                 try!(load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n));
             let fetch_next =
@@ -98,11 +103,11 @@ impl State {
             (consumed, fetch_next)
         };
         Ok(State {
-               assignments: assignments,
-               fetch_offsets: fetch_offsets,
-               retry_partitions: VecDeque::new(),
-               consumed_offsets: consumed_offsets,
-           })
+            assignments: assignments,
+            fetch_offsets: fetch_offsets,
+            retry_partitions: VecDeque::new(),
+            consumed_offsets: consumed_offsets,
+        })
     }
 
     pub fn topic_name(&self, assignment: AssignmentRef) -> &str {
@@ -139,9 +144,10 @@ struct Subscription<'a> {
 /// Determines the partitions to be consumed according to the
 /// specified topic and requested partitions configuration. Returns an
 /// ordered list of the partition ids to consume.
-fn determine_partitions<'a>(assignment: &'a Assignment,
-                            metadata: Topics)
-                            -> Result<Subscription<'a>> {
+fn determine_partitions<'a>(
+    assignment: &'a Assignment,
+    metadata: Topics,
+) -> Result<Subscription<'a>> {
     let topic = assignment.topic();
     let req_partitions = assignment.partitions();
     let avail_partitions = match metadata.partitions(topic) {
@@ -166,11 +172,13 @@ fn determine_partitions<'a>(assignment: &'a Assignment,
         for &p in req_partitions {
             match avail_partitions.partition(p) {
                 None => {
-                    debug!("determine_partitions: no such partition: \"{}:{}\" \
+                    debug!(
+                        "determine_partitions: no such partition: \"{}:{}\" \
                             (all metadata: {:?})",
-                           topic,
-                           p,
-                           metadata);
+                        topic,
+                        p,
+                        metadata
+                    );
                     bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(_) => ps.push(p),
@@ -179,19 +187,20 @@ fn determine_partitions<'a>(assignment: &'a Assignment,
         ps
     };
     Ok(Subscription {
-           assignment: assignment,
-           partitions: ps,
-       })
+        assignment: assignment,
+        partitions: ps,
+    })
 }
 
 // Fetches the so-far commited/consumed offsets for the configured
 // group/topic/partitions.
-fn load_consumed_offsets(client: &mut KafkaClient,
-                         group: &str,
-                         assignments: &Assignments,
-                         subscriptions: &[Subscription],
-                         result_capacity: usize)
-                         -> Result<HashMap<TopicPartition, ConsumedOffset, PartitionHasher>> {
+fn load_consumed_offsets(
+    client: &mut KafkaClient,
+    group: &str,
+    assignments: &Assignments,
+    subscriptions: &[Subscription],
+    result_capacity: usize,
+) -> Result<HashMap<TopicPartition, ConsumedOffset, PartitionHasher>> {
     assert!(!subscriptions.is_empty());
     // ~ pre-allocate the right size
     let mut offs = HashMap::with_capacity_and_hasher(result_capacity, PartitionHasher::default());
@@ -200,28 +209,28 @@ fn load_consumed_offsets(client: &mut KafkaClient,
         return Ok(offs);
     }
     // ~ otherwise try load them for the group
-    let tpos =
-        try!(client.fetch_group_offsets(group,
-                                        subscriptions
-                                            .iter()
-                                            .flat_map(|s| {
+    let tpos = try!(client.fetch_group_offsets(
+        group,
+        subscriptions.iter().flat_map(|s| {
             let topic = s.assignment.topic();
-            s.partitions
-                .iter()
-                .map(move |&p| FetchGroupOffset::new(topic, p))
-        })));
+            s.partitions.iter().map(
+                move |&p| FetchGroupOffset::new(topic, p),
+            )
+        }),
+    ));
     for (topic, pos) in tpos {
         for po in pos {
             if po.offset != -1 {
-                offs.insert(TopicPartition {
-                                topic_ref:
-                                    assignments.topic_ref(&topic).expect("non-assigned topic"),
-                                partition: po.partition,
-                            },
-                            ConsumedOffset {
-                                offset: po.offset,
-                                dirty: false,
-                            });
+                offs.insert(
+                    TopicPartition {
+                        topic_ref: assignments.topic_ref(&topic).expect("non-assigned topic"),
+                        partition: po.partition,
+                    },
+                    ConsumedOffset {
+                        offset: po.offset,
+                        dirty: false,
+                    },
+                );
             }
         }
     }
@@ -230,22 +239,24 @@ fn load_consumed_offsets(client: &mut KafkaClient,
 
 /// Fetches the "next fetch" offsets/states based on the specified
 /// subscriptions and the given consumed offsets.
-fn load_fetch_states(client: &mut KafkaClient,
-                     config: &Config,
-                     assignments: &Assignments,
-                     subscriptions: &[Subscription],
-                     consumed_offsets: &HashMap<TopicPartition, ConsumedOffset, PartitionHasher>,
-                     result_capacity: usize)
-                     -> Result<HashMap<TopicPartition, FetchState, PartitionHasher>> {
-    fn load_partition_offsets(client: &mut KafkaClient,
-                              topics: &[&str],
-                              offset: FetchOffset)
-                              -> Result<HashMap<String, HashMap<i32, i64, PartitionHasher>>> {
+fn load_fetch_states(
+    client: &mut KafkaClient,
+    config: &Config,
+    assignments: &Assignments,
+    subscriptions: &[Subscription],
+    consumed_offsets: &HashMap<TopicPartition, ConsumedOffset, PartitionHasher>,
+    result_capacity: usize,
+) -> Result<HashMap<TopicPartition, FetchState, PartitionHasher>> {
+    fn load_partition_offsets(
+        client: &mut KafkaClient,
+        topics: &[&str],
+        offset: FetchOffset,
+    ) -> Result<HashMap<String, HashMap<i32, i64, PartitionHasher>>> {
         let toffs = try!(client.fetch_offsets(topics, offset));
         let mut m = HashMap::with_capacity(toffs.len());
         for (topic, poffs) in toffs {
-            let mut pidx = HashMap::with_capacity_and_hasher(poffs.len(),
-                                                             PartitionHasher::default());
+            let mut pidx =
+                HashMap::with_capacity_and_hasher(poffs.len(), PartitionHasher::default());
 
             for poff in poffs {
                 pidx.insert(poff.partition, poff.offset);
@@ -256,8 +267,8 @@ fn load_fetch_states(client: &mut KafkaClient,
         Ok(m)
     }
 
-    let mut fetch_offsets = HashMap::with_capacity_and_hasher(result_capacity,
-                                                              PartitionHasher::default());
+    let mut fetch_offsets =
+        HashMap::with_capacity_and_hasher(result_capacity, PartitionHasher::default());
     let max_bytes = client.fetch_max_bytes_per_partition();
     let subscription_topics: Vec<_> = subscriptions.iter().map(|s| s.assignment.topic()).collect();
     if consumed_offsets.is_empty() {
@@ -266,25 +277,29 @@ fn load_fetch_states(client: &mut KafkaClient,
         let offsets =
             try!(load_partition_offsets(client, &subscription_topics, config.fallback_offset));
         for s in subscriptions {
-            let topic_ref = assignments
-                .topic_ref(s.assignment.topic())
-                .expect("unassigned subscription");
+            let topic_ref = assignments.topic_ref(s.assignment.topic()).expect(
+                "unassigned subscription",
+            );
             match offsets.get(s.assignment.topic()) {
                 None => {
-                    debug!("load_fetch_states: failed to load fallback offsets for: {}",
-                           s.assignment.topic());
+                    debug!(
+                        "load_fetch_states: failed to load fallback offsets for: {}",
+                        s.assignment.topic()
+                    );
                     bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(offsets) => {
                     for p in &s.partitions {
-                        fetch_offsets.insert(TopicPartition {
-                                                 topic_ref: topic_ref,
-                                                 partition: *p,
-                                             },
-                                             FetchState {
-                                                 offset: *offsets.get(p).unwrap_or(&-1),
-                                                 max_bytes: max_bytes,
-                                             });
+                        fetch_offsets.insert(
+                            TopicPartition {
+                                topic_ref: topic_ref,
+                                partition: *p,
+                            },
+                            FetchState {
+                                offset: *offsets.get(p).unwrap_or(&-1),
+                                max_bytes: max_bytes,
+                            },
+                        );
                     }
                 }
             }
@@ -299,18 +314,18 @@ fn load_fetch_states(client: &mut KafkaClient,
         // consumed_offset verify it is in the earliest/latest range
         // and use that consumed_offset+1 as the fetch_message.
         for s in subscriptions {
-            let topic_ref = assignments
-                .topic_ref(s.assignment.topic())
-                .expect("unassigned subscription");
+            let topic_ref = assignments.topic_ref(s.assignment.topic()).expect(
+                "unassigned subscription",
+            );
             for p in &s.partitions {
                 let l_off = *latest
-                                 .get(s.assignment.topic())
-                                 .and_then(|ps| ps.get(p))
-                                 .unwrap_or(&-1);
+                    .get(s.assignment.topic())
+                    .and_then(|ps| ps.get(p))
+                    .unwrap_or(&-1);
                 let e_off = *earliest
-                                 .get(s.assignment.topic())
-                                 .and_then(|ps| ps.get(p))
-                                 .unwrap_or(&-1);
+                    .get(s.assignment.topic())
+                    .and_then(|ps| ps.get(p))
+                    .unwrap_or(&-1);
 
                 let tp = TopicPartition {
                     topic_ref: topic_ref,
@@ -323,21 +338,25 @@ fn load_fetch_states(client: &mut KafkaClient,
                             FetchOffset::Latest => l_off,
                             FetchOffset::Earliest => e_off,
                             _ => {
-                                debug!("cannot determine fetch offset \
+                                debug!(
+                                    "cannot determine fetch offset \
                                         (group: {} / topic: {} / partition: {})",
-                                       &config.group,
-                                       s.assignment.topic(),
-                                       p);
+                                    &config.group,
+                                    s.assignment.topic(),
+                                    p
+                                );
                                 bail!(ErrorKind::Kafka(KafkaCode::Unknown));
                             }
                         }
                     }
                 };
-                fetch_offsets.insert(tp,
-                                     FetchState {
-                                         offset: offset,
-                                         max_bytes: max_bytes,
-                                     });
+                fetch_offsets.insert(
+                    tp,
+                    FetchState {
+                        offset: offset,
+                        max_bytes: max_bytes,
+                    },
+                );
             }
         }
     }

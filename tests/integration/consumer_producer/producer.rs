@@ -17,8 +17,8 @@ fn test_producer_send_non_existent_topic() {
     let mut producer = test_producer();
 
     let error_code = match producer
-              .send(&Record::from_value("non-topic", "foo".as_bytes()))
-              .unwrap_err() {
+        .send(&Record::from_value("non-topic", "foo".as_bytes()))
+        .unwrap_err() {
         error::Error(error::ErrorKind::Kafka(code), _) => code,
         _ => panic!("Should have received Kafka error"),
     };
@@ -31,16 +31,20 @@ fn test_producer_send_non_existent_topic() {
 #[test]
 fn test_producer_send_all() {
     let mut producer = test_producer();
-    let records = &[Record::from_value(TEST_TOPIC_NAME, "foo".as_bytes()),
-                    Record::from_value(TEST_TOPIC_NAME, "bar".as_bytes())];
+    let records = &[
+        Record::from_value(TEST_TOPIC_NAME, "foo".as_bytes()),
+        Record::from_value(TEST_TOPIC_NAME, "bar".as_bytes()),
+    ];
     let confirms = producer.send_all(records).unwrap();
 
     for confirm in confirms {
         assert_eq!(TEST_TOPIC_NAME.to_owned(), confirm.topic);
 
         for partition_confirm in confirm.partition_confirms {
-            assert!(partition_confirm.offset.is_ok(),
-                    format!("should have sent successfully. Got: {:?}", partition_confirm.offset));
+            assert!(
+                partition_confirm.offset.is_ok(),
+                format!("should have sent successfully. Got: {:?}", partition_confirm.offset)
+            );
         }
     }
 }
@@ -49,8 +53,10 @@ fn test_producer_send_all() {
 #[test]
 fn test_producer_send_all_non_existent_topic() {
     let mut producer = test_producer();
-    let records = &[Record::from_value("foo-topic", "foo".as_bytes()),
-                    Record::from_value("bar-topic", "bar".as_bytes())];
+    let records = &[
+        Record::from_value("foo-topic", "foo".as_bytes()),
+        Record::from_value("bar-topic", "bar".as_bytes()),
+    ];
 
     let error_code = match producer.send_all(records).unwrap_err() {
         error::Error(error::ErrorKind::Kafka(code), _) => code,

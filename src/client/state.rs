@@ -169,13 +169,11 @@ pub struct TopicPartitionIter<'a> {
 impl<'a> Iterator for TopicPartitionIter<'a> {
     type Item = (i32, &'a TopicPartition);
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter
-            .next()
-            .map(|tp| {
-                     let partition_id = self.partition_id;
-                     self.partition_id += 1;
-                     (partition_id, tp)
-                 })
+        self.iter.next().map(|tp| {
+            let partition_id = self.partition_id;
+            self.partition_id += 1;
+            (partition_id, tp)
+        })
     }
 }
 
@@ -286,7 +284,7 @@ impl ClientState {
                 }
                 Entry::Vacant(e) => {
                     &mut e.insert(TopicPartitions::new_with_partitions(t.partitions.len()))
-                             .partitions
+                        .partitions
                 }
             };
             // ~ sync the partitions vector with the new information
@@ -328,11 +326,10 @@ impl ClientState {
                 Entry::Vacant(e) => {
                     // ~ insert the new broker
                     let new_index = self.brokers.len();
-                    self.brokers
-                        .push(Broker {
-                                  node_id: broker.node_id,
-                                  host: broker_host,
-                              });
+                    self.brokers.push(Broker {
+                        node_id: broker.node_id,
+                        host: broker_host,
+                    });
                     // ~ track the pushed broker's index
                     e.insert(BrokerRef::new(new_index as u32));
                 }
@@ -359,10 +356,11 @@ impl ClientState {
     /// ~ Updates the coordinator for the specified group and returns
     /// the coordinator host as if `group_coordinator` would have
     /// been called subsequently.
-    pub fn set_group_coordinator<'a>(&'a mut self,
-                                     group: &str,
-                                     gc: &protocol::GroupCoordinatorResponse)
-                                     -> &'a str {
+    pub fn set_group_coordinator<'a>(
+        &'a mut self,
+        group: &str,
+        gc: &protocol::GroupCoordinatorResponse,
+    ) -> &'a str {
         debug!("set_group_coordinator: registering coordinator for '{}': {:?}", group, gc);
 
         let group_host = format!("{}:{}", gc.host, gc.port);
@@ -371,11 +369,13 @@ impl ClientState {
         for (i, broker) in (0u32..).zip(self.brokers.iter()) {
             if gc.broker_id == broker.node_id {
                 if group_host != broker.host {
-                    warn!("set_group_coordinator: coord_host({}) != broker_host({}) for \
+                    warn!(
+                        "set_group_coordinator: coord_host({}) != broker_host({}) for \
                            broker_id({})!",
-                          group_host,
-                          broker.host,
-                          broker.node_id);
+                        group_host,
+                        broker.host,
+                        broker.node_id
+                    );
                 }
                 broker_ref._index = i;
                 break;
@@ -384,11 +384,10 @@ impl ClientState {
         // ~ if not found, add it to the list of known brokers
         if broker_ref._index == UNKNOWN_BROKER_INDEX {
             broker_ref._index = self.brokers.len() as u32;
-            self.brokers
-                .push(Broker {
-                          node_id: gc.broker_id,
-                          host: group_host,
-                      });
+            self.brokers.push(Broker {
+                node_id: gc.broker_id,
+                host: group_host,
+            });
         }
         if let Some(br) = self.group_coordinators.get_mut(group) {
             if br._index != broker_ref._index {
@@ -426,69 +425,83 @@ mod tests {
     fn metadata_response_initial() -> protocol::MetadataResponse {
         protocol::MetadataResponse {
             header: protocol::HeaderResponse { correlation: 1 },
-            brokers: vec![md::BrokerMetadata {
-                              node_id: 10,
-                              host: "gin1.dev".to_owned(),
-                              port: 1234,
-                          },
-                          md::BrokerMetadata {
-                              node_id: 50,
-                              host: "gin2.dev".to_owned(),
-                              port: 9876,
-                          },
-                          md::BrokerMetadata {
-                              node_id: 30,
-                              host: "gin3.dev".to_owned(),
-                              port: 9092,
-                          }],
-            topics: vec![md::TopicMetadata {
-                             error: 0,
-                             topic: "tee-one".to_owned(),
-                             partitions: vec![new_partition(0, 50),
-                                              new_partition(1, 10),
-                                              new_partition(2, 30),
-                                              new_partition(3, -1),
-                                              new_partition(4, 50)],
-                         },
-                         md::TopicMetadata {
-                             error: 0,
-                             topic: "tee-two".to_owned(),
-                             partitions: vec![new_partition(0, 30),
-                                              new_partition(1, -1),
-                                              new_partition(2, -1),
-                                              new_partition(3, 10)],
-                         },
-                         md::TopicMetadata {
-                             error: 0,
-                             topic: "tee-three".to_owned(),
-                             partitions: vec![],
-                         }],
+            brokers: vec![
+                md::BrokerMetadata {
+                    node_id: 10,
+                    host: "gin1.dev".to_owned(),
+                    port: 1234,
+                },
+                md::BrokerMetadata {
+                    node_id: 50,
+                    host: "gin2.dev".to_owned(),
+                    port: 9876,
+                },
+                md::BrokerMetadata {
+                    node_id: 30,
+                    host: "gin3.dev".to_owned(),
+                    port: 9092,
+                },
+            ],
+            topics: vec![
+                md::TopicMetadata {
+                    error: 0,
+                    topic: "tee-one".to_owned(),
+                    partitions: vec![
+                        new_partition(0, 50),
+                        new_partition(1, 10),
+                        new_partition(2, 30),
+                        new_partition(3, -1),
+                        new_partition(4, 50),
+                    ],
+                },
+                md::TopicMetadata {
+                    error: 0,
+                    topic: "tee-two".to_owned(),
+                    partitions: vec![
+                        new_partition(0, 30),
+                        new_partition(1, -1),
+                        new_partition(2, -1),
+                        new_partition(3, 10),
+                    ],
+                },
+                md::TopicMetadata {
+                    error: 0,
+                    topic: "tee-three".to_owned(),
+                    partitions: vec![],
+                },
+            ],
         }
     }
 
 
-    fn assert_partitions(state: &ClientState,
-                         topic: &str,
-                         expected: &[(i32, Option<(i32, &str)>)]) {
+    fn assert_partitions(
+        state: &ClientState,
+        topic: &str,
+        expected: &[(i32, Option<(i32, &str)>)],
+    ) {
         let partitions = state.partitions_for(topic).unwrap();
         assert_eq!(expected.len(), partitions.len());
         assert_eq!(expected.len() == 0, partitions.is_empty());
-        assert_eq!(expected,
-                   &partitions
-                        .iter()
-                        .map(|(id, tp)| {
-                                 let broker = tp.broker(&state).map(|b| (b.id(), b.host()));
-                                 // ~ verify that find_broker delivers the same information
-                                 assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
-                                 (id, broker)
-                             })
-                        .collect::<Vec<_>>()
-                        [..]);
+        assert_eq!(
+            expected,
+            &partitions
+                .iter()
+                .map(|(id, tp)| {
+                    let broker = tp.broker(&state).map(|b| (b.id(), b.host()));
+                    // ~ verify that find_broker delivers the same information
+                    assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
+                    (id, broker)
+                })
+                .collect::<Vec<_>>()
+                [..]
+        );
     }
 
     fn assert_initial_metadata_load(state: &ClientState) {
-        assert_eq!(vec!["tee-one", "tee-three", "tee-two"],
-                   sorted(state.topic_names().collect::<Vec<_>>()));
+        assert_eq!(
+            vec!["tee-one", "tee-three", "tee-two"],
+            sorted(state.topic_names().collect::<Vec<_>>())
+        );
         assert_eq!(3, state.num_topics());
 
         assert_eq!(true, state.contains_topic("tee-one"));
@@ -503,59 +516,75 @@ mod tests {
         assert_eq!(false, state.contains_topic("foobar"));
         assert!(state.partitions_for("foobar").is_none());
 
-        assert_partitions(&state,
-                          "tee-one",
-                          &[(0, Some((50, "gin2.dev:9876"))),
-                            (1, Some((10, "gin1.dev:1234"))),
-                            (2, Some((30, "gin3.dev:9092"))),
-                            (3, None),
-                            (4, Some((50, "gin2.dev:9876")))]);
-        assert_partitions(&state,
-                          "tee-two",
-                          &[(0, Some((30, "gin3.dev:9092"))),
-                            (1, None),
-                            (2, None),
-                            (3, Some((10, "gin1.dev:1234")))]);
+        assert_partitions(
+            &state,
+            "tee-one",
+            &[
+                (0, Some((50, "gin2.dev:9876"))),
+                (1, Some((10, "gin1.dev:1234"))),
+                (2, Some((30, "gin3.dev:9092"))),
+                (3, None),
+                (4, Some((50, "gin2.dev:9876"))),
+            ],
+        );
+        assert_partitions(
+            &state,
+            "tee-two",
+            &[
+                (0, Some((30, "gin3.dev:9092"))),
+                (1, None),
+                (2, None),
+                (3, Some((10, "gin1.dev:1234"))),
+            ],
+        );
         assert_partitions(&state, "tee-three", &[]);
     }
 
     fn metadata_response_update() -> protocol::MetadataResponse {
         protocol::MetadataResponse {
             header: protocol::HeaderResponse { correlation: 2 },
-            brokers: vec![md::BrokerMetadata {
-                              node_id: 10,
-                              host: "gin1.dev".to_owned(),
-                              port: 1234,
-                          },
-                          // note: compared to the initial metadata
-                          // response this broker moved to a different
-                          // machine
-                          md::BrokerMetadata {
-                              node_id: 50,
-                              host: "aladin1.dev".to_owned(),
-                              port: 9091,
-                          },
-                          md::BrokerMetadata {
-                              node_id: 30,
-                              host: "gin3.dev".to_owned(),
-                              port: 9092,
-                          }],
+            brokers: vec![
+                md::BrokerMetadata {
+                    node_id: 10,
+                    host: "gin1.dev".to_owned(),
+                    port: 1234,
+                },
+                // note: compared to the initial metadata
+                // response this broker moved to a different
+                // machine
+                md::BrokerMetadata {
+                    node_id: 50,
+                    host: "aladin1.dev".to_owned(),
+                    port: 9091,
+                },
+                md::BrokerMetadata {
+                    node_id: 30,
+                    host: "gin3.dev".to_owned(),
+                    port: 9092,
+                },
+            ],
             // metadata for topic "tee-two" only
-            topics: vec![md::TopicMetadata {
-                             error: 0,
-                             topic: "tee-two".to_owned(),
-                             partitions: vec![new_partition(0, 10),
-                                              new_partition(1, 10),
-                                              new_partition(2, 50),
-                                              new_partition(3, -1),
-                                              new_partition(4, 30)],
-                         }],
+            topics: vec![
+                md::TopicMetadata {
+                    error: 0,
+                    topic: "tee-two".to_owned(),
+                    partitions: vec![
+                        new_partition(0, 10),
+                        new_partition(1, 10),
+                        new_partition(2, 50),
+                        new_partition(3, -1),
+                        new_partition(4, 30),
+                    ],
+                },
+            ],
         }
     }
 
     fn assert_updated_metadata_load(state: &ClientState) {
-        assert_eq!(vec!["tee-one", "tee-three", "tee-two"],
-                   sorted(state.topic_names().collect::<Vec<_>>()));
+        assert_eq!(
+            vec!["tee-one", "tee-three", "tee-two"],
+            sorted(state.topic_names().collect::<Vec<_>>())
+        );
         assert_eq!(3, state.num_topics());
 
         assert_eq!(true, state.contains_topic("tee-one"));
@@ -570,20 +599,28 @@ mod tests {
         assert_eq!(false, state.contains_topic("foobar"));
         assert!(state.partitions_for("foobar").is_none());
 
-        assert_partitions(&state,
-                          "tee-one",
-                          &[(0, Some((50, "aladin1.dev:9091"))),
-                            (1, Some((10, "gin1.dev:1234"))),
-                            (2, Some((30, "gin3.dev:9092"))),
-                            (3, None),
-                            (4, Some((50, "aladin1.dev:9091")))]);
-        assert_partitions(&state,
-                          "tee-two",
-                          &[(0, Some((10, "gin1.dev:1234"))),
-                            (1, Some((10, "gin1.dev:1234"))),
-                            (2, Some((50, "aladin1.dev:9091"))),
-                            (3, None),
-                            (4, Some((30, "gin3.dev:9092")))]);
+        assert_partitions(
+            &state,
+            "tee-one",
+            &[
+                (0, Some((50, "aladin1.dev:9091"))),
+                (1, Some((10, "gin1.dev:1234"))),
+                (2, Some((30, "gin3.dev:9092"))),
+                (3, None),
+                (4, Some((50, "aladin1.dev:9091"))),
+            ],
+        );
+        assert_partitions(
+            &state,
+            "tee-two",
+            &[
+                (0, Some((10, "gin1.dev:1234"))),
+                (1, Some((10, "gin1.dev:1234"))),
+                (2, Some((50, "aladin1.dev:9091"))),
+                (3, None),
+                (4, Some((30, "gin3.dev:9092"))),
+            ],
+        );
         assert_partitions(&state, "tee-three", &[]);
     }
 

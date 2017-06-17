@@ -80,10 +80,10 @@ fn test_kafka_code_from_protocol() {
     };
 
     assert!(if let None = KafkaCode::from_protocol(0) {
-                true
-            } else {
-                false
-            });
+        true
+    } else {
+        false
+    });
     assert_kafka_code!(KafkaCode::OffsetOutOfRange, KafkaCode::OffsetOutOfRange as i16);
     assert_kafka_code!(KafkaCode::IllegalGeneration, KafkaCode::IllegalGeneration as i16);
     assert_kafka_code!(KafkaCode::UnsupportedVersion, KafkaCode::UnsupportedVersion as i16);
@@ -113,11 +113,12 @@ pub struct HeaderRequest<'a> {
 }
 
 impl<'a> HeaderRequest<'a> {
-    fn new(api_key: i16,
-           api_version: i16,
-           correlation_id: i32,
-           client_id: &'a str)
-           -> HeaderRequest {
+    fn new(
+        api_key: i16,
+        api_version: i16,
+        correlation_id: i32,
+        client_id: &'a str,
+    ) -> HeaderRequest {
         HeaderRequest {
             api_key: api_key,
             api_version: api_version,
@@ -129,10 +130,12 @@ impl<'a> HeaderRequest<'a> {
 
 impl<'a> ToByte for HeaderRequest<'a> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(self.api_key.encode(buffer),
-                   self.api_version.encode(buffer),
-                   self.correlation_id.encode(buffer),
-                   self.client_id.encode(buffer))
+        try_multi!(
+            self.api_key.encode(buffer),
+            self.api_version.encode(buffer),
+            self.correlation_id.encode(buffer),
+            self.client_id.encode(buffer)
+        )
     }
 }
 
@@ -164,9 +167,10 @@ pub fn to_crc(data: &[u8]) -> u32 {
 /// i32 as often required in the kafka protocol.
 pub fn to_millis_i32(d: Duration) -> Result<i32> {
     use std::i32;
-    let m = d.as_secs()
-        .saturating_mul(1_000)
-        .saturating_add((d.subsec_nanos() / 1_000_000) as u64);
+    let m = d.as_secs().saturating_mul(1_000).saturating_add(
+        (d.subsec_nanos() / 1_000_000) as
+            u64,
+    );
     if m > i32::MAX as u64 {
         bail!(ErrorKind::InvalidDuration)
     } else {

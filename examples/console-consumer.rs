@@ -101,9 +101,11 @@ impl Config {
         opts.optopt("", "group", "Specify the consumer group", "NAME");
         opts.optflag("", "no-commit", "Do not commit group offsets");
         opts.optopt("", "storage", "Specify the offset store [zookeeper, kafka]", "STORE");
-        opts.optflag("",
-                     "earliest",
-                     "Fall back to the earliest offset (when no group offset available)");
+        opts.optflag(
+            "",
+            "earliest",
+            "Fall back to the earliest offset (when no group offset available)",
+        );
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -142,16 +144,16 @@ impl Config {
             }
         }
         Ok(Config {
-               brokers: brokers,
-               group: m.opt_str("group").unwrap_or_else(|| String::new()),
-               topics: topics,
-               no_commit: m.opt_present("no-commit"),
-               offset_storage: offset_storage,
-               fallback_offset: if m.opt_present("earliest") {
-                   FetchOffset::Earliest
-               } else {
-                   FetchOffset::Latest
-               },
-           })
+            brokers: brokers,
+            group: m.opt_str("group").unwrap_or_else(|| String::new()),
+            topics: topics,
+            no_commit: m.opt_present("no-commit"),
+            offset_storage: offset_storage,
+            fallback_offset: if m.opt_present("earliest") {
+                FetchOffset::Earliest
+            } else {
+                FetchOffset::Latest
+            },
+        })
     }
 }

@@ -254,15 +254,15 @@ fn from_snap_error_ref(err: &::snap::Error) -> ErrorKind {
     match err {
         &::snap::Error::TooBig { given, max } => {
             ErrorKind::InvalidSnappy(::snap::Error::TooBig {
-                                         given: given,
-                                         max: max,
-                                     })
+                given: given,
+                max: max,
+            })
         }
         &::snap::Error::BufferTooSmall { given, min } => {
             ErrorKind::InvalidSnappy(::snap::Error::BufferTooSmall {
-                                         given: given,
-                                         min: min,
-                                     })
+                given: given,
+                min: min,
+            })
         }
         &::snap::Error::Empty => ErrorKind::InvalidSnappy(::snap::Error::Empty),
         &::snap::Error::Header => ErrorKind::InvalidSnappy(::snap::Error::Header),
@@ -271,9 +271,9 @@ fn from_snap_error_ref(err: &::snap::Error) -> ErrorKind {
             got_len,
         } => {
             ErrorKind::InvalidSnappy(::snap::Error::HeaderMismatch {
-                                         expected_len: expected_len,
-                                         got_len: got_len,
-                                     })
+                expected_len: expected_len,
+                got_len: got_len,
+            })
         }
         &::snap::Error::Literal {
             len,
@@ -281,28 +281,28 @@ fn from_snap_error_ref(err: &::snap::Error) -> ErrorKind {
             dst_len,
         } => {
             ErrorKind::InvalidSnappy(::snap::Error::Literal {
-                                         len: len,
-                                         src_len: src_len,
-                                         dst_len: dst_len,
-                                     })
+                len: len,
+                src_len: src_len,
+                dst_len: dst_len,
+            })
         }
         &::snap::Error::CopyRead { len, src_len } => {
             ErrorKind::InvalidSnappy(::snap::Error::CopyRead {
-                                         len: len,
-                                         src_len: src_len,
-                                     })
+                len: len,
+                src_len: src_len,
+            })
         }
         &::snap::Error::CopyWrite { len, dst_len } => {
             ErrorKind::InvalidSnappy(::snap::Error::CopyWrite {
-                                         len: len,
-                                         dst_len: dst_len,
-                                     })
+                len: len,
+                dst_len: dst_len,
+            })
         }
         &::snap::Error::Offset { offset, dst_pos } => {
             ErrorKind::InvalidSnappy(::snap::Error::Offset {
-                                         offset: offset,
-                                         dst_pos: dst_pos,
-                                     })
+                offset: offset,
+                dst_pos: dst_pos,
+            })
         }
         &::snap::Error::StreamHeader { byte } => {
             ErrorKind::InvalidSnappy(::snap::Error::StreamHeader { byte: byte })
@@ -315,15 +315,15 @@ fn from_snap_error_ref(err: &::snap::Error) -> ErrorKind {
         }
         &::snap::Error::UnsupportedChunkLength { len, header } => {
             ErrorKind::InvalidSnappy(::snap::Error::UnsupportedChunkLength {
-                                         len: len,
-                                         header: header,
-                                     })
+                len: len,
+                header: header,
+            })
         }
         &::snap::Error::Checksum { expected, got } => {
             ErrorKind::InvalidSnappy(::snap::Error::Checksum {
-                                         expected: expected,
-                                         got: got,
-                                     })
+                expected: expected,
+                got: got,
+            })
         }
     }
 }
