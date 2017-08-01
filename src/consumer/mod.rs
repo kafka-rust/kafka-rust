@@ -115,6 +115,11 @@ impl Consumer {
         &self.client
     }
 
+    /// Borrows the underlying kafka client as mut.
+    pub fn client_mut(&mut self) -> &mut KafkaClient {
+        &mut self.client
+    }
+
     /// Destroys this consumer returning back the underlying kafka client.
     pub fn into_client(self) -> KafkaClient {
         self.client
