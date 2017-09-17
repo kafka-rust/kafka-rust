@@ -5,9 +5,10 @@
 
 use super::*;
 use std::collections::HashSet;
+use std::collections::HashMap;
 use std::time::Duration;
 use kafka::client::{KafkaClient, CommitOffset, PartitionOffset, FetchPartition, ProduceMessage,
-                    RequiredAcks};
+                    RequiredAcks, FetchOffset};
 use kafka::client::fetch::Response;
 
 fn flatten_fetched_messages(resps: &Vec<Response>) -> Vec<(&str, i32, &[u8])> {
@@ -64,9 +65,16 @@ fn test_kafka_client_load_metadata() {
     assert_eq!(correct_topic_partitions, topic_partitions);
 }
 
+/// Tests:
+///
+/// * KafkaClient::produce_messages
+/// * KafkaClient::fetch_messages
+/// * KafkaClient::fetch_offsets
 #[test]
 fn test_produce_fetch_messages() {
     let mut client = new_ready_kafka_client();
+    let topics = [TEST_TOPIC_NAME, TEST_TOPIC_NAME_2];
+    let init_latest_offsets = client.fetch_offsets(&topics, FetchOffset::Latest).unwrap();
 
     // first send the messages and verify correct confirmation responses
     // from kafka
@@ -122,6 +130,27 @@ fn test_produce_fetch_messages() {
     assert!(correct_messages.into_iter().all(|c_msg| {
         messages.contains(&c_msg)
     }));
+
+    let end_latest_offsets = client.fetch_offsets(&topics, FetchOffset::Latest).unwrap();
+
+    for (topic, begin_partition_offsets) in init_latest_offsets {
+        let begin_partition_offsets: HashMap<i32, i64> = begin_partition_offsets
+            .iter()
+            .map(|po| (po.partition, po.offset))
+            .collect();
+
+        let end_partition_offsets: HashMap<i32, i64> = end_latest_offsets
+            .get(&topic)
+            .unwrap()
+            .iter()
+            .map(|po| (po.partition, po.offset))
+            .collect();
+
+        for (partition, begin_offset) in begin_partition_offsets {
+            let end_offset = end_partition_offsets.get(&partition).unwrap();
+            assert_eq!(begin_offset + 1, *end_offset);
+        }
+    }
 }
 
 #[test]

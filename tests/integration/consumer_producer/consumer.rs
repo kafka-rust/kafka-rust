@@ -8,7 +8,7 @@ fn test_consumer_poll() {
     // poll once to set a position in the topic
     let mut consumer = test_consumer();
     let mut messages = consumer.poll().unwrap();
-    assert!(messages.is_empty(), format!("messages was not empty: {:?}", messages));
+    assert!(messages.is_empty(), "messages was not empty: {:?}", messages);
 
     // send a message and then poll it and ensure it is the correct message
     let correct_message_contents = "test_consumer_poll".as_bytes();
