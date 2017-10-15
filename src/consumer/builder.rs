@@ -90,7 +90,7 @@ impl Builder {
         self
     }
 
-    /// Explicetely specifies topic partitions to consume. Only the
+    /// Explicitly specifies topic partitions to consume. Only the
     /// specified partitions for the identified topic will be consumed
     /// unless overriden later using `with_topic`.
     ///

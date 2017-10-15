@@ -28,6 +28,7 @@ openssl = { version = "0.9", optional = true }
 getopts = "0.2"
 env_logger = { version = "0.3", default-features = false }
 time = "0.1"
+rand = "0.3"
 
 
 [features]

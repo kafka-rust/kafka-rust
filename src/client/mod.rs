@@ -799,6 +799,7 @@ impl KafkaClient {
     ) -> Result<protocol::MetadataResponse> {
         let correlation = self.state.next_correlation_id();
         let now = Instant::now();
+
         for host in &self.config.hosts {
             debug!("fetch_metadata: requesting metadata from {}", host);
             match self.conn_pool.get_conn(host, now) {
@@ -1392,12 +1393,7 @@ fn __commit_offsets(
 
         let tps = {
             let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
-            debug!(
-                "commit_offsets: committing on protocol v{} for '{}' to: {}",
-                req.header.api_version,
-                req.group,
-                host
-            );
+            debug!("__commit_offsets: sending offset commit request '{:?}' to: {}", req, host);
             try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, now, &req))
                 .topic_partitions
         };
@@ -1456,14 +1452,11 @@ fn __fetch_group_offsets(
 
         let r = {
             let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
-            debug!(
-                "fetch_group_offsets: fetching on protocol v{} for '{}' from: {}",
-                req.header.api_version,
-                req.group,
-                host
-            );
+            debug!("fetch_group_offsets: sending request {:?} to: {}", req, host);
             try!(__send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, now, &req))
         };
+
+        debug!("fetch_group_offsets: received response: {:#?}", r);
 
         let mut retry_code = None;
         let mut topic_map = HashMap::with_capacity(r.topic_partitions.len());
@@ -1611,6 +1604,9 @@ fn __send_request<T: ToByte>(conn: &mut network::KafkaConnection, request: T) ->
     // ~ put the size of the request data into the reseved area
     let size = buffer.len() as i32 - 4;
     try!(size.encode(&mut &mut buffer[..]));
+
+    trace!("__send_request: Sending bytes: {:?}", &buffer);
+
     // ~ send the prepared buffer
     conn.send(&buffer)
 }
@@ -1618,6 +1614,8 @@ fn __send_request<T: ToByte>(conn: &mut network::KafkaConnection, request: T) ->
 fn __get_response<T: FromByte>(conn: &mut network::KafkaConnection) -> Result<T::R> {
     let size = try!(__get_response_size(conn));
     let resp = try!(conn.read_exact_alloc(size as u64));
+
+    trace!("__get_response: received bytes: {:?}", &resp);
 
     // {
     //     use std::fs::OpenOptions;

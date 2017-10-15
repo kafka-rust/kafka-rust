@@ -183,7 +183,7 @@ impl Consumer {
                 };
                 let topic = self.state.topic_name(tp.topic_ref);
                 debug!(
-                    "fetching messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
+                    "fetching retry messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
                     topic,
                     tp.partition,
                     s
@@ -427,7 +427,13 @@ impl Consumer {
                     .filter(|&(_, o)| o.dirty)
                     .map(|(tp, o)| {
                         let topic = state.topic_name(tp.topic_ref);
-                        CommitOffset::new(topic, tp.partition, o.offset)
+
+                        // Note that the offset that is committed should be the
+                        // offset of the next message a consumer should read, so
+                        // add one to the consumed message's offset.
+                        //
+                        // https://kafka.apache.org/090/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html
+                        CommitOffset::new(topic, tp.partition, o.offset + 1)
                     }),
             )
         );
