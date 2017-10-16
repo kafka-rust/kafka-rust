@@ -1,12 +1,18 @@
 pub use super::*;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use kafka::producer::{Producer, RequiredAcks};
 use kafka;
-use kafka::client::{FetchOffset, FetchGroupOffset, PartitionOffset};
+use kafka::producer::{Producer, RequiredAcks};
+use kafka::producer::Record;
+use kafka::client::{FetchOffset, PartitionOffset};
 use kafka::consumer::Consumer;
+
+use rand;
+use rand::Rng;
+
+const RANDOM_MESSAGE_SIZE: usize = 32;
 
 pub fn test_producer() -> Producer {
     Producer::from_hosts(vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()])
@@ -73,6 +79,61 @@ pub fn test_consumer_with_client(mut client: KafkaClient) -> Consumer {
     test_consumer_config!(Consumer::from_client(client))
         .create()
         .unwrap()
+}
+
+/// Send `num_messages` randomly-generated messages to the given topic with
+/// the given producer.
+fn send_random_messages(producer: &mut Producer, topic: &str, num_messages: u32) {
+    let mut random_message_buf = [0u8; RANDOM_MESSAGE_SIZE];
+    let mut rng = rand::thread_rng();
+
+    for _ in 0..num_messages {
+        rng.fill_bytes(&mut random_message_buf);
+        producer
+            .send(&Record::from_value(topic, &random_message_buf[..]))
+            .unwrap();
+    }
+}
+
+/// Fetch the committed offsets for this group and topic on the given client.
+/// If the offset is -1 (i.e., there isn't an offset committed for a partition),
+/// use the given optional default value in place of -1. If the default value is
+/// None, -1 is kept.
+pub(crate) fn get_group_offsets(
+    client: &mut KafkaClient,
+    group: &str,
+    topic: &str,
+    default_offset: Option<i64>,
+) -> HashMap<i32, i64> {
+    client
+        .fetch_group_topic_offsets(group, topic)
+        .unwrap()
+        .iter()
+        .map(|po| {
+            let offset = if default_offset.is_some() && po.offset == -1 {
+                default_offset.unwrap()
+            } else {
+                po.offset
+            };
+
+            (po.partition, offset)
+        })
+        .collect()
+}
+
+/// Given two maps that represent committed offsets at some point in time, where
+/// `older` represents some earlier point in time, and `newer` represents some
+/// later point in time, compute the number of messages committed between
+/// `earlier` and `later`—i.e., for each partition, compute the differences
+/// `newer.partition.offset` - `older.partition.offset`, and sum them up.
+pub(crate) fn diff_group_offsets(older: &HashMap<i32, i64>, newer: &HashMap<i32, i64>) -> i64 {
+    newer
+        .iter()
+        .map(|(partition, new_offset)| {
+            let old_offset = older.get(partition).unwrap();
+            new_offset - old_offset
+        })
+        .sum()
 }
 
 mod producer;

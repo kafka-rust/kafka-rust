@@ -1,15 +1,9 @@
 use super::*;
 
-use std::collections::HashMap;
-
 use kafka::producer::Record;
 use kafka::error;
 
 use env_logger;
-use rand;
-use rand::Rng;
-
-const RANDOM_MESSAGE_SIZE: usize = 32;
 
 /// Tests that consuming one message works
 #[test]
@@ -44,15 +38,8 @@ fn test_consumer_commit_messageset() {
     let mut consumer = test_consumer();
 
     // get the offsets at the beginning of the test
-    let start_offsets = {
-        let mut client = new_ready_kafka_client();
-        client
-            .fetch_group_topic_offsets(TEST_GROUP_NAME, TEST_TOPIC_NAME)
-            .unwrap()
-            .iter()
-            .map(|po| (po.partition, if po.offset != -1 { po.offset } else { 0 }))
-            .collect::<HashMap<i32, i64>>()
-    };
+    let start_offsets =
+        get_group_offsets(&mut new_ready_kafka_client(), TEST_GROUP_NAME, TEST_TOPIC_NAME, Some(0));
 
     debug!("start offsets: {:?}", start_offsets);
 
@@ -60,19 +47,9 @@ fn test_consumer_commit_messageset() {
     let messages = consumer.poll().unwrap();
     assert!(messages.is_empty(), "messages was not empty: {:?}", messages);
 
-    let mut random_message_buf = [0u8; RANDOM_MESSAGE_SIZE];
-    let mut rng = rand::thread_rng();
-    let mut producer = test_producer();
-
     // send some messages to the topic
     const NUM_MESSAGES: i64 = 100;
-
-    for _ in 0..NUM_MESSAGES {
-        rng.fill_bytes(&mut random_message_buf);
-        producer
-            .send(&Record::from_value(TEST_TOPIC_NAME, &random_message_buf[..]))
-            .unwrap();
-    }
+    send_random_messages(&mut test_producer(), TEST_TOPIC_NAME, NUM_MESSAGES as u32);
 
     let mut num_messages = 0;
 
@@ -93,27 +70,13 @@ fn test_consumer_commit_messageset() {
     assert_eq!(NUM_MESSAGES as usize, num_messages, "wrong number of messages");
 
     // get the latest offsets and make sure they add up to the number of messages
-    let latest_offsets = {
-        let mut client = consumer.into_client();
-        client.load_metadata_all().unwrap();
-        client
-            .fetch_group_topic_offsets(TEST_GROUP_NAME, TEST_TOPIC_NAME)
-            .unwrap()
-            .iter()
-            .map(|po| (po.partition, po.offset))
-            .collect::<HashMap<i32, i64>>()
-    };
+    let latest_offsets =
+        get_group_offsets(&mut consumer.into_client(), TEST_GROUP_NAME, TEST_TOPIC_NAME, Some(0));
 
     debug!("end offsets: {:?}", latest_offsets);
 
     // add up the differences
-    let num_new_messages_committed: i64 = latest_offsets
-        .iter()
-        .map(|(partition, new_offset)| {
-            let old_offset = start_offsets.get(partition).unwrap();
-            new_offset - old_offset
-        })
-        .sum();
+    let num_new_messages_committed = diff_group_offsets(&start_offsets, &latest_offsets);
 
     assert_eq!(NUM_MESSAGES, num_new_messages_committed, "wrong number of messages committed");
 }
