@@ -392,7 +392,7 @@ impl Consumer {
     }
 
     /// A convience method to mark the given message set consumed as a
-    /// whole by the caller.  This is equivalent to marking the last
+    /// whole by the caller. This is equivalent to marking the last
     /// message of the given set as consumed.
     pub fn consume_messageset<'a>(&mut self, msgs: MessageSet<'a>) -> Result<()> {
         if !msgs.messages.is_empty() {
@@ -406,7 +406,7 @@ impl Consumer {
     /// of this consumer's group for the underlying topic - if any.)
     ///
     /// See also `Consumer::consume_message` and
-    /// `Consumer::consume_messetset`.
+    /// `Consumer::consume_messageset`.
     pub fn commit_consumed(&mut self) -> Result<()> {
         if self.config.group.is_empty() {
             debug!("commit_consumed: ignoring commit request since no group defined");
