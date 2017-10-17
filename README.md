@@ -4,10 +4,8 @@
 
 ### Documentation
 
-* This library is primarily documented through examples in its API
-documentation:
-  * [0.6](https://docs.rs/kafka/^0.6)
-  * [0.5](https://docs.rs/kafka/^0.5)
+* This library is primarily documented through examples in its [API
+  documentation](https://docs.rs/kafka/).
 * Documentation about Kafka itself can be found at [its project
 home page](http://kafka.apache.org/).
 
@@ -15,26 +13,24 @@ home page](http://kafka.apache.org/).
 ### Installation
 
 This crate works with Cargo and is on
-[crates.io](https://crates.io/crates/kafka).  The API is currently
+[crates.io](https://crates.io/crates/kafka). The API is currently
 under heavy movement although we do follow semantic versioning (but
 expect the version number to grow quickly.)
 
 ```toml
 [dependencies]
-kafka = "0.6"
+kafka = "0.7"
 ```
 
-To build kafka-rust the usual `cargo build` should suffice.  The crate
+To build kafka-rust the usual `cargo build` should suffice. The crate
 supports various features which can be turned off at compile time.
 See kafka-rust's `Cargo.toml` and [cargo's
 documentation](http://doc.crates.io/manifest.html#the-features-section).
 
 ### Supported Kafka version
 
-`kafka-rust` is tested against Kafka 0.8.2.x and regularly used
-against Kafka 0.9 servers.  However, efforts to implement support for
-new features from the Kafka 0.9 release are just in their beginnings.
-
+`kafka-rust` is tested for compatibility with Kafka 0.8.2 and newer. However,
+not all features from Kafka 0.9 and newer are supported yet.
 
 ### Examples
 
@@ -48,8 +44,8 @@ repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
 ### Consumer
 
 This is a higher-level consumer API for Kafka and is provided by the
-module `kafka::consumer`.  It provides convenient offset management
-support on behalf of a specified group.  This is the API a client
+module `kafka::consumer`. It provides convenient offset management
+support on behalf of a specified group. This is the API a client
 application of this library wants to use for receiving messages from
 Kafka.
 
@@ -57,8 +53,8 @@ Kafka.
 ### Producer
 
 This is a higher-level producer API for Kafka and is provided by the
-module `kafka::producer`.  It provides convenient automatic partition
-assignment capabilities through partitioners.  This is the API a
+module `kafka::producer`. It provides convenient automatic partition
+assignment capabilities through partitioners. This is the API a
 client application of this library wants to use for sending messsages
 to Kafka.
 
@@ -66,8 +62,8 @@ to Kafka.
 ### KafkaClient
 
 `KafkaClient` in the `kafka::client` module is the central point of
-this API.  However, this is a mid-level abstraction for Kafka rather
-suitable for building higher-level APIs.  Application's typically want
+this API. However, this is a mid-level abstraction for Kafka rather
+suitable for building higher-level APIs. Application's typically want
 to use the already mentioned `Consumer`s and `Producer`s.
 Nevertheless, `KafkaClient`'s main features are:
 
@@ -81,15 +77,16 @@ Nevertheless, `KafkaClient`'s main features are:
 
 ### Bugs / Features / Contributing
 
-There's still a lot of potential for improvements on `kafka-rust`.
-Not everything works right at the moment.  Have a look into the [issue
-tracker](https://github.com/spicavigo/kafka-rust/issues) and feel free
+There's still a lot of room for improvement on `kafka-rust`.
+Not everything works right at the moment, and testing coverage could be better.
+**Use it in production at your own risk.** Have a look at the
+[issue tracker](https://github.com/spicavigo/kafka-rust/issues) and feel free
 to contribute by reporting new problems or contributing to existing
-ones.  Any constructive feedback is warmly welcome!
+ones. Any constructive feedback is warmly welcome!
 
 As usually with open source, don't hesitate to fork the repo and
-submit a pull requests if you see something to be changed.  We'll be
-happy see `kafka-rust` improving over time.
+submit a pull requests if you see something to be changed. We'll be
+happy to see `kafka-rust` improving over time.
 
 ### Integration tests
 
@@ -104,7 +101,7 @@ script itself for details on its usage.
 Note unless otherwise explicitely stated in the documentation, this
 library will ignore requests to topics which it doesn't know about.
 In particular it will not try to retrieve messages from
-non-existing/unknown topics.  (This behavior is very likely to change
+non-existing/unknown topics. (This behavior is very likely to change
 in future version of this library.)
 
 Given a local kafka server installation you can create topics if the
