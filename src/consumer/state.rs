@@ -98,6 +98,7 @@ impl State {
             );
             let consumed =
                 try!(load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n));
+
             let fetch_next =
                 try!(load_fetch_states(client, config, &assignments, &subscriptions, &consumed, n));
             (consumed, fetch_next)
@@ -226,14 +227,20 @@ fn load_consumed_offsets(
                         topic_ref: assignments.topic_ref(&topic).expect("non-assigned topic"),
                         partition: po.partition,
                     },
+
+                    // the committed offset is the next message to be fetched, so
+                    // the last consumed message is that - 1
                     ConsumedOffset {
-                        offset: po.offset,
+                        offset: po.offset - 1,
                         dirty: false,
                     },
                 );
             }
         }
     }
+
+    debug!("load_consumed_offsets: constructed consumed: {:#?}", offs);
+
     Ok(offs)
 }
 
@@ -331,6 +338,8 @@ fn load_fetch_states(
                     topic_ref: topic_ref,
                     partition: *p,
                 };
+
+                // the "latest" offset is the offset of the "next coming message"
                 let offset = match consumed_offsets.get(&tp) {
                     Some(co) if co.offset >= e_off && co.offset < l_off => co.offset + 1,
                     _ => {

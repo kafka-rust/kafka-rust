@@ -183,7 +183,7 @@ impl Consumer {
                 };
                 let topic = self.state.topic_name(tp.topic_ref);
                 debug!(
-                    "fetching messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
+                    "fetching retry messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
                     topic,
                     tp.partition,
                     s
@@ -392,7 +392,7 @@ impl Consumer {
     }
 
     /// A convience method to mark the given message set consumed as a
-    /// whole by the caller.  This is equivalent to marking the last
+    /// whole by the caller. This is equivalent to marking the last
     /// message of the given set as consumed.
     pub fn consume_messageset<'a>(&mut self, msgs: MessageSet<'a>) -> Result<()> {
         if !msgs.messages.is_empty() {
@@ -406,7 +406,7 @@ impl Consumer {
     /// of this consumer's group for the underlying topic - if any.)
     ///
     /// See also `Consumer::consume_message` and
-    /// `Consumer::consume_messetset`.
+    /// `Consumer::consume_messageset`.
     pub fn commit_consumed(&mut self) -> Result<()> {
         if self.config.group.is_empty() {
             debug!("commit_consumed: ignoring commit request since no group defined");
@@ -427,7 +427,13 @@ impl Consumer {
                     .filter(|&(_, o)| o.dirty)
                     .map(|(tp, o)| {
                         let topic = state.topic_name(tp.topic_ref);
-                        CommitOffset::new(topic, tp.partition, o.offset)
+
+                        // Note that the offset that is committed should be the
+                        // offset of the next message a consumer should read, so
+                        // add one to the consumed message's offset.
+                        //
+                        // https://kafka.apache.org/090/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html
+                        CommitOffset::new(topic, tp.partition, o.offset + 1)
                     }),
             )
         );

@@ -28,4 +28,5 @@ env:
   matrix:
     - KAFKA_VER=0.8.2.2
     - KAFKA_VER=0.9.0.1
+    - KAFKA_VER=0.10.2.1
     - KAFKA_VER=latest
