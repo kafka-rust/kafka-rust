@@ -54,25 +54,33 @@ teardown() {
 # need to run tests serially to avoid the tests stepping on each others' toes
 export RUST_TEST_THREADS=1
 DEFAULT_VERS='0.8.2.2 0.9.0.1 0.10.2.1 latest'
+DEFAULT_COMPRESSIONS='NONE SNAPPY GZIP'
 vers=$@
 
 if [[ -z "$vers" ]]; then
   vers=$DEFAULT_VERS
 fi
 
+if [[ -z "$COMPRESSIONS" ]]; then
+  COMPRESSIONS=$DEFAULT_COMPRESSIONS
+fi
+
 for ver in $vers; do
-  export KAFKA_VER=$ver
-  echo "Running tests with KAFKA_VER=$KAFKA_VER"
+  for compression in $COMPRESSIONS; do
+    export KAFKA_VER=$ver
+    export KAFKA_CLIENT_COMPRESSION=$compression
+    echo "Running tests with KAFKA_VER=$KAFKA_VER, KAFKA_CLIENT_COMPRESSION=$compression"
 
-  setup || {
+    setup || {
+      teardown
+      exit 1
+    }
+
+    cargo test --features integration_tests || {
+      teardown
+      exit 1
+    }
+
     teardown
-    exit 1
-  }
-
-  cargo test --features integration_tests || {
-    teardown
-    exit 1
-  }
-
-  teardown
+  done
 done

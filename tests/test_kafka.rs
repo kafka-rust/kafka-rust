@@ -12,8 +12,12 @@ extern crate log;
 extern crate env_logger;
 
 #[cfg(feature = "integration_tests")]
+#[macro_use]
+extern crate lazy_static;
+
+#[cfg(feature = "integration_tests")]
 mod integration {
-    use kafka::client::{KafkaClient, GroupOffsetStorage};
+    use kafka::client::{KafkaClient, Compression, GroupOffsetStorage};
 
     mod client;
     mod consumer_producer;
@@ -25,10 +29,28 @@ mod integration {
     pub const TEST_TOPIC_PARTITIONS: [i32; 2] = [0, 1];
     pub const KAFKA_CONSUMER_OFFSETS_TOPIC_NAME: &str = "__consumer_offsets";
 
+    lazy_static! {
+        static ref KAFKA_CLIENT_COMPRESSION: Compression = {
+            match option_env!("KAFKA_CLIENT_COMPRESSION") {
+                None => Compression::NONE,
+                Some(compression_str) => {
+                    match compression_str {
+                        "GZIP" => Compression::GZIP,
+                        "SNAPPY" => Compression::SNAPPY,
+                        _ => Compression::NONE,
+                    }
+                }
+            }
+        };
+    }
+
     pub(crate) fn new_ready_kafka_client() -> KafkaClient {
         let hosts = vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()];
         let mut client = KafkaClient::new(hosts);
         client.set_group_offset_storage(GroupOffsetStorage::Kafka);
+        client.set_compression(*KAFKA_CLIENT_COMPRESSION);
+        debug!("Constructing client: {:?}", client);
+
         client.load_metadata_all().unwrap();
         client
     }
