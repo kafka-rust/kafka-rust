@@ -21,8 +21,10 @@ extern crate lazy_static;
 #[cfg(feature = "integration_tests")]
 mod integration {
     use std;
+    use std::collections::HashMap;
 
     use kafka::client::{KafkaClient, Compression, GroupOffsetStorage, SecurityConfig};
+
     use openssl;
     use openssl::x509::X509;
     use openssl::pkey::PKey;
@@ -42,19 +44,23 @@ mod integration {
 
     // env vars
     const KAFKA_CLIENT_SECURE: &str = "KAFKA_CLIENT_SECURE";
+    const KAFKA_CLIENT_COMPRESSION: &str = "KAFKA_CLIENT_COMPRESSION";
 
     lazy_static! {
-        static ref KAFKA_CLIENT_COMPRESSION: Compression = {
-            match option_env!("KAFKA_CLIENT_COMPRESSION") {
-                None => Compression::NONE,
-                Some(compression_str) => {
-                    match compression_str {
-                        "GZIP" => Compression::GZIP,
-                        "SNAPPY" => Compression::SNAPPY,
-                        _ => Compression::NONE,
-                    }
-                }
-            }
+        static ref COMPRESSIONS: HashMap<&'static str, Compression> = {
+            let mut m = HashMap::new();
+
+            m.insert("", Compression::NONE);
+            m.insert("none", Compression::NONE);
+            m.insert("NONE", Compression::NONE);
+
+            m.insert("snappy", Compression::SNAPPY);
+            m.insert("SNAPPY", Compression::SNAPPY);
+
+            m.insert("gzip", Compression::GZIP);
+            m.insert("GZIP", Compression::GZIP);
+
+            m
         };
     }
 
@@ -78,7 +84,11 @@ mod integration {
 
 
         client.set_group_offset_storage(GroupOffsetStorage::Kafka);
-        client.set_compression(*KAFKA_CLIENT_COMPRESSION);
+
+        let compression = std::env::var(KAFKA_CLIENT_COMPRESSION).unwrap_or(String::from(""));
+        let compression = COMPRESSIONS.get(&*compression).unwrap();
+
+        client.set_compression(*compression);
         debug!("Constructing client: {:?}", client);
 
         client
