@@ -4,8 +4,6 @@ cache: cargo
 
 rust:
   - stable
-  #- beta
-  - nightly
 
 services:
   - docker
@@ -23,7 +21,6 @@ script:
 env:
   global:
     - RUST_TEST_THREADS: 1
-    - TRAVIS_CARGO_NIGHTLY_FEATURE: nightly
 
   matrix:
     # 0.8 doesn't support secure settings
