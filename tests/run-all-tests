@@ -23,19 +23,14 @@ stop_docker() {
 }
 
 start_docker() {
-  if [[ ! -z "$KAFKA_CLIENT_SECURE" ]]; then
-    kafka_service="kafka_secure"
-  else
-    kafka_service="kafka"
-  fi
-
-  # pull all images before starting anything
-  # docker-compose pull zookeeper $kafka_service
-  docker-compose up -d zookeeper $kafka_service
+  # pull zookeeper and build the kafka image
+  docker-compose pull
+  docker-compose build kafka
+  docker-compose up -d zookeeper kafka
 
   # wait for Kafka to be ready and the test topic to be created
-  ./do_until_success "docker-compose logs $kafka_service | grep 'Created topic \"kafka-rust-test\"'"
-  ./do_until_success "docker-compose logs $kafka_service | grep 'Created topic \"kafka-rust-test2\"'"
+  ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test\"'"
+  ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test2\"'"
 }
 
 setup() {
@@ -43,6 +38,8 @@ setup() {
   (
     cd "$(dirname $0)"
     stop_docker # just in case something went wrong with a previous shutdown
+
+    export SCALA_VER=${SCALA_VERS[$KAFKA_VER]:-'2.11'}
     start_docker
   )
 }
@@ -59,10 +56,17 @@ teardown() {
 
 # need to run tests serially to avoid the tests stepping on each others' toes
 export RUST_TEST_THREADS=1
-#DEFAULT_VERS='0.8.2.2:0.9.0.1:0.10.2.1:0.11.0.1:latest'
-DEFAULT_VERS='0.8.2.2:0.10.2.1:latest'
+DEFAULT_VERS='0.8.2.2:0.9.0.1:0.10.2.1:0.11.0.1:1.0.0'
 DEFAULT_COMPRESSIONS='NONE:SNAPPY:GZIP'
 DEFAULT_SECURES=':secure'
+
+declare -A SCALA_VERS
+SCALA_VERS['0.8.2.2']='2.11'
+SCALA_VERS['0.9.0.1']='2.11'
+SCALA_VERS['0.10.2.1']='2.12'
+SCALA_VERS['0.11.0.1']='2.12'
+SCALA_VERS['1.0.0']='2.12'
+
 vers=$@
 
 if [[ -z "$vers" ]]; then
@@ -81,6 +85,13 @@ IFS=':'
 for ver in $vers; do
   for compression in $COMPRESSIONS; do
     for secure in $SECURES; do
+
+      
+      if [[ ! -z "$secure" ]] && echo $ver | grep -P '^0.8'; then
+        echo "Skipping secure test for 0.8 -- unsupported"
+        continue
+      fi
+
       export KAFKA_VER=$ver
       export KAFKA_CLIENT_COMPRESSION=$compression
       export KAFKA_CLIENT_SECURE=$secure

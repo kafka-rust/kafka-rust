@@ -159,6 +159,7 @@ fn test_produce_fetch_messages() {
 
 #[test]
 fn test_commit_offset() {
+    let _ = env_logger::init();
     let mut client = new_ready_kafka_client();
 
     for &(partition, offset) in
