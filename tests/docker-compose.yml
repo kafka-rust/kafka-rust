@@ -17,3 +17,41 @@ services:
       KAFKA_ADVERTISED_PORT: 9092
       KAFKA_CREATE_TOPICS: kafka-rust-test:2:1,kafka-rust-test2:2:1
       KAFKA_BROKER_ID: 0
+
+  kafka_secure:
+    image: wurstmeister/kafka:${KAFKA_VER}
+    ports:
+      - "9092:9092"
+    links:
+      - zookeeper
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper
+      KAFKA_ADVERTISED_HOST_NAME: localhost
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:SSL,BROKER:PLAINTEXT
+      KAFKA_PROTOCOL_NAME: INSIDE
+      KAFKA_ADVERTISED_PROTOCOL_NAME: OUTSIDE
+      KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
+      KAFKA_PORT: 9094
+      KAFKA_INTER_BROKER_PORT: 9093
+      KAFKA_ADVERTISED_PORT: 9092
+      KAFKA_CREATE_TOPICS: kafka-rust-test:2:1,kafka-rust-test2:2:1
+      KAFKA_BROKER_ID: 0
+
+    # override the CMD to generate an SSL key pair
+    command: >
+      bash -xc
+      'env && keytool \
+        -keystore server.keystore.jks \
+        -alias localhost \
+        -validity 1 \
+        -genkeypair \
+        -keyalg RSA \
+        -dname "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown" \
+        -storepass xxxxxx \
+        -keypass xxxxxx &&
+      echo -e "\nssl.keystore.location=/server.keystore.jks" >> /opt/kafka/config/server.properties &&
+      echo "ssl.keystore.password=xxxxxx" >> /opt/kafka/config/server.properties &&
+      echo "ssl.key.password=xxxxxx" >> /opt/kafka/config/server.properties &&
+      echo "Kafka starting" &&
+      rm -rf /var/lib/kafka &&
+      start-kafka.sh'

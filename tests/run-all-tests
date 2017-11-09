@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Usage: ./run-all-tests <Kafka version>...
+# Usage: ./run-all-tests <Kafka versions separated by ':'>...
 #
 # This script will automatically set up the Docker environment for Kafka, and then
 # run all cargo tests, including integration tests, for each Kafka version specified.
 # For example, running:
 #
-# ./run-all-tests 0.8.2.2 0.9.0.0
+# ./run-all-tests 0.8.2.2:0.9.0.0
 #
 # will run the tests against Kafka versions 0.8.2.2 and 0.9.0.0. The arguments
 # should correspond to a Docker tag of the `wurstmeister/kafka` image, so any valid
@@ -23,13 +23,19 @@ stop_docker() {
 }
 
 start_docker() {
+  if [[ ! -z "$KAFKA_CLIENT_SECURE" ]]; then
+    kafka_service="kafka_secure"
+  else
+    kafka_service="kafka"
+  fi
+
   # pull all images before starting anything
-  docker-compose pull
-  docker-compose up -d
+  # docker-compose pull zookeeper $kafka_service
+  docker-compose up -d zookeeper $kafka_service
 
   # wait for Kafka to be ready and the test topic to be created
-  ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test\"'"
-  ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test2\"'"
+  ./do_until_success "docker-compose logs $kafka_service | grep 'Created topic \"kafka-rust-test\"'"
+  ./do_until_success "docker-compose logs $kafka_service | grep 'Created topic \"kafka-rust-test2\"'"
 }
 
 setup() {
@@ -53,8 +59,10 @@ teardown() {
 
 # need to run tests serially to avoid the tests stepping on each others' toes
 export RUST_TEST_THREADS=1
-DEFAULT_VERS='0.8.2.2 0.9.0.1 0.10.2.1 latest'
-DEFAULT_COMPRESSIONS='NONE SNAPPY GZIP'
+#DEFAULT_VERS='0.8.2.2:0.9.0.1:0.10.2.1:0.11.0.1:latest'
+DEFAULT_VERS='0.8.2.2:0.10.2.1:latest'
+DEFAULT_COMPRESSIONS='NONE:SNAPPY:GZIP'
+DEFAULT_SECURES=':secure'
 vers=$@
 
 if [[ -z "$vers" ]]; then
@@ -65,22 +73,33 @@ if [[ -z "$COMPRESSIONS" ]]; then
   COMPRESSIONS=$DEFAULT_COMPRESSIONS
 fi
 
+if [[ -z "$SECURES" ]]; then
+  SECURES=$DEFAULT_SECURES
+fi
+
+IFS=':'
 for ver in $vers; do
   for compression in $COMPRESSIONS; do
-    export KAFKA_VER=$ver
-    export KAFKA_CLIENT_COMPRESSION=$compression
-    echo "Running tests with KAFKA_VER=$KAFKA_VER, KAFKA_CLIENT_COMPRESSION=$compression"
+    for secure in $SECURES; do
+      export KAFKA_VER=$ver
+      export KAFKA_CLIENT_COMPRESSION=$compression
+      export KAFKA_CLIENT_SECURE=$secure
 
-    setup || {
+      echo -n "Running tests with KAFKA_VER=$KAFKA_VER, "
+      echo -n "KAFKA_CLIENT_COMPRESSION=$compression, "
+      echo "KAFKA_CLIENT_SECURE=$secure"
+
+      setup || {
+        teardown
+        exit 1
+      }
+
+      cargo test --features integration_tests || {
+        teardown
+        exit 1
+      }
+
       teardown
-      exit 1
-    }
-
-    cargo test --features integration_tests || {
-      teardown
-      exit 1
-    }
-
-    teardown
+    done
   done
 done

@@ -12,12 +12,22 @@ extern crate log;
 extern crate env_logger;
 
 #[cfg(feature = "integration_tests")]
+extern crate openssl;
+
+#[cfg(feature = "integration_tests")]
 #[macro_use]
 extern crate lazy_static;
 
 #[cfg(feature = "integration_tests")]
 mod integration {
-    use kafka::client::{KafkaClient, Compression, GroupOffsetStorage};
+    use std;
+
+    use kafka::client::{KafkaClient, Compression, GroupOffsetStorage, SecurityConfig};
+    use openssl;
+    use openssl::x509::X509;
+    use openssl::pkey::PKey;
+    use openssl::rsa::Rsa;
+    use openssl::ssl::{SslConnectorBuilder, SslMethod, SSL_VERIFY_NONE};
 
     mod client;
     mod consumer_producer;
@@ -28,6 +38,10 @@ mod integration {
     pub const TEST_GROUP_NAME: &str = "kafka-rust-tester";
     pub const TEST_TOPIC_PARTITIONS: [i32; 2] = [0, 1];
     pub const KAFKA_CONSUMER_OFFSETS_TOPIC_NAME: &str = "__consumer_offsets";
+    const RSA_KEY_SIZE: u32 = 2024;
+
+    // env vars
+    const KAFKA_CLIENT_SECURE: &str = "KAFKA_CLIENT_SECURE";
 
     lazy_static! {
         static ref KAFKA_CLIENT_COMPRESSION: Compression = {
@@ -44,14 +58,69 @@ mod integration {
         };
     }
 
+    /// Constructs a Kafka client for the integration tests, and loads
+    /// its metadata so it is ready to use.
     pub(crate) fn new_ready_kafka_client() -> KafkaClient {
+        let mut client = new_kafka_client();
+        client.load_metadata_all().unwrap();
+        client
+    }
+
+    /// Constructs a Kafka client for the integration tests.
+    pub(crate) fn new_kafka_client() -> KafkaClient {
         let hosts = vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()];
-        let mut client = KafkaClient::new(hosts);
+
+        let mut client = if let Some(security_config) = new_security_config() {
+            KafkaClient::new_secure(hosts, security_config.unwrap())
+        } else {
+            KafkaClient::new(hosts)
+        };
+
+
         client.set_group_offset_storage(GroupOffsetStorage::Kafka);
         client.set_compression(*KAFKA_CLIENT_COMPRESSION);
         debug!("Constructing client: {:?}", client);
 
-        client.load_metadata_all().unwrap();
         client
+    }
+
+    /// Returns a new security config if the `KAFKA_CLIENT_SECURE`
+    /// environment variable is set to a non-empty string.
+    pub(crate) fn new_security_config()
+        -> Option<Result<SecurityConfig, openssl::error::ErrorStack>>
+    {
+        match std::env::var_os(KAFKA_CLIENT_SECURE) {
+            Some(ref val) if val.as_os_str() != "" => (),
+            _ => return None,
+        }
+
+        Some(new_key_pair().and_then(get_security_config))
+    }
+
+    /// If the `KAFKA_CLIENT_SECURE` environment variable is set, return a
+    /// `SecurityConfig`.
+    pub(crate) fn get_security_config(
+        keypair: openssl::x509::X509,
+    ) -> Result<SecurityConfig, openssl::error::ErrorStack> {
+        let mut builder = SslConnectorBuilder::new(SslMethod::tls()).unwrap();
+
+        {
+            let ctx = builder.builder_mut();
+            ctx.set_cipher_list("DEFAULT").unwrap();
+            ctx.set_certificate(&*keypair).unwrap();
+            ctx.set_verify(SSL_VERIFY_NONE);
+        }
+
+        let connector = builder.build();
+        let security_config = SecurityConfig::new(connector);
+        Ok(security_config.with_hostname_verification(false))
+    }
+
+    pub(crate) fn new_key_pair() -> Result<X509, openssl::error::ErrorStack> {
+        let rsa = Rsa::generate(RSA_KEY_SIZE)?;
+        let pkey = PKey::from_rsa(rsa)?;
+        let mut builder = X509::builder()?;
+        builder.set_pubkey(&*pkey)?;
+        Ok(builder.build())
     }
 }
