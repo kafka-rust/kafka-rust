@@ -15,7 +15,7 @@ home page](http://kafka.apache.org/).
 This crate works with Cargo and is on
 [crates.io](https://crates.io/crates/kafka). The API is currently
 under heavy movement although we do follow semantic versioning (but
-expect the version number to grow quickly.)
+expect the version number to grow quickly).
 
 ```toml
 [dependencies]
@@ -35,7 +35,7 @@ not all features from Kafka 0.9 and newer are supported yet.
 ### Examples
 
 As mentioned, the [cargo generated
-documentation](https://docs.rs/kafka/) constains some examples.
+documentation](https://docs.rs/kafka/) contains some examples.
 Further, standalone, compilable example programs are provided in the
 [examples directory of the
 repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
@@ -63,9 +63,9 @@ to Kafka.
 
 `KafkaClient` in the `kafka::client` module is the central point of
 this API. However, this is a mid-level abstraction for Kafka rather
-suitable for building higher-level APIs. Application's typically want
-to use the already mentioned `Consumer`s and `Producer`s.
-Nevertheless, `KafkaClient`'s main features are:
+suitable for building higher-level APIs. Applications typically want
+to use the already mentioned `Consumer` and `Producer`.
+Nevertheless, the main features or `KafkaClient` are:
 
 * Loading metadata
 * Fetching topic offsets
@@ -85,7 +85,7 @@ to contribute by reporting new problems or contributing to existing
 ones. Any constructive feedback is warmly welcome!
 
 As usually with open source, don't hesitate to fork the repo and
-submit a pull requests if you see something to be changed. We'll be
+submit a pull request if you see something to be changed. We'll be
 happy to see `kafka-rust` improving over time.
 
 ### Integration tests
@@ -98,14 +98,14 @@ script itself for details on its usage.
 
 ### Creating a topic
 
-Note unless otherwise explicitely stated in the documentation, this
+Note unless otherwise explicitly stated in the documentation, this
 library will ignore requests to topics which it doesn't know about.
 In particular it will not try to retrieve messages from
 non-existing/unknown topics. (This behavior is very likely to change
 in future version of this library.)
 
-Given a local kafka server installation you can create topics if the
-following command (`kafka-topics.sh` is part of the Kafka
+Given a local kafka server installation you can create topics with the
+following command (where `kafka-topics.sh` is part of the Kafka
 distribution):
 
 ```
