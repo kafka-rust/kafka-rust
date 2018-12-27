@@ -42,6 +42,6 @@ pub mod producer;
 mod utils;
 mod codecs;
 mod protocol;
-mod compression;
+pub mod compression;
 
 pub use self::error::{Error, Result};
