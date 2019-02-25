@@ -7,10 +7,8 @@ fn main() {
 
 #[cfg(feature = "security")]
 mod example {
-    extern crate openssl;
     extern crate kafka;
-    extern crate getopts;
-    extern crate env_logger;
+    extern crate openssl;
 
     use std::env;
     use std::process;
@@ -32,7 +30,6 @@ mod example {
         };
 
         // ~ OpenSSL offers a variety of complex configurations. Here is an example:
-        // let mut builder = SslConnectorBuilder::new(SslMethod::tls()).unwrap();
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_cipher_list("DEFAULT").unwrap();
         builder.set_verify(SslVerifyMode::PEER);
@@ -63,11 +60,10 @@ mod example {
         let connector = builder.build();
 
         // ~ instantiate KafkaClient with the previous OpenSSL setup
-        let mut client =
-            KafkaClient::new_secure(
-                cfg.brokers,
-                SecurityConfig::new(connector).with_hostname_verification(cfg.verify_hostname),
-            );
+        let mut client = KafkaClient::new_secure(
+            cfg.brokers,
+            SecurityConfig::new(connector).with_hostname_verification(cfg.verify_hostname),
+        );
 
         // ~ communicate with the brokers
         match client.load_metadata_all() {
@@ -122,10 +118,20 @@ mod example {
         fn from_cmdline() -> Result<Config, String> {
             let mut opts = getopts::Options::new();
             opts.optflag("h", "help", "Print this help screen");
-            opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+            opts.optopt(
+                "",
+                "brokers",
+                "Specify kafka brokers (comma separated)",
+                "HOSTS",
+            );
             opts.optopt("", "ca-cert", "Specify the trusted CA certificates", "FILE");
             opts.optopt("", "client-cert", "Specify the client certificate", "FILE");
-            opts.optopt("", "client-key", "Specify key for the client certificate", "FILE");
+            opts.optopt(
+                "",
+                "client-key",
+                "Specify key for the client certificate",
+                "FILE",
+            );
             opts.optflag(
                 "",
                 "no-hostname-verification",
@@ -143,7 +149,8 @@ mod example {
                 return Err(opts.usage(&brief));
             };
 
-            let brokers = m.opt_str("brokers")
+            let brokers = m
+                .opt_str("brokers")
                 .map(|s| {
                     s.split(',')
                         .map(|s| s.trim().to_owned())

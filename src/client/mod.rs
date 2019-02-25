@@ -20,15 +20,15 @@ pub use utils::PartitionOffset;
 #[cfg(feature = "security")]
 pub use self::network::SecurityConfig;
 
-use codecs::{ToByte, FromByte};
-use error::{Result, Error, ErrorKind, KafkaCode};
+use codecs::{FromByte, ToByte};
+use error::{Error, ErrorKind, KafkaCode, Result};
 use protocol::{self, ResponseParser};
 
 use client_internals::KafkaClientInternals;
 
 pub mod metadata;
-mod state;
 mod network;
+mod state;
 
 // ~ re-export (only) certain types from the protocol::fetch module as
 // 'client::fetch'.
@@ -161,14 +161,14 @@ pub enum GroupOffsetStorage {
 }
 
 impl GroupOffsetStorage {
-    fn offset_fetch_version(&self) -> protocol::OffsetFetchVersion {
-        match *self {
+    fn offset_fetch_version(self) -> protocol::OffsetFetchVersion {
+        match self {
             GroupOffsetStorage::Zookeeper => protocol::OffsetFetchVersion::V0,
             GroupOffsetStorage::Kafka => protocol::OffsetFetchVersion::V1,
         }
     }
-    fn offset_commit_version(&self) -> protocol::OffsetCommitVersion {
-        match *self {
+    fn offset_commit_version(self) -> protocol::OffsetCommitVersion {
+        match self {
             GroupOffsetStorage::Zookeeper => protocol::OffsetCommitVersion::V0,
             // ~ if we knew we'll be communicating with a kafka 0.9+
             // broker we could set the commit-version to V2; however,
@@ -192,10 +192,7 @@ pub struct FetchGroupOffset<'a> {
 impl<'a> FetchGroupOffset<'a> {
     #[inline]
     pub fn new(topic: &'a str, partition: i32) -> Self {
-        FetchGroupOffset {
-            topic: topic,
-            partition: partition,
-        }
+        FetchGroupOffset { topic, partition }
     }
 }
 
@@ -223,9 +220,9 @@ pub struct CommitOffset<'a> {
 impl<'a> CommitOffset<'a> {
     pub fn new(topic: &'a str, partition: i32, offset: i64) -> Self {
         CommitOffset {
-            topic: topic,
-            partition: partition,
-            offset: offset,
+            topic,
+            partition,
+            offset,
         }
     }
 }
@@ -293,10 +290,10 @@ impl<'a, 'b> ProduceMessage<'a, 'b> {
         value: Option<&'b [u8]>,
     ) -> Self {
         ProduceMessage {
-            key: key,
-            value: value,
-            topic: topic,
-            partition: partition,
+            key,
+            value,
+            topic,
+            partition,
         }
     }
 }
@@ -331,9 +328,9 @@ impl<'a> FetchPartition<'a> {
     /// unspecified `max_bytes`.
     pub fn new(topic: &'a str, partition: i32, offset: i64) -> Self {
         FetchPartition {
-            topic: topic,
-            partition: partition,
-            offset: offset,
+            topic,
+            partition,
+            offset,
             max_bytes: -1,
         }
     }
@@ -374,7 +371,6 @@ pub struct ProducePartitionConfirm {
     pub partition: i32,
 }
 
-
 // --------------------------------------------------------------------
 
 impl KafkaClient {
@@ -391,11 +387,12 @@ impl KafkaClient {
         KafkaClient {
             config: ClientConfig {
                 client_id: String::new(),
-                hosts: hosts,
+                hosts,
                 compression: DEFAULT_COMPRESSION,
-                fetch_max_wait_time: protocol::to_millis_i32(
-                    Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS),
-                ).expect("invalid default-fetch-max-time-millis"),
+                fetch_max_wait_time: protocol::to_millis_i32(Duration::from_millis(
+                    DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS,
+                ))
+                .expect("invalid default-fetch-max-time-millis"),
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
@@ -459,11 +456,12 @@ impl KafkaClient {
         KafkaClient {
             config: ClientConfig {
                 client_id: String::new(),
-                hosts: hosts,
+                hosts,
                 compression: DEFAULT_COMPRESSION,
-                fetch_max_wait_time: protocol::to_millis_i32(
-                    Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS),
-                ).expect("invalid default-fetch-max-time-millis"),
+                fetch_max_wait_time: protocol::to_millis_i32(Duration::from_millis(
+                    DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS,
+                ))
+                .expect("invalid default-fetch-max-time-millis"),
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
@@ -809,13 +807,10 @@ impl KafkaClient {
                         protocol::MetadataRequest::new(correlation, &self.config.client_id, topics);
                     match __send_request(conn, req) {
                         Ok(_) => return __get_response::<protocol::MetadataResponse>(conn),
-                        Err(e) => {
-                            debug!(
-                                "fetch_metadata: failed to request metadata from {}: {}",
-                                host,
-                                e
-                            )
-                        }
+                        Err(e) => debug!(
+                            "fetch_metadata: failed to request metadata from {}: {}",
+                            host, e
+                        ),
                     }
                 }
                 Err(e) => {
@@ -858,9 +853,9 @@ impl KafkaClient {
         for topic in topics {
             let topic = topic.as_ref();
             if let Some(ps) = state.partitions_for(topic) {
-                for (id, host) in ps.iter().filter_map(
-                    |(id, p)| p.broker(&state).map(|b| (id, b.host())),
-                )
+                for (id, host) in ps
+                    .iter()
+                    .filter_map(|(id, p)| p.broker(&state).map(|b| (id, b.host())))
                 {
                     let entry = reqs.entry(host).or_insert_with(|| {
                         protocol::OffsetRequest::new(correlation, &config.client_id)
@@ -954,7 +949,7 @@ impl KafkaClient {
         let topic = topic.as_ref();
 
         let mut m = try!(self.fetch_offsets(&[topic], offset));
-        let offs = m.remove(topic).unwrap_or(vec![]);
+        let offs = m.remove(topic).unwrap_or_else(|| vec![]);
         if offs.is_empty() {
             bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition))
         } else {
@@ -1283,11 +1278,14 @@ impl KafkaClient {
             }
         }
 
-        Ok(
-            try!(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config))
-                .remove(topic)
-                .unwrap_or_else(Vec::new),
-        )
+        Ok(try!(__fetch_group_offsets(
+            req,
+            &mut self.state,
+            &mut self.conn_pool,
+            &self.config
+        ))
+        .remove(topic)
+        .unwrap_or_else(Vec::new))
     }
 }
 
@@ -1312,19 +1310,18 @@ impl KafkaClientInternals for KafkaClient {
             let msg = msg.as_ref();
             match state.find_broker(msg.topic, msg.partition) {
                 None => bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition)),
-                Some(broker) => {
-                    reqs.entry(broker)
-                        .or_insert_with(|| {
-                            protocol::ProduceRequest::new(
-                                required_acks,
-                                ack_timeout,
-                                correlation,
-                                &config.client_id,
-                                config.compression,
-                            )
-                        })
-                        .add(msg.topic, msg.partition, msg.key, msg.value)
-                }
+                Some(broker) => reqs
+                    .entry(broker)
+                    .or_insert_with(|| {
+                        protocol::ProduceRequest::new(
+                            required_acks,
+                            ack_timeout,
+                            correlation,
+                            &config.client_id,
+                            config.compression,
+                        )
+                    })
+                    .add(msg.topic, msg.partition, msg.key, msg.value),
             }
         }
         __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
@@ -1354,7 +1351,10 @@ fn __get_group_coordinator<'a>(
         // try connecting to the user specified bootstrap server similar
         // to the way `load_metadata` works.
         let conn = conn_pool.get_conn_any(now).expect("available connection");
-        debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
+        debug!(
+            "get_group_coordinator: asking for coordinator of '{}' on: {:?}",
+            group, conn
+        );
         let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req));
         let retry_code;
         match r.to_result() {
@@ -1371,8 +1371,7 @@ fn __get_group_coordinator<'a>(
         if attempt < config.retry_max_attempts {
             debug!(
                 "get_group_coordinator: will retry request (c: {}) due to: {:?}",
-                req.header.correlation_id,
-                retry_code
+                req.header.correlation_id, retry_code
             );
             attempt += 1;
             __retry_sleep(config);
@@ -1393,10 +1392,17 @@ fn __commit_offsets(
         let now = Instant::now();
 
         let tps = {
-            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
-            debug!("__commit_offsets: sending offset commit request '{:?}' to: {}", req, host);
-            try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, now, &req))
-                .topic_partitions
+            let host = try!(__get_group_coordinator(
+                req.group, state, conn_pool, config, now
+            ));
+            debug!(
+                "__commit_offsets: sending offset commit request '{:?}' to: {}",
+                req, host
+            );
+            try!(__send_receive::<_, protocol::OffsetCommitResponse>(
+                conn_pool, host, now, &req
+            ))
+            .topic_partitions
         };
 
         let mut retry_code = None;
@@ -1410,7 +1416,10 @@ fn __commit_offsets(
                         break 'rproc;
                     }
                     Some(e @ KafkaCode::NotCoordinatorForGroup) => {
-                        debug!("commit_offsets: resetting group coordinator for '{}'", req.group);
+                        debug!(
+                            "commit_offsets: resetting group coordinator for '{}'",
+                            req.group
+                        );
                         state.remove_group_coordinator(&req.group);
                         retry_code = Some(e);
                         break 'rproc;
@@ -1427,8 +1436,7 @@ fn __commit_offsets(
                 if attempt < config.retry_max_attempts {
                     debug!(
                         "commit_offsets: will retry request (c: {}) due to: {:?}",
-                        req.header.correlation_id,
-                        e
+                        req.header.correlation_id, e
                     );
                     attempt += 1;
                     __retry_sleep(config);
@@ -1452,9 +1460,16 @@ fn __fetch_group_offsets(
         let now = Instant::now();
 
         let r = {
-            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
-            debug!("fetch_group_offsets: sending request {:?} to: {}", req, host);
-            try!(__send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, now, &req))
+            let host = try!(__get_group_coordinator(
+                req.group, state, conn_pool, config, now
+            ));
+            debug!(
+                "fetch_group_offsets: sending request {:?} to: {}",
+                req, host
+            );
+            try!(__send_receive::<_, protocol::OffsetFetchResponse>(
+                conn_pool, host, now, &req
+            ))
         };
 
         debug!("fetch_group_offsets: received response: {:#?}", r);
@@ -1500,8 +1515,7 @@ fn __fetch_group_offsets(
                 if attempt < config.retry_max_attempts {
                     debug!(
                         "fetch_group_offsets: will retry request (c: {}) due to: {:?}",
-                        req.header.correlation_id,
-                        e
+                        req.header.correlation_id, e
                     );
                     attempt += 1;
                     __retry_sleep(config)
@@ -1543,14 +1557,17 @@ fn __produce_messages(
     let now = Instant::now();
     if no_acks {
         for (host, req) in reqs {
-            try!(__send_noack::<_, protocol::ProduceResponse>(conn_pool, host, now, req));
+            try!(__send_noack::<_, protocol::ProduceResponse>(
+                conn_pool, host, now, req
+            ));
         }
         Ok(vec![])
     } else {
         let mut res: Vec<ProduceConfirm> = vec![];
         for (host, req) in reqs {
-            let resp =
-                try!(__send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, now, req));
+            let resp = try!(__send_receive::<_, protocol::ProduceResponse>(
+                conn_pool, &host, now, req
+            ));
             for tpo in resp.get_response() {
                 res.push(tpo);
             }

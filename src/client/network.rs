@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::{Read, Write};
 use std::mem;
-use std::net::{TcpStream, Shutdown};
-use std::time::{Instant, Duration};
+use std::net::{Shutdown, TcpStream};
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "security")]
 use openssl::ssl::SslConnector;
@@ -48,7 +48,11 @@ impl SecurityConfig {
 #[cfg(feature = "security")]
 impl fmt::Debug for SecurityConfig {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SecurityConfig {{ verify_hostname: {} }}", self.verify_hostname)
+        write!(
+            f,
+            "SecurityConfig {{ verify_hostname: {} }}",
+            self.verify_hostname
+        )
     }
 }
 
@@ -62,15 +66,19 @@ struct Pooled<T> {
 impl<T> Pooled<T> {
     fn new(last_checkout: Instant, item: T) -> Self {
         Pooled {
-            last_checkout: last_checkout,
-            item: item,
+            last_checkout,
+            item,
         }
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Pooled<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Pooled {{ last_checkout: {:?}, item: {:?} }}", self.last_checkout, self.item)
+        write!(
+            f,
+            "Pooled {{ last_checkout: {:?}, item: {:?} }}",
+            self.last_checkout, self.item
+        )
     }
 }
 
@@ -97,10 +105,11 @@ impl Config {
             id,
             host,
             self.rw_timeout,
-            self.security_config.as_ref().map(|c| {
-                (c.connector.clone(), c.verify_hostname)
-            }),
-        ).map(|c| {
+            self.security_config
+                .as_ref()
+                .map(|c| (c.connector.clone(), c.verify_hostname)),
+        )
+        .map(|c| {
             debug!("Established: {:?}", c);
             c
         })
@@ -193,10 +202,7 @@ impl Connections {
         let cid = self.state.next_conn_id();
         self.conns.insert(
             host.to_owned(),
-            Pooled::new(
-                now,
-                try!(self.config.new_conn(cid, host)),
-            ),
+            Pooled::new(now, try!(self.config.new_conn(cid, host))),
         );
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
@@ -248,7 +254,7 @@ use self::openssled::KafkaStream;
 #[cfg(feature = "security")]
 mod openssled {
     use std::io::{self, Read, Write};
-    use std::net::{TcpStream, Shutdown};
+    use std::net::{Shutdown, TcpStream};
     use std::time::Duration;
 
     use openssl::ssl::SslStream;
