@@ -31,7 +31,7 @@ impl SecurityConfig {
     /// In the future this will also support a kerbos via #51.
     pub fn new(connector: SslConnector) -> Self {
         SecurityConfig {
-            connector: connector,
+            connector,
             verify_hostname: true,
         }
     }
@@ -39,7 +39,7 @@ impl SecurityConfig {
     /// Initiates a client-side TLS session with/without performing hostname verification.
     pub fn with_hostname_verification(self, verify_hostname: bool) -> SecurityConfig {
         SecurityConfig {
-            verify_hostname: verify_hostname,
+            verify_hostname,
             ..self
         }
     }
@@ -138,8 +138,8 @@ impl Connections {
             conns: HashMap::new(),
             state: State::new(),
             config: Config {
-                rw_timeout: rw_timeout,
-                idle_timeout: idle_timeout,
+                rw_timeout,
+                idle_timeout,
             },
         }
     }
@@ -159,8 +159,8 @@ impl Connections {
             conns: HashMap::new(),
             state: State::new(),
             config: Config {
-                rw_timeout: rw_timeout,
-                idle_timeout: idle_timeout,
+                rw_timeout,
+                idle_timeout,
                 security_config: security,
             },
         }
@@ -378,9 +378,9 @@ impl KafkaConnection {
         try!(stream.set_read_timeout(rw_timeout));
         try!(stream.set_write_timeout(rw_timeout));
         Ok(KafkaConnection {
-            id: id,
+            id,
             host: host.to_owned(),
-            stream: stream,
+            stream,
         })
     }
 
@@ -399,16 +399,21 @@ impl KafkaConnection {
         let stream = try!(TcpStream::connect(host));
         let stream = match security {
             Some((connector, verify_hostname)) => {
-                let connection = if verify_hostname {
-                    let domain = match host.rfind(':') {
-                        None => host,
-                        Some(i) => &host[..i],
-                    };
-
-                    try!(connector.connect(domain, stream))
-                } else {
-                    try!(connector.danger_connect_without_providing_domain_for_certificate_verification_and_server_name_indication(stream))
+                if !verify_hostname {
+                    connector
+                        .configure()
+                        .map_err(|err| {
+                            let err: crate::error::Error =
+                                crate::error::ErrorKind::Ssl(From::from(err)).into();
+                            err
+                        })?
+                        .set_verify_hostname(false);
+                }
+                let domain = match host.rfind(':') {
+                    None => host,
+                    Some(i) => &host[..i],
                 };
+                let connection = try!(connector.connect(domain, stream));
                 KafkaStream::Ssl(connection)
             }
             None => KafkaStream::Plain(stream),
