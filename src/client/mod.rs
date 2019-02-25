@@ -421,23 +421,24 @@ impl KafkaClient {
     /// extern crate openssl;
     /// extern crate kafka;
     ///
-    /// use openssl::ssl::{SslConnectorBuilder, SslMethod, SSL_VERIFY_PEER};
-    /// use openssl::x509::X509_FILETYPE_PEM;
+    /// use openssl::ssl::{SslConnector, SslMethod, SslFiletype, SslVerifyMode};
     /// use kafka::client::{KafkaClient, SecurityConfig};
     ///
     /// fn main() {
     ///     let (key, cert) = ("client.key".to_string(), "client.crt".to_string());
     ///
     ///     // OpenSSL offers a variety of complex configurations. Here is an example:
-    ///     let mut builder = SslConnectorBuilder::new(SslMethod::tls()).unwrap();
-    ///     {
-    ///         let mut ctx = builder.builder_mut();
-    ///         ctx.set_cipher_list("DEFAULT").unwrap();
-    ///         ctx.set_certificate_file(&cert, X509_FILETYPE_PEM).unwrap();
-    ///         ctx.set_private_key_file(&key, X509_FILETYPE_PEM).unwrap();
-    ///         ctx.set_default_verify_paths().unwrap();
-    ///         ctx.set_verify(SSL_VERIFY_PEER);
-    ///     }
+    ///     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+    ///     builder.set_cipher_list("DEFAULT").unwrap();
+    ///     builder
+    ///         .set_certificate_file(cert, SslFiletype::PEM)
+    ///         .unwrap();
+    ///     builder
+    ///         .set_private_key_file(key, SslFiletype::PEM)
+    ///         .unwrap();
+    ///     builder.check_private_key().unwrap();
+    ///     builder.set_default_verify_paths().unwrap();
+    ///     builder.set_verify(SslVerifyMode::PEER);
     ///     let connector = builder.build();
     ///
     ///     let mut client = KafkaClient::new_secure(vec!("localhost:9092".to_owned()),

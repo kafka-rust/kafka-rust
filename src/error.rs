@@ -14,8 +14,6 @@ error_chain! {
 
         Ssl(SslError) #[cfg(feature = "security")] #[doc="An error as reported by OpenSsl"];
 
-        SslHandshake(ErrorStack) #[cfg(feature = "security")] #[doc="An error as reported by OpenSsl handshake"];
-
         InvalidSnappy(::snap::Error) #[cfg(feature = "snappy")] #[doc="Failure to encode/decode a snappy compressed response from Kafka"];
     }
 
@@ -201,9 +199,10 @@ pub enum KafkaCode {
 impl<S> From<ssl::HandshakeError<S>> for Error {
     fn from(err: ssl::HandshakeError<S>) -> Error {
         match err {
-            ssl::HandshakeError::SetupFailure(e) => From::from(e),
-            ssl::HandshakeError::Failure(s) |
-            ssl::HandshakeError::Interrupted(s) => from_sslerror_ref(s.error()).into(),
+            ssl::HandshakeError::SetupFailure(e) => from_sslerror_ref(&From::from(e)).into(),
+            ssl::HandshakeError::Failure(s) | ssl::HandshakeError::WouldBlock(s) => {
+                from_sslerror_ref(s.error()).into()
+            }
         }
     }
 }
@@ -218,8 +217,6 @@ impl Clone for Error {
             }
             #[cfg(feature = "security")]
             &Error(ErrorKind::Ssl(ref x), _) => from_sslerror_ref(x).into(),
-            #[cfg(feature = "security")]
-            &Error(ErrorKind::SslHandshake(ref x), _) => ErrorKind::SslHandshake(x.clone()).into(),
             &Error(ErrorKind::UnsupportedProtocol, _) => ErrorKind::UnsupportedProtocol.into(),
             &Error(ErrorKind::UnsupportedCompression, _) => {
                 ErrorKind::UnsupportedCompression.into()
@@ -239,14 +236,15 @@ impl Clone for Error {
 
 #[cfg(feature = "security")]
 fn from_sslerror_ref(err: &ssl::Error) -> ErrorKind {
-    match err {
-        &SslError::ZeroReturn => ErrorKind::Ssl(SslError::ZeroReturn),
-        &SslError::WantRead(ref e) => ErrorKind::Ssl(SslError::WantRead(clone_ioe(e))),
-        &SslError::WantWrite(ref e) => ErrorKind::Ssl(SslError::WantWrite(clone_ioe(e))),
-        &SslError::WantX509Lookup => ErrorKind::Ssl(SslError::WantX509Lookup),
-        &SslError::Stream(ref e) => ErrorKind::Ssl(SslError::Stream(clone_ioe(e))),
-        &SslError::Ssl(ref es) => ErrorKind::Ssl(SslError::Ssl(es.clone())),
+    if let Some(io_err) = err.io_error() {
+        return ErrorKind::Io(clone_ioe(io_err));
     }
+    if let Some(ssl_err) = err.ssl_error() {
+        return ErrorKind::Ssl(From::from(ssl_err.to_owned()));
+    }
+
+    // xxx: return something as default?
+    unreachable!()
 }
 
 #[cfg(feature = "snappy")]
