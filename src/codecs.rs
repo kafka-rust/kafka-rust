@@ -66,7 +66,7 @@ impl ToByte for i64 {
 impl ToByte for str {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try_usize_to_int!(self.len(), i16);
-        try!(buffer.write_i16::<BigEndian>(l));
+        buffer.write_i16::<BigEndian>(l)?;
         buffer.write_all(self.as_bytes()).or_else(
             |e| Err(From::from(e)),
         )
@@ -93,7 +93,7 @@ impl<V: ToByte> ToByte for [V] {
 impl ToByte for [u8] {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try_usize_to_int!(self.len(), i32);
-        try!(buffer.write_i32::<BigEndian>(l));
+        buffer.write_i32::<BigEndian>(l)?;
         buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
 }
@@ -117,9 +117,9 @@ where
     W: Write,
 {
     let l = try_usize_to_int!(xs.len(), i32);
-    try!(buffer.write_i32::<BigEndian>(l));
+    buffer.write_i32::<BigEndian>(l)?;
     for x in xs {
-        try!(f(buffer, x));
+        f(buffer, x)?;
     }
     Ok(())
 }
@@ -226,7 +226,7 @@ impl<V: FromByte + Default> FromByte for Vec<V> {
         self.reserve(length as usize);
         for _ in 0..length {
             let mut e: V = Default::default();
-            try!(e.decode(buffer));
+            e.decode(buffer)?;
             self.push(e);
         }
         Ok(())

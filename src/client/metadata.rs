@@ -64,13 +64,13 @@ impl<'a> Topics<'a> {
 
 impl<'a> fmt::Debug for Topics<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "Topics {{ topics: ["));
+        write!(f, "Topics {{ topics: [")?;
         let mut ts = self.iter();
         if let Some(t) = ts.next() {
-            try!(write!(f, "{:?}", t));
+            write!(f, "{:?}", t)?;
         }
         for t in ts {
-            try!(write!(f, ", {:?}", t));
+            write!(f, ", {:?}", t)?;
         }
         write!(f, "] }}")
     }
@@ -201,13 +201,13 @@ impl<'a> Partitions<'a> {
 
 impl<'a> fmt::Debug for Partitions<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "Partitions {{ ["));
+        write!(f, "Partitions {{ [")?;
         let mut ps = self.iter();
         if let Some(p) = ps.next() {
-            try!(write!(f, "{:?}", p));
+            write!(f, "{:?}", p)?;
         }
         for p in ps {
-            try!(write!(f, ", {:?}", p));
+            write!(f, ", {:?}", p)?;
         }
         write!(f, "] }}")
     }

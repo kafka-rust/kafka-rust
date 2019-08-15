@@ -340,7 +340,7 @@ impl ClientState {
 
     /// ~ Retrieves the host:port of the coordinator for the specified
     /// group - if any.
-    pub fn group_coordinator<'a>(&'a self, group: &str) -> Option<&'a str> {
+    pub fn  group_coordinator<'a>(&'a self, group: &str) -> Option<&'a str> {
         self.group_coordinators
             .get(group)
             .and_then(|b| self.brokers.get(b.index()))

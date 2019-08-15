@@ -14,28 +14,26 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 // pub re-export
-pub use compression::Compression;
-pub use utils::PartitionOffset;
+pub use super::compression::Compression;
+pub use super::utils::PartitionOffset;
 
 #[cfg(feature = "security")]
 pub use self::network::SecurityConfig;
 
-use codecs::{ToByte, FromByte};
-use error::{Result, Error, ErrorKind, KafkaCode};
-use protocol::{self, ResponseParser};
+use super::codecs::{ToByte, FromByte};
+use super::error::{Result, Error, ErrorKind, KafkaCode};
+use super::client::protocol::ResponseParser;
 
 use client_internals::KafkaClientInternals;
 
 pub mod metadata;
-mod state;
-mod network;
 
 // ~ re-export (only) certain types from the protocol::fetch module as
 // 'client::fetch'.
 pub mod fetch {
     //! A representation of fetched messages from Kafka.
 
-    pub use protocol::fetch::{Data, Message, Partition, Response, Topic};
+    pub use super::protocol::fetch::{Data, Message, Partition, Response, Topic};
 }
 
 const DEFAULT_CONNECTION_RW_TIMEOUT_SECS: u64 = 120;
@@ -110,8 +108,8 @@ struct ClientConfig {
     // kafka will then use (zookeeper or __consumer_offsets).  it is
     // important to use version for both of them which target the same
     // storage type.
-    offset_fetch_version: protocol::OffsetFetchVersion,
-    offset_commit_version: protocol::OffsetCommitVersion,
+    offset_fetch_version: crate::protocol::OffsetFetchVersion,
+    offset_commit_version: crate::protocol::OffsetCommitVersion,
     // ~ the duration to wait before retrying a failed
     // operation like refreshing group coordinators; this avoids
     // operation retries in a tight loop.
@@ -532,7 +530,7 @@ impl KafkaClient {
     /// `KafkaClient::set_fetch_max_bytes_per_partition(..)`.
     #[inline]
     pub fn set_fetch_max_wait_time(&mut self, max_wait_time: Duration) -> Result<()> {
-        self.config.fetch_max_wait_time = try!(protocol::to_millis_i32(max_wait_time));
+        self.config.fetch_max_wait_time = protocol::to_millis_i32(max_wait_time)?;
         Ok(())
     }
 
@@ -780,7 +778,7 @@ impl KafkaClient {
     /// method call.)
     #[inline]
     pub fn load_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<()> {
-        let resp = try!(self.fetch_metadata(topics));
+        let resp = self.fetch_metadata(topics)?;
         self.state.update_metadata(resp)
     }
 
@@ -873,12 +871,12 @@ impl KafkaClient {
         let now = Instant::now();
         let mut res: HashMap<String, Vec<PartitionOffset>> = HashMap::with_capacity(n_topics);
         for (host, req) in reqs {
-            let resp = try!(__send_receive::<_, protocol::OffsetResponse>(
+            let resp = __send_receive::<_, protocol::OffsetResponse>(
                 &mut self.conn_pool,
                 &host,
                 now,
                 req,
-            ));
+            )?;
             for tp in resp.topic_partitions {
                 let mut entry = res.entry(tp.topic);
                 let mut new_resp_offsets = None;
@@ -952,7 +950,7 @@ impl KafkaClient {
     ) -> Result<Vec<PartitionOffset>> {
         let topic = topic.as_ref();
 
-        let mut m = try!(self.fetch_offsets(&[topic], offset));
+        let mut m = self.fetch_offsets(&[topic], offset)?;
         let offs = m.remove(topic).unwrap_or(vec![]);
         if offs.is_empty() {
             bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition))
@@ -1129,7 +1127,7 @@ impl KafkaClient {
     {
         self.internal_produce_messages(
             acks as i16,
-            try!(protocol::to_millis_i32(ack_timeout)),
+            protocol::to_millis_i32(ack_timeout)?,
             messages,
         )
     }
@@ -1283,7 +1281,7 @@ impl KafkaClient {
         }
 
         Ok(
-            try!(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config))
+            __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
                 .remove(topic)
                 .unwrap_or_else(Vec::new),
         )
@@ -1354,7 +1352,7 @@ fn __get_group_coordinator<'a>(
         // to the way `load_metadata` works.
         let conn = conn_pool.get_conn_any(now).expect("available connection");
         debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
-        let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req));
+        let r = __send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req)?;
         let retry_code;
         match r.to_result() {
             Ok(r) => {
@@ -1392,9 +1390,9 @@ fn __commit_offsets(
         let now = Instant::now();
 
         let tps = {
-            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
+            let host = __get_group_coordinator(req.group, state, conn_pool, config, now)?;
             debug!("__commit_offsets: sending offset commit request '{:?}' to: {}", req, host);
-            try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, now, &req))
+            __send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, now, &req)?
                 .topic_partitions
         };
 
@@ -1451,9 +1449,9 @@ fn __fetch_group_offsets(
         let now = Instant::now();
 
         let r = {
-            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
+            let host = __get_group_coordinator(req.group, state, conn_pool, config, now)?;
             debug!("fetch_group_offsets: sending request {:?} to: {}", req, host);
-            try!(__send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, now, &req))
+            __send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, now, &req)?
         };
 
         debug!("fetch_group_offsets: received response: {:#?}", r);
@@ -1528,7 +1526,7 @@ fn __fetch_messages(
             validate_crc: config.fetch_crc_validation,
             requests: Some(&req),
         };
-        res.push(try!(__z_send_receive(conn_pool, host, now, &req, &p)));
+        res.push(__z_send_receive(conn_pool, host, now, &req, &p))?;
     }
     Ok(res)
 }
@@ -1542,14 +1540,14 @@ fn __produce_messages(
     let now = Instant::now();
     if no_acks {
         for (host, req) in reqs {
-            try!(__send_noack::<_, protocol::ProduceResponse>(conn_pool, host, now, req));
+            __send_noack::<_, protocol::ProduceResponse>(conn_pool, host, now, req)?;
         }
         Ok(vec![])
     } else {
         let mut res: Vec<ProduceConfirm> = vec![];
         for (host, req) in reqs {
             let resp =
-                try!(__send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, now, req));
+                __send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, now, req)?;
             for tpo in resp.get_response() {
                 res.push(tpo);
             }
@@ -1568,7 +1566,7 @@ where
     T: ToByte,
     V: FromByte,
 {
-    __send_receive_conn::<T, V>(try!(conn_pool.get_conn(host, now)), req)
+    __send_receive_conn::<T, V>(conn_pool.get_conn(host, now)?, req)
 }
 
 fn __send_receive_conn<T, V>(conn: &mut network::KafkaConnection, req: T) -> Result<V::R>
@@ -1576,7 +1574,7 @@ where
     T: ToByte,
     V: FromByte,
 {
-    try!(__send_request(conn, req));
+    __send_request(conn, req)?;
     __get_response::<V>(conn)
 }
 
@@ -1590,7 +1588,7 @@ where
     T: ToByte,
     V: FromByte,
 {
-    let mut conn = try!(conn_pool.get_conn(host, now));
+    let mut conn = conn_pool.get_conn(host, now)?;
     __send_request(&mut conn, req)
 }
 
@@ -1600,10 +1598,10 @@ fn __send_request<T: ToByte>(conn: &mut network::KafkaConnection, request: T) ->
     // ~ reserve bytes for the actual request size (we'll fill in that later)
     buffer.extend_from_slice(&[0, 0, 0, 0]);
     // ~ encode the request data
-    try!(request.encode(&mut buffer));
+    request.encode(&mut buffer)?;
     // ~ put the size of the request data into the reseved area
     let size = buffer.len() as i32 - 4;
-    try!(size.encode(&mut &mut buffer[..]));
+    size.encode(&mut &mut buffer[..])?;
 
     trace!("__send_request: Sending bytes: {:?}", &buffer);
 
@@ -1612,8 +1610,8 @@ fn __send_request<T: ToByte>(conn: &mut network::KafkaConnection, request: T) ->
 }
 
 fn __get_response<T: FromByte>(conn: &mut network::KafkaConnection) -> Result<T::R> {
-    let size = try!(__get_response_size(conn));
-    let resp = try!(conn.read_exact_alloc(size as u64));
+    let size = __get_response_size(conn)?;
+    let resp = conn.read_exact_alloc(size as u64)?;
 
     trace!("__get_response: received bytes: {:?}", &resp);
 
@@ -1643,8 +1641,8 @@ where
     R: ToByte,
     P: ResponseParser,
 {
-    let mut conn = try!(conn_pool.get_conn(host, now));
-    try!(__send_request(&mut conn, req));
+    let mut conn = conn_pool.get_conn(host, now)?;
+    __send_request(&mut conn, req)?;
     __z_get_response(&mut conn, parser)
 }
 
@@ -1652,8 +1650,8 @@ fn __z_get_response<P>(conn: &mut network::KafkaConnection, parser: &P) -> Resul
 where
     P: ResponseParser,
 {
-    let size = try!(__get_response_size(conn));
-    let resp = try!(conn.read_exact_alloc(size as u64));
+    let size = __get_response_size(conn)?;
+    let resp = conn.read_exact_alloc(size as u64)?;
 
     // {
     //     use std::fs::OpenOptions;
@@ -1672,7 +1670,7 @@ where
 
 fn __get_response_size(conn: &mut network::KafkaConnection) -> Result<i32> {
     let mut buf = [0u8; 4];
-    try!(conn.read_exact(&mut buf));
+    conn.read_exact(&mut buf)?;
     i32::decode_new(&mut Cursor::new(&buf))
 }
 

@@ -86,7 +86,7 @@ impl State {
                 let xs = assignments.as_slice();
                 let mut subs = Vec::with_capacity(xs.len());
                 for x in xs {
-                    subs.push(try!(determine_partitions(x, client.topics())));
+                    subs.push(determine_partitions(x, client.topics())?);
                 }
                 subs
             };
@@ -97,10 +97,10 @@ impl State {
                 },
             );
             let consumed =
-                try!(load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n));
+                load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n)?;
 
             let fetch_next =
-                try!(load_fetch_states(client, config, &assignments, &subscriptions, &consumed, n));
+                load_fetch_states(client, config, &assignments, &subscriptions, &consumed, n)?;
             (consumed, fetch_next)
         };
         Ok(State {
@@ -210,7 +210,7 @@ fn load_consumed_offsets(
         return Ok(offs);
     }
     // ~ otherwise try load them for the group
-    let tpos = try!(client.fetch_group_offsets(
+    let tpos = client.fetch_group_offsets(
         group,
         subscriptions.iter().flat_map(|s| {
             let topic = s.assignment.topic();
@@ -218,7 +218,7 @@ fn load_consumed_offsets(
                 move |&p| FetchGroupOffset::new(topic, p),
             )
         }),
-    ));
+    )?;
     for (topic, pos) in tpos {
         for po in pos {
             if po.offset != -1 {
@@ -259,7 +259,7 @@ fn load_fetch_states(
         topics: &[&str],
         offset: FetchOffset,
     ) -> Result<HashMap<String, HashMap<i32, i64, PartitionHasher>>> {
-        let toffs = try!(client.fetch_offsets(topics, offset));
+        let toffs = client.fetch_offsets(topics, offset)?;
         let mut m = HashMap::with_capacity(toffs.len());
         for (topic, poffs) in toffs {
             let mut pidx =
@@ -282,7 +282,7 @@ fn load_fetch_states(
         // ~ if there are no offsets on behalf of the consumer
         // group - if any - we can directly use the fallback offsets.
         let offsets =
-            try!(load_partition_offsets(client, &subscription_topics, config.fallback_offset));
+            load_partition_offsets(client, &subscription_topics, config.fallback_offset)?;
         for s in subscriptions {
             let topic_ref = assignments.topic_ref(s.assignment.topic()).expect(
                 "unassigned subscription",
@@ -314,9 +314,9 @@ fn load_fetch_states(
     } else {
         // fetch the earliest and latest available offsets
         let latest =
-            try!(load_partition_offsets(client, &subscription_topics, FetchOffset::Latest));
+            load_partition_offsets(client, &subscription_topics, FetchOffset::Latest)?;
         let earliest =
-            try!(load_partition_offsets(client, &subscription_topics, FetchOffset::Earliest));
+            load_partition_offsets(client, &subscription_topics, FetchOffset::Earliest)?;
         // ~ for each subscribed partition if we have a
         // consumed_offset verify it is in the earliest/latest range
         // and use that consumed_offset+1 as the fetch_message.
@@ -379,13 +379,13 @@ pub struct OffsetsMapDebug<'a, T: 'a> {
 
 impl<'a, T: fmt::Debug + 'a> fmt::Debug for OffsetsMapDebug<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "{{"));
+        write!(f, "{{")?;
         for (i, (tp, v)) in self.offsets.iter().enumerate() {
             if i != 0 {
-                try!(write!(f, ", "));
+                write!(f, ", ")?;
             }
             let topic = self.state.topic_name(tp.topic_ref);
-            try!(write!(f, "\"{}:{}\": {:?}", topic, tp.partition, v));
+            write!(f, "\"{}:{}\": {:?}", topic, tp.partition, v)?;
         }
         write!(f, "}}")
     }
@@ -398,12 +398,12 @@ struct TopicPartitionsDebug<'a> {
 
 impl<'a> fmt::Debug for TopicPartitionsDebug<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "["));
+        write!(f, "[")?;
         for (i, tp) in self.tps.iter().enumerate() {
             if i != 0 {
-                try!(write!(f, " ,"));
+                write!(f, " ,")?;
             }
-            try!(write!(f, "\"{}:{}\"", self.state.topic_name(tp.topic_ref), tp.partition));
+            write!(f, "\"{}:{}\"", self.state.topic_name(tp.topic_ref), tp.partition)?;
         }
         write!(f, "]")
     }

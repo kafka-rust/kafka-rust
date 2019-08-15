@@ -198,7 +198,7 @@ impl Config {
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
-        opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+        opts.optopt("b", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
         opts.optopt("", "topic", "Specify target topic", "NAME");
         opts.optopt("", "input", "Specify input file", "FILE");
         opts.optopt("", "compression", "Compress messages [NONE, GZIP, SNAPPY]", "TYPE");

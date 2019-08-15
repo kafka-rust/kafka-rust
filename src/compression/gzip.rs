@@ -9,13 +9,13 @@ use error::Result;
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
     let mut e = GzEncoder::new(Vec::new(), Compression::Default);
 
-    try!(e.write(src));
-    let compressed_bytes = try!(e.finish());
+    e.write(src)?;
+    let compressed_bytes = e.finish()?;
     Ok((compressed_bytes))
 }
 
 pub fn uncompress<T: Read>(src: T) -> Result<Vec<u8>> {
-    let mut d = try!(GzDecoder::new(src));
+    let mut d = GzDecoder::new(src)?;
 
     let mut buffer: Vec<u8> = Vec::new();
     match d.read_to_end(&mut buffer) {

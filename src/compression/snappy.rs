@@ -25,7 +25,7 @@ fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
                 dst.resize(off + min_len, 0);
                 let uncompressed_len = {
                     let buf = &mut dst.as_mut_slice()[off..off + min_len];
-                    try!(snap::Decoder::new().decompress(src, buf))
+                    snap::Decoder::new().decompress(src, buf)?
                 };
                 dst.truncate(off + uncompressed_len);
             }
@@ -122,7 +122,7 @@ pub struct SnappyReader<'a> {
 
 impl<'a> SnappyReader<'a> {
     pub fn new(mut stream: &[u8]) -> Result<SnappyReader> {
-        stream = try!(validate_stream(stream));
+        stream = validate_stream(stream)?;
         Ok(SnappyReader {
             compressed_data: stream,
             uncompressed_pos: 0,
@@ -133,7 +133,7 @@ impl<'a> SnappyReader<'a> {
     fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if self.uncompressed_pos < self.uncompressed_chunk.len() {
             self.read_uncompressed(buf)
-        } else if try!(self.next_chunk()) {
+        } else if self.next_chunk()? {
             self.read_uncompressed(buf)
         } else {
             Ok(0)
@@ -141,7 +141,7 @@ impl<'a> SnappyReader<'a> {
     }
 
     fn read_uncompressed(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let n = try!((&self.uncompressed_chunk[self.uncompressed_pos..]).read(buf));
+        let n = (&self.uncompressed_chunk[self.uncompressed_pos..]).read(buf)?;
         self.uncompressed_pos += n;
         Ok(n)
     }
@@ -160,7 +160,7 @@ impl<'a> SnappyReader<'a> {
         }
         let chunk_size = chunk_size as usize;
         self.uncompressed_chunk.clear();
-        try!(uncompress_to(&self.compressed_data[..chunk_size], &mut self.uncompressed_chunk));
+        uncompress_to(&self.compressed_data[..chunk_size], &mut self.uncompressed_chunk)?;
         self.compressed_data = &self.compressed_data[chunk_size..];
         Ok(true)
     }
@@ -183,7 +183,7 @@ impl<'a> SnappyReader<'a> {
                 }));
             }
             let (c1, c2) = self.compressed_data.split_at(chunk_size as usize);
-            try!(uncompress_to(c1, buf));
+            uncompress_to(c1, buf)?;
             self.compressed_data = c2;
         }
         Ok(buf.len() - init_len)

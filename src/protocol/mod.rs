@@ -9,7 +9,7 @@ use error::{Error, ErrorKind, KafkaCode, Result};
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {
     ($($expr:expr),*) => ({
-        $(try!($expr);)*;
+        $(($expr)?;)*;
         Ok(())
     })
 }
@@ -19,7 +19,6 @@ pub mod offset;
 pub mod metadata;
 pub mod consumer;
 
-mod zreader;
 pub mod fetch;
 
 // ~ convenient re-exports for request/response types defined in the

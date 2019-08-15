@@ -9,6 +9,7 @@ documentation = "https://docs.rs/kafka/"
 readme = "README.md"
 keywords = ["kafka", "queue"]
 license = "MIT"
+edition = "2018"
 
 
 [dependencies]
@@ -19,10 +20,11 @@ ref_slice = "1.0"
 fnv = "1.0"
 twox-hash = "1.1"
 error-chain = "0.10"
-
 flate2 = { version = "0.2", optional = true }
 snap = { version = "0.2", optional = true }
 openssl = { version = "0.9", optional = true }
+tokio = "0.1.22"
+
 
 [dev-dependencies]
 getopts = "0.2"
