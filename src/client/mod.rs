@@ -24,7 +24,7 @@ use super::codecs::{ToByte, FromByte};
 use super::error::{Result, Error, ErrorKind, KafkaCode};
 use super::client::protocol::ResponseParser;
 
-use client_internals::KafkaClientInternals;
+use crate::client_internals::KafkaClientInternals;
 
 pub mod metadata;
 

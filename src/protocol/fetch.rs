@@ -8,13 +8,13 @@ use std::hash::BuildHasherDefault;
 
 use fnv::FnvHasher;
 
-use codecs::ToByte;
-use error::{Error, ErrorKind, KafkaCode, Result};
-use compression::Compression;
+use crate::codecs::ToByte;
+use crate::error::{Error, ErrorKind, KafkaCode, Result};
+use crate::compression::Compression;
 #[cfg(feature = "gzip")]
-use compression::gzip;
+use crate::compression::gzip;
 #[cfg(feature = "snappy")]
-use compression::snappy::SnappyReader;
+
 
 use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
 use super::zreader::ZReader;
@@ -495,7 +495,7 @@ mod tests {
     use std::str;
 
     use super::{FetchRequest, Response, Message};
-    use error::{Error, ErrorKind, KafkaCode};
+    use crate::error::{Error, ErrorKind, KafkaCode};
 
     static FETCH1_TXT: &'static str = include_str!("../../test-data/fetch1.txt");
 

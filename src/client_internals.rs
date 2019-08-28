@@ -2,7 +2,7 @@
 //! within this crate but not outside of it.
 
 use super::client::ProduceMessage;
-use super::producer::ProduceConfirm;
+
 use crate::error::Result;
 
 pub trait KafkaClientInternals {

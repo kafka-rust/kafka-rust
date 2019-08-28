@@ -63,21 +63,21 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hasher, BuildHasher, BuildHasherDefault};
 use std::time::Duration;
-use client::{self, KafkaClient};
-use error::{ErrorKind, Result};
+use crate::client::{self};
+use crate::error::{ErrorKind, Result};
 use ref_slice::ref_slice;
 use twox_hash::XxHash32;
 
 #[cfg(feature = "security")]
-use client::SecurityConfig;
+
 
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
-use client_internals::KafkaClientInternals;
-use protocol;
+use crate::client_internals::KafkaClientInternals;
+use crate::protocol;
 
 // public re-exports
-pub use client::{Compression, RequiredAcks, ProduceConfirm, ProducePartitionConfirm};
+pub use crate::client::{Compression, RequiredAcks, ProduceConfirm, ProducePartitionConfirm};
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
@@ -676,7 +676,7 @@ mod default_partitioner_tests {
     use std::hash::{Hasher, BuildHasherDefault};
     use std::collections::HashMap;
 
-    use client;
+    use crate::client;
     use super::{DefaultPartitioner, DefaultHasher, Partitioner, Partitions, Topics};
 
     fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {

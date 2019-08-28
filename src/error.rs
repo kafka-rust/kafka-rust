@@ -3,9 +3,9 @@
 use std::io;
 
 #[cfg(feature = "security")]
-use openssl::ssl::{self, Error as SslError};
+use openssl::ssl::{self};
 #[cfg(feature = "security")]
-use openssl::error::ErrorStack;
+
 
 /// The various errors this library can produce.
 error_chain! {

@@ -64,14 +64,14 @@
 use std::collections::hash_map::{Entry, HashMap};
 use std::slice;
 
-use client::{KafkaClient, FetchPartition, CommitOffset};
-use error::{ErrorKind, KafkaCode, Result};
-use client::fetch;
+use crate::client::{KafkaClient, FetchPartition, CommitOffset};
+use crate::error::{ErrorKind, KafkaCode, Result};
+use crate::client::fetch;
 
 // public re-exports
-pub use client::fetch::Message;
-pub use client::FetchOffset;
-pub use client::GroupOffsetStorage;
+pub use crate::client::fetch::Message;
+pub use crate::client::FetchOffset;
+pub use crate::client::GroupOffsetStorage;
 pub use self::builder::Builder;
 
 mod assignment;

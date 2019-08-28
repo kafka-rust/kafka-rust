@@ -9,7 +9,6 @@ documentation = "https://docs.rs/kafka/"
 readme = "README.md"
 keywords = ["kafka", "queue"]
 license = "MIT"
-edition = "2018"
 
 
 [dependencies]

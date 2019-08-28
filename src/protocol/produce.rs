@@ -1,15 +1,15 @@
 use std::io::{Read, Write};
 
-use codecs::{ToByte, FromByte};
-use compression::Compression;
+use crate::codecs::{ToByte, FromByte};
+use crate::compression::Compression;
 #[cfg(feature = "gzip")]
-use compression::gzip;
+use crate::compression::gzip;
 #[cfg(feature = "snappy")]
-use compression::snappy;
+use crate::compression::snappy;
 
-use error::{KafkaCode, Result};
+use crate::error::{KafkaCode, Result};
 
-use producer::{ProduceConfirm, ProducePartitionConfirm};
+use crate::producer::{ProduceConfirm, ProducePartitionConfirm};
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
 use super::to_crc;

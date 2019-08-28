@@ -1,9 +1,9 @@
 use std::io::{Read, Write};
 
 use std;
-use codecs::{ToByte, FromByte};
-use error::{Result, KafkaCode};
-use utils::PartitionOffset;
+use crate::codecs::{ToByte, FromByte};
+use crate::error::{Result, KafkaCode};
+use crate::utils::PartitionOffset;
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET, API_VERSION};
 

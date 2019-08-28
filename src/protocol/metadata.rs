@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 
-use error::Result;
-use codecs::{AsStrings, ToByte, FromByte};
+use crate::error::Result;
+use crate::codecs::{AsStrings, ToByte, FromByte};
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_METADATA, API_VERSION};

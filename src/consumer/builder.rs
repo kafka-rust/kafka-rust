@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use client::{self, KafkaClient, FetchOffset, GroupOffsetStorage};
-use error::{ErrorKind, Result};
+use crate::client::{self};
+use crate::error::{ErrorKind, Result};
 
 use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
 use super::config::Config;
@@ -10,7 +10,7 @@ use super::state::State;
 use super::assignment;
 
 #[cfg(feature = "security")]
-use client::SecurityConfig;
+
 
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();

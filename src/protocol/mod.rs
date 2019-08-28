@@ -2,9 +2,9 @@ use std::io::{Read, Write};
 use std::mem;
 use std::time::Duration;
 
-use codecs::{ToByte, FromByte};
+use crate::codecs::{ToByte, FromByte};
 use crc::crc32;
-use error::{Error, ErrorKind, KafkaCode, Result};
+use crate::error::{Error, ErrorKind, KafkaCode, Result};
 
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {
