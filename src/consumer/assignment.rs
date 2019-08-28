@@ -61,8 +61,8 @@ pub fn from_map(src: HashMap<String, Vec<i32>>) -> Assignments {
         partitions.sort();
         partitions.dedup();
         xs.push(Assignment {
-            topic: topic,
-            partitions: partitions,
+            topic,
+            partitions,
         });
     }
     // ~ sort by topic such has we can apply binary search by that

@@ -54,8 +54,8 @@ impl<'a, 'b> FetchRequest<'a, 'b> {
         FetchRequest {
             header: HeaderRequest::new(API_KEY_FETCH, API_VERSION, correlation_id, client_id),
             replica: -1,
-            max_wait_time: max_wait_time,
-            min_bytes: min_bytes,
+            max_wait_time,
+            min_bytes,
             topic_partitions: HashMap::new(),
         }
     }
@@ -92,8 +92,8 @@ impl TopicPartitionFetchRequest {
 impl PartitionFetchRequest {
     pub fn new(offset: i64, max_bytes: i32) -> PartitionFetchRequest {
         PartitionFetchRequest {
-            offset: offset,
-            max_bytes: max_bytes,
+            offset,
+            max_bytes,
         }
     }
 }
@@ -199,8 +199,8 @@ impl Response {
         let topics = array_of!(r, Topic::read(&mut r, reqs, validate_crc));
         Ok(Response {
             raw_data: response,
-            correlation_id: correlation_id,
-            topics: topics,
+            correlation_id,
+            topics,
         })
     }
 
@@ -240,7 +240,7 @@ impl<'a> Topic<'a> {
         let partitions = array_of!(r, Partition::read(r, preqs, validate_crc));
         Ok(Topic {
             topic: name,
-            partitions: partitions,
+            partitions,
         })
     }
 
@@ -291,7 +291,7 @@ impl<'a> Partition<'a> {
         let highwatermark = r.read_i64()?;
         let msgset = MessageSet::from_slice(r.read_bytes()?, proffs, validate_crc)?;
         Ok(Partition {
-            partition: partition,
+            partition,
             data: match error {
                 Some(error) => Err(error),
                 None => {
@@ -377,10 +377,10 @@ impl<'a> MessageSet<'a> {
             req_offset,
             validate_crc,
         )?;
-        return Ok(MessageSet {
+        Ok(MessageSet {
             raw_data: Cow::Owned(data),
             messages: ms.messages,
-        });
+        })
     }
 
     fn from_slice<'b>(
@@ -410,7 +410,7 @@ impl<'a> MessageSet<'a> {
                             // than the request one
                             if offset >= req_offset {
                                 msgs.push(Message {
-                                    offset: offset,
+                                    offset,
                                     key: pmsg.key,
                                     value: pmsg.value,
                                 });
@@ -497,34 +497,34 @@ mod tests {
     use super::{FetchRequest, Response, Message};
     use crate::error::{Error, ErrorKind, KafkaCode};
 
-    static FETCH1_TXT: &'static str = include_str!("../../test-data/fetch1.txt");
+    static FETCH1_TXT: &str = include_str!("../../test-data/fetch1.txt");
 
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    static FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821: &'static [u8] =
+    #[rustfmt::skip]
+    static FETCH1_FETCH_RESPONSE_NOCOMPRESSION_K0821: &[u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.nocompression.kafka.0821");
 
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    static FETCH1_FETCH_RESPONSE_SNAPPY_K0821: &'static [u8] =
+    #[rustfmt::skip]
+    static FETCH1_FETCH_RESPONSE_SNAPPY_K0821: &[u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0821");
 
     #[cfg(feature = "snappy")]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    static FETCH1_FETCH_RESPONSE_SNAPPY_K0822: &'static [u8] =
+    #[rustfmt::skip]
+    static FETCH1_FETCH_RESPONSE_SNAPPY_K0822: &[u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.snappy.kafka.0822");
 
     #[cfg(feature = "gzip")]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    static FETCH1_FETCH_RESPONSE_GZIP_K0821: &'static [u8] =
+    #[rustfmt::skip]
+    static FETCH1_FETCH_RESPONSE_GZIP_K0821: &[u8] =
         include_bytes!("../../test-data/fetch1.mytopic.1p.gzip.kafka.0821");
 
-    static FETCH2_TXT: &'static str = include_str!("../../test-data/fetch2.txt");
+    static FETCH2_TXT: &str = include_str!("../../test-data/fetch2.txt");
 
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900: &'static [u8] =
+    #[rustfmt::skip]
+    static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_K0900: &[u8] =
         include_bytes!("../../test-data/fetch2.mytopic.nocompression.kafka.0900");
 
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900: &'static [u8] =
+    #[rustfmt::skip]
+    static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900: &[u8] =
         include_bytes!("../../test-data/fetch2.mytopic.nocompression.invalid_crc.kafka.0900");
 
     fn into_messages<'a>(r: &'a Response) -> Vec<&'a Message<'a>> {

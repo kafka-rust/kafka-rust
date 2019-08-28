@@ -144,7 +144,7 @@ macro_rules! dec_helper {
     ($val: expr, $dest:expr) => ({
         match $val {
             Ok(val) => {
-                *$dest = val;
+                length = val;
                 Ok(())
                 },
             Err(e) => Err(From::from(e))

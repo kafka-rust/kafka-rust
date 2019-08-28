@@ -232,7 +232,7 @@ impl Consumer {
 
                 for p in t.partitions() {
                     let tp = state::TopicPartition {
-                        topic_ref: topic_ref,
+                        topic_ref,
                         partition: p.partition(),
                     };
 
@@ -334,7 +334,7 @@ impl Consumer {
 
         Ok(MessageSets {
             responses: resps,
-            empty: empty,
+            empty,
         })
     }
 
@@ -347,7 +347,7 @@ impl Consumer {
             .and_then(|tref| {
                 self.state.consumed_offsets.get(&state::TopicPartition {
                     topic_ref: tref,
-                    partition: partition,
+                    partition,
                 })
             })
             .map(|co| co.offset)
@@ -370,13 +370,13 @@ impl Consumer {
             Some(topic_ref) => topic_ref,
         };
         let tp = state::TopicPartition {
-            topic_ref: topic_ref,
-            partition: partition,
+            topic_ref,
+            partition,
         };
         match self.state.consumed_offsets.entry(tp) {
             Entry::Vacant(v) => {
                 v.insert(state::ConsumedOffset {
-                    offset: offset,
+                    offset,
                     dirty: true,
                 });
             }
@@ -478,10 +478,10 @@ impl MessageSets {
             },
         );
         MessageSetsIter {
-            responses: responses,
-            topics: topics,
+            responses,
+            topics,
             curr_topic: curr_topic.unwrap_or(""),
-            partitions: partitions,
+            partitions,
         }
     }
 }

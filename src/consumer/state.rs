@@ -104,10 +104,10 @@ impl State {
             (consumed, fetch_next)
         };
         Ok(State {
-            assignments: assignments,
-            fetch_offsets: fetch_offsets,
+            assignments,
+            fetch_offsets,
             retry_partitions: VecDeque::new(),
-            consumed_offsets: consumed_offsets,
+            consumed_offsets,
         })
     }
 
@@ -188,7 +188,7 @@ fn determine_partitions<'a>(
         ps
     };
     Ok(Subscription {
-        assignment: assignment,
+        assignment,
         partitions: ps,
     })
 }
@@ -299,12 +299,12 @@ fn load_fetch_states(
                     for p in &s.partitions {
                         fetch_offsets.insert(
                             TopicPartition {
-                                topic_ref: topic_ref,
+                                topic_ref,
                                 partition: *p,
                             },
                             FetchState {
                                 offset: *offsets.get(p).unwrap_or(&-1),
-                                max_bytes: max_bytes,
+                                max_bytes,
                             },
                         );
                     }
@@ -335,7 +335,7 @@ fn load_fetch_states(
                     .unwrap_or(&-1);
 
                 let tp = TopicPartition {
-                    topic_ref: topic_ref,
+                    topic_ref,
                     partition: *p,
                 };
 
@@ -362,8 +362,8 @@ fn load_fetch_states(
                 fetch_offsets.insert(
                     tp,
                     FetchState {
-                        offset: offset,
-                        max_bytes: max_bytes,
+                        offset,
+                        max_bytes,
                     },
                 );
             }

@@ -16,7 +16,7 @@ impl<'a, T: AsRef<str>> MetadataRequest<'a, T> {
     pub fn new(correlation_id: i32, client_id: &'a str, topics: &'a [T]) -> MetadataRequest<'a, T> {
         MetadataRequest {
             header: HeaderRequest::new(API_KEY_METADATA, API_VERSION, correlation_id, client_id),
-            topics: topics,
+            topics,
         }
     }
 }

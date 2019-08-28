@@ -191,8 +191,8 @@ impl<'a> FetchGroupOffset<'a> {
     #[inline]
     pub fn new(topic: &'a str, partition: i32) -> Self {
         FetchGroupOffset {
-            topic: topic,
-            partition: partition,
+            topic,
+            partition,
         }
     }
 }
@@ -221,9 +221,9 @@ pub struct CommitOffset<'a> {
 impl<'a> CommitOffset<'a> {
     pub fn new(topic: &'a str, partition: i32, offset: i64) -> Self {
         CommitOffset {
-            topic: topic,
-            partition: partition,
-            offset: offset,
+            topic,
+            partition,
+            offset,
         }
     }
 }
@@ -291,10 +291,10 @@ impl<'a, 'b> ProduceMessage<'a, 'b> {
         value: Option<&'b [u8]>,
     ) -> Self {
         ProduceMessage {
-            key: key,
-            value: value,
-            topic: topic,
-            partition: partition,
+            key,
+            value,
+            topic,
+            partition,
         }
     }
 }
@@ -329,9 +329,9 @@ impl<'a> FetchPartition<'a> {
     /// unspecified `max_bytes`.
     pub fn new(topic: &'a str, partition: i32, offset: i64) -> Self {
         FetchPartition {
-            topic: topic,
-            partition: partition,
-            offset: offset,
+            topic,
+            partition,
+            offset,
             max_bytes: -1,
         }
     }
@@ -389,7 +389,7 @@ impl KafkaClient {
         KafkaClient {
             config: ClientConfig {
                 client_id: String::new(),
-                hosts: hosts,
+                hosts,
                 compression: DEFAULT_COMPRESSION,
                 fetch_max_wait_time: protocol::to_millis_i32(
                     Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS),
@@ -456,7 +456,7 @@ impl KafkaClient {
         KafkaClient {
             config: ClientConfig {
                 client_id: String::new(),
-                hosts: hosts,
+                hosts,
                 compression: DEFAULT_COMPRESSION,
                 fetch_max_wait_time: protocol::to_millis_i32(
                     Duration::from_millis(DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS),

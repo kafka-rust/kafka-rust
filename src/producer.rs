@@ -157,9 +157,9 @@ impl<'a, K, V> Record<'a, K, V> {
     #[inline]
     pub fn from_key_value(topic: &'a str, key: K, value: V) -> Record<'a, K, V> {
         Record {
-            key: key,
-            value: value,
-            topic: topic,
+            key,
+            value,
+            topic,
             partition: -1,
         }
     }
@@ -180,8 +180,8 @@ impl<'a, V> Record<'a, (), V> {
     pub fn from_value(topic: &'a str, value: V) -> Record<'a, (), V> {
         Record {
             key: (),
-            value: value,
-            topic: topic,
+            value,
+            topic,
             partition: -1,
         }
     }
@@ -331,7 +331,7 @@ impl<P> State<P> {
         }
         Ok(State {
             partitions: ids,
-            partitioner: partitioner,
+            partitioner,
         })
     }
 }
@@ -355,8 +355,8 @@ pub struct Builder<P = DefaultPartitioner> {
 impl Builder {
     fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder<DefaultPartitioner> {
         let mut b = Builder {
-            client: client,
-            hosts: hosts,
+            client,
+            hosts,
             compression: client::DEFAULT_COMPRESSION,
             ack_timeout: Duration::from_millis(DEFAULT_ACK_TIMEOUT_MILLIS),
             conn_idle_timeout: Duration::from_millis(
@@ -434,7 +434,7 @@ impl<P> Builder<P> {
             ack_timeout: self.ack_timeout,
             conn_idle_timeout: self.conn_idle_timeout,
             required_acks: self.required_acks,
-            partitioner: partitioner,
+            partitioner,
             security_config: None,
             client_id: None,
         }
@@ -479,8 +479,8 @@ impl<P> Builder<P> {
         // ~ create producer state
         let state = State::new(&mut client, self.partitioner)?;
         Ok(Producer {
-            client: client,
-            state: state,
+            client,
+            state,
             config: producer_config,
         })
     }
@@ -530,7 +530,7 @@ impl Partitions {
 
 impl<'a> Topics<'a> {
     fn new(partitions: &'a HashMap<String, Partitions>) -> Topics<'a> {
-        Topics { partitions: partitions }
+        Topics { partitions }
     }
 
     /// Retrieves informationa about a topic's partitions.
@@ -696,7 +696,7 @@ mod default_partitioner_tests {
         let mut msg = client::ProduceMessage {
             key: Some(key.as_bytes()),
             value: None,
-            topic: topic,
+            topic,
             partition: -1,
         };
         p.partition(Topics::new(topics), &mut msg);

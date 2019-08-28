@@ -36,7 +36,7 @@ fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
 
 // --------------------------------------------------------------------
 
-const MAGIC: &'static [u8] = &[0x82, b'S', b'N', b'A', b'P', b'P', b'Y', 0];
+const MAGIC: &[u8] = &[0x82, b'S', b'N', b'A', b'P', b'P', b'Y', 0];
 
 // ~ reads a i32 valud and "advances" the given slice by four bytes;
 // assumes "slice" is a mutable reference to a &[u8].
@@ -304,8 +304,8 @@ mod tests {
         });
     }
 
-    static ORIGINAL: &'static str = include_str!("../../test-data/fetch1.txt");
-    static COMPRESSED: &'static [u8] = include_bytes!("../../test-data/fetch1.snappy.chunked.4k");
+    static ORIGINAL: &str = include_str!("../../test-data/fetch1.txt");
+    static COMPRESSED: &[u8] = include_bytes!("../../test-data/fetch1.snappy.chunked.4k");
 
     #[test]
     fn test_snappy_reader_read() {
