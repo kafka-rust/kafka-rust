@@ -1,7 +1,7 @@
 use std::str;
 
+use crate::error::{ErrorKind, Result};
 use byteorder::{BigEndian, ByteOrder};
-use error::{ErrorKind, Result};
 
 static EMPTY_STR: &'static str = "";
 
@@ -11,7 +11,9 @@ pub struct ZReader<'a> {
 
 // ~ a helper macro to hide away the used byte order
 macro_rules! dec {
-    ($method:ident, $src:expr) => { BigEndian::$method($src) }
+    ($method:ident, $src:expr) => {
+        BigEndian::$method($src)
+    };
 }
 
 impl<'a> ZReader<'a> {
@@ -69,7 +71,7 @@ impl<'a> ZReader<'a> {
             Ok(EMPTY_STR)
         } else {
             // alternatively: str::from_utf8_unchecked(..)
-            match str::from_utf8(self.read(len as usize))? {
+            match str::from_utf8(self.read(len as usize)?) {
                 Ok(s) => Ok(s),
                 Err(_) => bail!(ErrorKind::StringDecodeError),
             }
@@ -185,22 +187,7 @@ fn test_read_i64() {
 #[test]
 fn test_read_str() {
     let data = &[
-        0u8,
-        5,
-        b'h',
-        b'e',
-        b'l',
-        b'l',
-        b'o',
-        0u8,
-        7,
-        b',',
-        b' ',
-        b'w',
-        b'o',
-        b'r',
-        b'l',
-        b'd',
+        0u8, 5, b'h', b'e', b'l', b'l', b'o', 0u8, 7, b',', b' ', b'w', b'o', b'r', b'l', b'd',
         255, /* a "null" string */
         28,
     ]; // some byte

@@ -3,9 +3,10 @@
 use std::io;
 
 #[cfg(feature = "security")]
-use openssl::ssl::{self};
+use openssl::error::ErrorStack;
 #[cfg(feature = "security")]
-
+use openssl::ssl::{self, Error as SslError};
+#[cfg(feature = "security")]
 
 /// The various errors this library can produce.
 error_chain! {
@@ -202,8 +203,9 @@ impl<S> From<ssl::HandshakeError<S>> for Error {
     fn from(err: ssl::HandshakeError<S>) -> Error {
         match err {
             ssl::HandshakeError::SetupFailure(e) => From::from(e),
-            ssl::HandshakeError::Failure(s) |
-            ssl::HandshakeError::Interrupted(s) => from_sslerror_ref(s.error()).into(),
+            ssl::HandshakeError::Failure(s) | ssl::HandshakeError::Interrupted(s) => {
+                from_sslerror_ref(s.error()).into()
+            }
         }
     }
 }
@@ -253,77 +255,54 @@ fn from_sslerror_ref(err: &ssl::Error) -> ErrorKind {
 fn from_snap_error_ref(err: &::snap::Error) -> ErrorKind {
     match err {
         &::snap::Error::TooBig { given, max } => {
-            ErrorKind::InvalidSnappy(::snap::Error::TooBig {
-                given,
-                max,
-            })
+            ErrorKind::InvalidSnappy(::snap::Error::TooBig { given, max })
         }
         &::snap::Error::BufferTooSmall { given, min } => {
-            ErrorKind::InvalidSnappy(::snap::Error::BufferTooSmall {
-                given,
-                min,
-            })
+            ErrorKind::InvalidSnappy(::snap::Error::BufferTooSmall { given, min })
         }
         &::snap::Error::Empty => ErrorKind::InvalidSnappy(::snap::Error::Empty),
         &::snap::Error::Header => ErrorKind::InvalidSnappy(::snap::Error::Header),
         &::snap::Error::HeaderMismatch {
             expected_len,
             got_len,
-        } => {
-            ErrorKind::InvalidSnappy(::snap::Error::HeaderMismatch {
-                expected_len,
-                got_len,
-            })
-        }
+        } => ErrorKind::InvalidSnappy(::snap::Error::HeaderMismatch {
+            expected_len,
+            got_len,
+        }),
         &::snap::Error::Literal {
             len,
             src_len,
             dst_len,
-        } => {
-            ErrorKind::InvalidSnappy(::snap::Error::Literal {
-                len,
-                src_len,
-                dst_len,
-            })
-        }
+        } => ErrorKind::InvalidSnappy(::snap::Error::Literal {
+            len,
+            src_len,
+            dst_len,
+        }),
         &::snap::Error::CopyRead { len, src_len } => {
-            ErrorKind::InvalidSnappy(::snap::Error::CopyRead {
-                len,
-                src_len,
-            })
+            ErrorKind::InvalidSnappy(::snap::Error::CopyRead { len, src_len })
         }
         &::snap::Error::CopyWrite { len, dst_len } => {
-            ErrorKind::InvalidSnappy(::snap::Error::CopyWrite {
-                len,
-                dst_len,
-            })
+            ErrorKind::InvalidSnappy(::snap::Error::CopyWrite { len, dst_len })
         }
         &::snap::Error::Offset { offset, dst_pos } => {
-            ErrorKind::InvalidSnappy(::snap::Error::Offset {
-                offset,
-                dst_pos,
-            })
+            ErrorKind::InvalidSnappy(::snap::Error::Offset { offset, dst_pos })
         }
         &::snap::Error::StreamHeader { byte } => {
             ErrorKind::InvalidSnappy(::snap::Error::StreamHeader { byte })
         }
         &::snap::Error::StreamHeaderMismatch { ref bytes } => {
-            ErrorKind::InvalidSnappy(::snap::Error::StreamHeaderMismatch { bytes: bytes.clone() })
+            ErrorKind::InvalidSnappy(::snap::Error::StreamHeaderMismatch {
+                bytes: bytes.clone(),
+            })
         }
         &::snap::Error::UnsupportedChunkType { byte } => {
             ErrorKind::InvalidSnappy(::snap::Error::UnsupportedChunkType { byte })
         }
         &::snap::Error::UnsupportedChunkLength { len, header } => {
-            ErrorKind::InvalidSnappy(::snap::Error::UnsupportedChunkLength {
-                len,
-                header,
-            })
+            ErrorKind::InvalidSnappy(::snap::Error::UnsupportedChunkLength { len, header })
         }
         &::snap::Error::Checksum { expected, got } => {
-            ErrorKind::InvalidSnappy(::snap::Error::Checksum {
-                expected,
-                got,
-            })
+            ErrorKind::InvalidSnappy(::snap::Error::Checksum { expected, got })
         }
     }
 }

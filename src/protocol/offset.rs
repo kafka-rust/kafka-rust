@@ -1,12 +1,11 @@
 use std::io::{Read, Write};
 
-use std;
-use crate::codecs::{ToByte, FromByte};
-use crate::error::{Result, KafkaCode};
-use crate::utils::PartitionOffset;
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET, API_VERSION};
-
+use crate::codecs::{FromByte, ToByte};
+use crate::error::{KafkaCode, Result};
+use crate::utils::PartitionOffset;
+use std;
 
 #[derive(Debug)]
 pub struct OffsetRequest<'a> {
@@ -59,9 +58,8 @@ impl<'a> TopicPartitionOffsetRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32, time: i64) {
-        self.partitions.push(
-            PartitionOffsetRequest::new(partition, time),
-        );
+        self.partitions
+            .push(PartitionOffsetRequest::new(partition, time));
     }
 }
 
@@ -146,7 +144,10 @@ impl FromByte for OffsetResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.header.decode(buffer), self.topic_partitions.decode(buffer))
+        try_multi!(
+            self.header.decode(buffer),
+            self.topic_partitions.decode(buffer)
+        )
     }
 }
 

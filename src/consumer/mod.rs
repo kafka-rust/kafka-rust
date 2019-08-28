@@ -64,20 +64,20 @@
 use std::collections::hash_map::{Entry, HashMap};
 use std::slice;
 
-use crate::client::{KafkaClient, FetchPartition, CommitOffset};
-use crate::error::{ErrorKind, KafkaCode, Result};
 use crate::client::fetch;
+use crate::client::{CommitOffset, FetchPartition, KafkaClient};
+use crate::error::{ErrorKind, KafkaCode, Result};
 
 // public re-exports
+pub use self::builder::Builder;
 pub use crate::client::fetch::Message;
 pub use crate::client::FetchOffset;
 pub use crate::client::GroupOffsetStorage;
-pub use self::builder::Builder;
 
 mod assignment;
+mod builder;
 mod config;
 mod state;
-mod builder;
 
 /// The default value for `Builder::with_retry_max_bytes_limit`.
 pub const DEFAULT_RETRY_MAX_BYTES_LIMIT: i32 = 0;
@@ -135,9 +135,11 @@ impl Consumer {
         let mut h: HashMap<String, Vec<i32>> =
             HashMap::with_capacity(self.state.assignments.as_slice().len());
         // ~ expand subscriptions to (topic-name, partition id)
-        let tps = self.state.fetch_offsets.keys().map(|tp| {
-            (self.state.topic_name(tp.topic_ref), tp.partition)
-        });
+        let tps = self
+            .state
+            .fetch_offsets
+            .keys()
+            .map(|tp| (self.state.topic_name(tp.topic_ref), tp.partition));
         // ~ group by topic-name
         for tp in tps {
             // ~ allocate topic-name only once per topic
@@ -178,15 +180,16 @@ impl Consumer {
                 let s = match self.state.fetch_offsets.get(&tp) {
                     Some(fstate) => fstate,
                     None => {
-                        return (1, Err(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition).into()))
+                        return (
+                            1,
+                            Err(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition).into()),
+                        )
                     }
                 };
                 let topic = self.state.topic_name(tp.topic_ref);
                 debug!(
                     "fetching retry messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
-                    topic,
-                    tp.partition,
-                    s
+                    topic, tp.partition, s
                 );
                 (
                     1,
@@ -199,12 +202,18 @@ impl Consumer {
             None => {
                 let client = &mut self.client;
                 let state = &self.state;
-                debug!("fetching messages: (fetch-offsets: {:?})", state.fetch_offsets_debug());
+                debug!(
+                    "fetching messages: (fetch-offsets: {:?})",
+                    state.fetch_offsets_debug()
+                );
                 let reqs = state.fetch_offsets.iter().map(|(tp, s)| {
                     let topic = state.topic_name(tp.topic_ref);
                     FetchPartition::new(topic, tp.partition, s.offset).with_max_bytes(s.max_bytes)
                 });
-                (state.fetch_offsets.len() as u32, client.fetch_messages(reqs))
+                (
+                    state.fetch_offsets.len() as u32,
+                    client.fetch_messages(reqs),
+                )
             }
         }
     }
@@ -226,9 +235,11 @@ impl Consumer {
 
         for resp in &resps {
             for t in resp.topics() {
-                let topic_ref = self.state.assignments.topic_ref(t.topic()).expect(
-                    "unknown topic in response",
-                );
+                let topic_ref = self
+                    .state
+                    .assignments
+                    .topic_ref(t.topic())
+                    .expect("unknown topic in response");
 
                 for p in t.partitions() {
                     let tp = state::TopicPartition {
@@ -248,9 +259,11 @@ impl Consumer {
                         &Ok(ref data) => data,
                     };
 
-                    let mut fetch_state = self.state.fetch_offsets.get_mut(&tp).expect(
-                        "non-requested partition",
-                    );
+                    let mut fetch_state = self
+                        .state
+                        .fetch_offsets
+                        .get_mut(&tp)
+                        .expect("non-requested partition");
                     // ~ book keeping
                     if let Some(last_msg) = data.messages().last() {
                         fetch_state.offset = last_msg.offset + 1;
@@ -273,7 +286,7 @@ impl Consumer {
                     } else {
                         debug!(
                             "no data received for {}:{} (max_bytes: {} / fetch_offset: {} / \
-                                highwatermark_offset: {})",
+                             highwatermark_offset: {})",
                             t.topic(),
                             tp.partition,
                             fetch_state.max_bytes,
@@ -396,7 +409,11 @@ impl Consumer {
     /// message of the given set as consumed.
     pub fn consume_messageset<'a>(&mut self, msgs: MessageSet<'a>) -> Result<()> {
         if !msgs.messages.is_empty() {
-            self.consume_message(msgs.topic, msgs.partition, msgs.messages.last().unwrap().offset)
+            self.consume_message(
+                msgs.topic,
+                msgs.partition,
+                msgs.messages.last().unwrap().offset,
+            )
         } else {
             Ok(())
         }
@@ -418,23 +435,23 @@ impl Consumer {
             self.state.consumed_offsets_debug()
         );
         let (client, state) = (&mut self.client, &mut self.state);
-            client.commit_offsets(
-                &self.config.group,
-                state
-                    .consumed_offsets
-                    .iter()
-                    .filter(|&(_, o)| o.dirty)
-                    .map(|(tp, o)| {
-                        let topic = state.topic_name(tp.topic_ref);
+        client.commit_offsets(
+            &self.config.group,
+            state
+                .consumed_offsets
+                .iter()
+                .filter(|&(_, o)| o.dirty)
+                .map(|(tp, o)| {
+                    let topic = state.topic_name(tp.topic_ref);
 
-                        // Note that the offset that is committed should be the
-                        // offset of the next message a consumer should read, so
-                        // add one to the consumed message's offset.
-                        //
-                        // https://kafka.apache.org/090/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html
-                        CommitOffset::new(topic, tp.partition, o.offset + 1)
-                    })?,
-        );
+                    // Note that the offset that is committed should be the
+                    // offset of the next message a consumer should read, so
+                    // add one to the consumed message's offset.
+                    //
+                    // https://kafka.apache.org/090/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html
+                    CommitOffset::new(topic, tp.partition, o.offset + 1)
+                }),
+        )?;
         for (_, co) in &mut state.consumed_offsets {
             if co.dirty {
                 co.dirty = false;
@@ -468,15 +485,15 @@ impl MessageSets {
 
     /// Iterates over the message sets delivering the fetched message
     /// data of consumed topic partitions.
-    pub fn iter(&self) -> MessageSetsIter {
+    pub fn iter(&self) -> MessageSetsIter<'_> {
         let mut responses = self.responses.iter();
         let mut topics = responses.next().map(|r| r.topics().iter());
-        let (curr_topic, partitions) = topics.as_mut().and_then(|t| t.next()).map_or(
-            (None, None),
-            |t| {
+        let (curr_topic, partitions) = topics
+            .as_mut()
+            .and_then(|t| t.next())
+            .map_or((None, None), |t| {
                 (Some(t.topic()), Some(t.partitions().iter()))
-            },
-        );
+            });
         MessageSetsIter {
             responses,
             topics,

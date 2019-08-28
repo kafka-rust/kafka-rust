@@ -1,18 +1,18 @@
 use std::io::{Read, Write};
 
-use crate::codecs::{ToByte, FromByte};
-use crate::compression::Compression;
+use crate::codecs::{FromByte, ToByte};
 #[cfg(feature = "gzip")]
 use crate::compression::gzip;
 #[cfg(feature = "snappy")]
 use crate::compression::snappy;
+use crate::compression::Compression;
 
 use crate::error::{KafkaCode, Result};
 
-use crate::producer::{ProduceConfirm, ProducePartitionConfirm};
+use super::to_crc;
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
-use super::to_crc;
+use crate::producer::{ProduceConfirm, ProducePartitionConfirm};
 
 /// The magic byte (a.k.a version) we use for sent messages.
 const MESSAGE_MAGIC_BYTE: i8 = 0;
@@ -97,11 +97,8 @@ impl<'a> TopicPartitionProduceRequest<'a> {
                 return;
             }
         }
-        self.partitions.push(PartitionProduceRequest::new(
-            partition,
-            key,
-            value,
-        ));
+        self.partitions
+            .push(PartitionProduceRequest::new(partition, key, value));
     }
 }
 
@@ -190,10 +187,7 @@ fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) 
 
 impl<'a> MessageProduceRequest<'a> {
     fn new<'b>(key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> MessageProduceRequest<'b> {
-        MessageProduceRequest {
-            key,
-            value,
-        }
+        MessageProduceRequest { key, value }
     }
 
     // render a single message as: Offset MessageSize Message
@@ -209,7 +203,6 @@ impl<'a> MessageProduceRequest<'a> {
     //
     // note: the rendered data corresponds to a single MessageSet in the kafka protocol
     fn _encode_to_buf(&self, buffer: &mut Vec<u8>, magic: i8, attributes: i8) -> Result<()> {
-
         (0i64).encode(buffer)?; // offset in the response request can be anything
 
         let size_pos = buffer.len();
@@ -277,7 +270,8 @@ impl ProduceResponse {
 
 impl TopicPartitionProduceResponse {
     pub fn get_response(self) -> ProduceConfirm {
-        let confirms = self.partitions
+        let confirms = self
+            .partitions
             .iter()
             .map(|ref p| p.get_response())
             .collect();
@@ -306,7 +300,10 @@ impl FromByte for ProduceResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.header.decode(buffer), self.topic_partitions.decode(buffer))
+        try_multi!(
+            self.header.decode(buffer),
+            self.topic_partitions.decode(buffer)
+        )
     }
 }
 

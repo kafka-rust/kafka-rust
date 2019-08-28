@@ -59,25 +59,23 @@
 // XXX 1) rethink return values for the send_all() method
 // XXX 2) Handle recoverable errors behind the scenes through retry attempts
 
-use std::collections::HashMap;
-use std::fmt;
-use std::hash::{Hasher, BuildHasher, BuildHasherDefault};
-use std::time::Duration;
-use crate::client::{self};
+use crate::client::{self, KafkaClient, SecurityConfig};
 use crate::error::{ErrorKind, Result};
 use ref_slice::ref_slice;
+use std::collections::HashMap;
+use std::fmt;
+use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
+use std::time::Duration;
 use twox_hash::XxHash32;
 
 #[cfg(feature = "security")]
-
-
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
 use crate::client_internals::KafkaClientInternals;
 use crate::protocol;
 
 // public re-exports
-pub use crate::client::{Compression, RequiredAcks, ProduceConfirm, ProducePartitionConfirm};
+pub use crate::client::{Compression, ProduceConfirm, ProducePartitionConfirm, RequiredAcks};
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
@@ -188,14 +186,11 @@ impl<'a, V> Record<'a, (), V> {
 }
 
 impl<'a, K: fmt::Debug, V: fmt::Debug> fmt::Debug for Record<'a, K, V> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
-            self.topic,
-            self.partition,
-            self.key,
-            self.value
+            self.topic, self.partition, self.key, self.value
         )
     }
 }
@@ -249,7 +244,6 @@ impl Producer {
         self.client
     }
 }
-
 
 impl<P: Partitioner> Producer<P> {
     /// Synchronously send the specified message to Kafka.
@@ -310,7 +304,11 @@ impl<P: Partitioner> Producer<P> {
 }
 
 fn to_option(data: &[u8]) -> Option<&[u8]> {
-    if data.is_empty() { None } else { Some(data) }
+    if data.is_empty() {
+        None
+    } else {
+        Some(data)
+    }
 }
 
 // --------------------------------------------------------------------
@@ -460,7 +458,10 @@ impl<P> Builder<P> {
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {
             Some(client) => (client, false),
-            None => (Self::new_kafka_client(self.hosts, self.security_config), true),
+            None => (
+                Self::new_kafka_client(self.hosts, self.security_config),
+                true,
+            ),
         };
         // ~ apply configuration settings
         client.set_compression(self.compression);
@@ -554,7 +555,7 @@ pub trait Partitioner {
     ///
     /// `msg` the message whose partition assignment potentially to
     /// change.
-    fn partition(&mut self, topics: Topics, msg: &mut client::ProduceMessage);
+    fn partition(&mut self, topics: Topics<'_>, msg: &mut client::ProduceMessage<'_, '_>);
 }
 
 /// The default hasher implementation used of `DefaultPartitioner`.
@@ -622,7 +623,7 @@ impl DefaultPartitioner {
 
 impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
     #[allow(unused_variables)]
-    fn partition(&mut self, topics: Topics, rec: &mut client::ProduceMessage) {
+    fn partition(&mut self, topics: Topics<'_>, rec: &mut client::ProduceMessage<'_, '_>) {
         if rec.partition >= 0 {
             // ~ partition explicitely defined, trust the user
             return;
@@ -673,11 +674,11 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
 
 #[cfg(test)]
 mod default_partitioner_tests {
-    use std::hash::{Hasher, BuildHasherDefault};
     use std::collections::HashMap;
+    use std::hash::{BuildHasherDefault, Hasher};
 
+    use super::{DefaultHasher, DefaultPartitioner, Partitioner, Partitions, Topics};
     use crate::client;
-    use super::{DefaultPartitioner, DefaultHasher, Partitioner, Partitions, Topics};
 
     fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {
         let mut h = HashMap::new();
@@ -714,14 +715,14 @@ mod default_partitioner_tests {
                 Partitions {
                     available_ids: vec![0, 1, 4],
                     num_all_partitions: 5,
-                }
+                },
             ),
             (
                 "bar",
                 Partitions {
                     available_ids: vec![0, 1],
                     num_all_partitions: 2,
-                }
+                },
             ),
         ]);
 
@@ -766,14 +767,14 @@ mod default_partitioner_tests {
                 Partitions {
                     available_ids: vec![0, 1],
                     num_all_partitions: 2,
-                }
+                },
             ),
             (
                 "contents",
                 Partitions {
                     available_ids: vec![0, 1, 9],
                     num_all_partitions: 10,
-                }
+                },
             ),
         ]);
 

@@ -4,20 +4,18 @@
 //! through re-exports of individual items from within
 //! `kafka::client`.
 
-use tokio::prelude::*;
-use tokio::net::TcpStream;
-
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{Read, Write};
 use std::mem;
-use std::time::{Instant, Duration};
-use std::net::Shutdown;
+use std::net::{Shutdown, TcpStream};
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "security")]
 use openssl::ssl::SslConnector;
+use openssl::ssl::SslStream;
 
-use error::Result;
+use crate::error::Result;
 
 // --------------------------------------------------------------------
 
@@ -51,7 +49,11 @@ impl SecurityConfig {
 #[cfg(feature = "security")]
 impl fmt::Debug for SecurityConfig {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SecurityConfig {{ verify_hostname: {} }}", self.verify_hostname)
+        write!(
+            f,
+            "SecurityConfig {{ verify_hostname: {} }}",
+            self.verify_hostname
+        )
     }
 }
 
@@ -73,7 +75,11 @@ impl<T> Pooled<T> {
 
 impl<T: fmt::Debug> fmt::Debug for Pooled<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Pooled {{ last_checkout: {:?}, item: {:?} }}", self.last_checkout, self.item)
+        write!(
+            f,
+            "Pooled {{ last_checkout: {:?}, item: {:?} }}",
+            self.last_checkout, self.item
+        )
     }
 }
 
@@ -100,10 +106,11 @@ impl Config {
             id,
             host,
             self.rw_timeout,
-            self.security_config.as_ref().map(|c| {
-                (c.connector.clone(), c.verify_hostname)
-            }),
-        ).map(|c| {
+            self.security_config
+                .as_ref()
+                .map(|c| (c.connector.clone(), c.verify_hostname)),
+        )
+        .map(|c| {
             debug!("Established: {:?}", c);
             c
         })
@@ -196,10 +203,7 @@ impl Connections {
         let cid = self.state.next_conn_id();
         self.conns.insert(
             host.to_owned(),
-            Pooled::new(
-                now,
-                self.config.new_conn(cid, host)?,
-            ),
+            Pooled::new(now, self.config.new_conn(cid, host)?),
         );
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
@@ -247,15 +251,13 @@ impl IsSecured for KafkaStream {
 
 #[cfg(feature = "security")]
 use self::openssled::KafkaStream;
-use tokio::net::tcp::ConnectFuture;
 
 #[cfg(feature = "security")]
 mod openssled {
-    use std::io::{self, Read, Write};
-    use std::net::Shutdown;
-    use std::time::Duration;
-    use tokio::net::tcp::TcpStream;
     use openssl::ssl::SslStream;
+    use std::io::{self, Read, Write};
+    use std::net::{Shutdown, TcpStream};
+    use std::time::Duration;
 
     use super::IsSecured;
 
@@ -279,6 +281,14 @@ mod openssled {
                 KafkaStream::Plain(ref s) => s,
                 KafkaStream::Ssl(ref s) => s.get_ref(),
             }
+        }
+
+        pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+            self.get_ref().set_read_timeout(dur)
+        }
+
+        pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+            self.get_ref().set_write_timeout(dur)
         }
 
         pub fn shutdown(&mut self, how: Shutdown) -> io::Result<()> {
@@ -319,12 +329,7 @@ pub struct KafkaConnection {
     // "host:port"
     host: String,
     // the (wrapped) tcp stream
-    stream: ConnectFuture,
-
-    read_timeout: Option<Duration>,
-
-    write_timeout: Option<Duration>
-
+    stream: KafkaStream,
 }
 
 impl fmt::Debug for KafkaConnection {
@@ -370,19 +375,19 @@ impl KafkaConnection {
         r.map_err(From::from)
     }
 
-    async fn from_stream(
-        stream: ConnectFuture,
+    fn from_stream(
+        stream: KafkaStream,
         id: u32,
         host: &str,
         rw_timeout: Option<Duration>,
-    ) -> KafkaConnection {
-        stream.map(|s| KafkaConnection {
+    ) -> Result<KafkaConnection> {
+        stream.set_read_timeout(rw_timeout)?;
+        stream.set_write_timeout(rw_timeout)?;
+        Ok(KafkaConnection {
             id,
-            host: host.to_owned(),
             stream,
-            read_timeout: rw_timeout,
-            write_timeout: rw_timeout,
-        })?
+            host: host.to_owned(),
+        })
     }
 
     #[cfg(not(feature = "security"))]
@@ -397,7 +402,7 @@ impl KafkaConnection {
         rw_timeout: Option<Duration>,
         security: Option<(SslConnector, bool)>,
     ) -> Result<KafkaConnection> {
-        let stream = TcpStream::connect(*host.parse())?;
+        let stream = TcpStream::connect(host)?;
         let stream = match security {
             Some((connector, verify_hostname)) => {
                 let connection = if verify_hostname {
@@ -406,10 +411,10 @@ impl KafkaConnection {
                         Some(i) => &host[..i],
                     };
 
-                    connector.connect(domain, stream)?
+                    connector.connect(domain, stream)
                 } else {
-                    connector.danger_connect_without_providing_domain_for_certificate_verification_and_server_name_indication(stream)?
-                };
+                    connector.danger_connect_without_providing_domain_for_certificate_verification_and_server_name_indication(stream)
+                }?;
                 KafkaStream::Ssl(connection)
             }
             None => KafkaStream::Plain(stream),

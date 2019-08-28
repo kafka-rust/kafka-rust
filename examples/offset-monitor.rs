@@ -1,6 +1,5 @@
-extern crate kafka;
-extern crate getopts;
 extern crate env_logger;
+extern crate getopts;
 extern crate time;
 #[macro_use]
 extern crate error_chain;
@@ -8,12 +7,12 @@ extern crate error_chain;
 use std::ascii::AsciiExt;
 use std::cmp;
 use std::env;
-use std::io::{self, stdout, stderr, BufWriter, Write};
+use std::io::{self, stderr, stdout, BufWriter, Write};
 use std::process;
 use std::thread;
 use std::time as stdtime;
 
-use kafka::client::{KafkaClient, FetchOffset, GroupOffsetStorage};
+use kafka::client::{FetchOffset, GroupOffsetStorage, KafkaClient};
 
 /// A very simple offset monitor for a particular topic able to show
 /// the lag for a particular consumer group. Dumps the offset/lag of
@@ -27,7 +26,7 @@ fn main() {
             let _ = write!(out, "error: {}\n", $e);
             let _ = out.flush();
             process::exit(1);
-        }}
+        }};
     };
 
     let cfg = match Config::from_cmdline() {
@@ -43,7 +42,7 @@ fn main() {
 fn run(cfg: Config) -> Result<()> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
     client.set_group_offset_storage(cfg.offset_storage);
-    try!(client.load_metadata_all());
+    client.load_metadata_all()?;
 
     // ~ if no topic specified, print all available and be done.
     if cfg.topic.is_empty() {
@@ -70,18 +69,18 @@ fn run(cfg: Config) -> Result<()> {
     };
     let mut state = State::new(num_partitions, cfg.commited_not_consumed);
     let mut printer = Printer::new(stdout(), &cfg);
-    try!(printer.print_head(num_partitions));
+    printer.print_head(num_partitions)?;
 
     // ~ initialize the state
     let mut first_time = true;
     loop {
         let t = time::now();
-        try!(state.update_partitions(&mut client, &cfg.topic, &cfg.group));
+        state.update_partitions(&mut client, &cfg.topic, &cfg.group)?;
         if first_time {
             state.curr_to_prev();
             first_time = false;
         }
-        try!(printer.print_offsets(&t, &state.offsets));
+        printer.print_offsets(&t, &state.offsets)?;
         thread::sleep(cfg.period);
     }
 }
@@ -123,23 +122,25 @@ impl State {
         group: &str,
     ) -> Result<()> {
         // ~ get the latest topic offsets
-        let latests = try!(client.fetch_topic_offsets(topic, FetchOffset::Latest));
+        let latests = client.fetch_topic_offsets(topic, FetchOffset::Latest)?;
 
         for l in latests {
-            let off = self.offsets.get_mut(l.partition as usize).expect(
-                "[topic offset] non-existent partition",
-            );
+            let off = self
+                .offsets
+                .get_mut(l.partition as usize)
+                .expect("[topic offset] non-existent partition");
             off.prev_latest = off.curr_latest;
             off.curr_latest = l.offset;
         }
 
         if !group.is_empty() {
             // ~ get the current group offsets
-            let groups = try!(client.fetch_group_topic_offsets(group, topic));
+            let groups = client.fetch_group_topic_offsets(group, topic)?;
             for g in groups {
-                let off = self.offsets.get_mut(g.partition as usize).expect(
-                    "[group offset] non-existent partition",
-                );
+                let off = self
+                    .offsets
+                    .get_mut(g.partition as usize)
+                    .expect("[group offset] non-existent partition");
 
                 // ~ it's quite likely that we fetched group offsets
                 // which are a bit ahead of the topic's latest offset
@@ -178,7 +179,7 @@ struct Printer<W> {
 impl<W: Write> Printer<W> {
     fn new(out: W, cfg: &Config) -> Printer<W> {
         Printer {
-            out: out,
+            out,
             timefmt: "%H:%M:%S".into(),
             fmt_buf: String::with_capacity(30),
             out_buf: String::with_capacity(160),
@@ -223,7 +224,7 @@ impl<W: Write> Printer<W> {
         }
         {
             // ~ print
-            try!(self.out.write_all(self.out_buf.as_bytes()));
+            self.out.write_all(self.out_buf.as_bytes())?;
             Ok(())
         }
     }
@@ -235,8 +236,11 @@ impl<W: Write> Printer<W> {
             use std::fmt::Write;
 
             self.fmt_buf.clear();
-            let _ =
-                write!(self.fmt_buf, "{}", time.strftime(&self.timefmt).expect("invalid timefmt"));
+            let _ = write!(
+                self.fmt_buf,
+                "{}",
+                time.strftime(&self.timefmt).expect("invalid timefmt")
+            );
             let _ = write!(self.out_buf, "{1:<0$}", self.time_width, self.fmt_buf);
             if self.print_summary {
                 let mut prev_latest = 0;
@@ -246,9 +250,13 @@ impl<W: Write> Printer<W> {
                     macro_rules! cond_add {
                         ($v:ident) => {
                             if $v != -1 {
-                                if p.$v < 0 { $v = -1; } else { $v += p.$v; }
+                                if p.$v < 0 {
+                                    $v = -1;
+                                } else {
+                                    $v += p.$v;
+                                }
                             }
-                        }
+                        };
                     };
                     cond_add!(prev_latest);
                     cond_add!(curr_latest);
@@ -282,7 +290,7 @@ impl<W: Write> Printer<W> {
             }
         }
         self.out_buf.push('\n');
-        try!(self.out.write_all(self.out_buf.as_bytes()));
+        self.out.write_all(self.out_buf.as_bytes())?;
         Ok(())
     }
 }
@@ -305,19 +313,33 @@ impl Config {
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
-        opts.optopt("", "brokers", "Specify kafka bootstrap brokers (comma separated)", "HOSTS");
+        opts.optopt(
+            "",
+            "brokers",
+            "Specify kafka bootstrap brokers (comma separated)",
+            "HOSTS",
+        );
         opts.optopt("", "topic", "Specify the topic to monitor", "TOPIC");
         opts.optopt("", "group", "Specify the group to monitor", "GROUP");
-        opts.optopt("", "storage", "Specify offset store [zookeeper, kafka]", "STORE");
+        opts.optopt(
+            "",
+            "storage",
+            "Specify offset store [zookeeper, kafka]",
+            "STORE",
+        );
         opts.optopt("", "sleep", "Specify the sleep time", "SECS");
-        opts.optflag("", "partitions", "Print each partition instead of the summary");
+        opts.optflag(
+            "",
+            "partitions",
+            "Print each partition instead of the summary",
+        );
         opts.optflag("", "no-growth", "Don't print offset growth");
         opts.optflag(
             "",
             "committed-not-yet-consumed",
             "Assume commited group offsets specify \
-                      messages the group will start consuming \
-                      (including those at these offsets)",
+             messages the group will start consuming \
+             (including those at these offsets)",
         );
 
         let m = match opts.parse(&args[1..]) {
@@ -346,7 +368,8 @@ impl Config {
             }
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
+            brokers: m
+                .opt_str("brokers")
                 .unwrap_or_else(|| "localhost:9092".to_owned())
                 .split(',')
                 .map(|s| s.trim().to_owned())

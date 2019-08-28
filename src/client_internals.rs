@@ -1,7 +1,7 @@
 //! A crate private module to expose `KafkaClient` internals for use
 //! within this crate but not outside of it.
 
-use super::client::ProduceMessage;
+use super::client::{ProduceConfirm, ProduceMessage};
 
 use crate::error::Result;
 

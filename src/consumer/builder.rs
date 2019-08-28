@@ -1,17 +1,16 @@
+use crate::client::GroupOffsetStorage;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::client::{self};
+use crate::client::{self, FetchOffset, KafkaClient, SecurityConfig};
 use crate::error::{ErrorKind, Result};
 
-use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
+use super::assignment;
 use super::config::Config;
 use super::state::State;
-use super::assignment;
+use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
 
 #[cfg(feature = "security")]
-
-
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
 
@@ -228,7 +227,10 @@ impl Builder {
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {
             Some(client) => (client, false),
-            None => (Self::new_kafka_client(self.hosts, self.security_config), true),
+            None => (
+                Self::new_kafka_client(self.hosts, self.security_config),
+                true,
+            ),
         };
         // ~ apply configuration settings
         client.set_fetch_max_wait_time(self.fetch_max_wait_time)?;
@@ -250,7 +252,10 @@ impl Builder {
             retry_max_bytes_limit: self.retry_max_bytes_limit,
         };
         let state = State::new(&mut client, &config, assignment::from_map(self.assignments))?;
-        debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}", config, state);
+        debug!(
+            "initialized: Consumer {{ config: {:?}, state: {:?} }}",
+            config, state
+        );
         Ok(Consumer {
             client,
             state,

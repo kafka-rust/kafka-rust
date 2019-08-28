@@ -1,7 +1,6 @@
-extern crate kafka;
 extern crate env_logger;
 
-use kafka::client::{KafkaClient, FetchPartition};
+use kafka::client::{FetchPartition, KafkaClient};
 
 /// This program demonstrates the low level api for fetching messages.
 /// Please look at examles/consume.rs for an easier to use API.
@@ -15,12 +14,8 @@ fn main() {
 
     println!(
         "About to fetch messages at {} from: {} (partition {}, offset {}) ",
-        broker,
-        topic,
-        partition,
-        offset
+        broker, topic, partition, offset
     );
-
 
     let mut client = KafkaClient::new(vec![broker.to_owned()]);
     if let Err(e) = client.load_metadata_all() {
@@ -50,7 +45,7 @@ fn main() {
                             &Ok(ref data) => {
                                 println!(
                                     "topic: {} / partition: {} / latest available message \
-                                          offset: {}",
+                                     offset: {}",
                                     t.topic(),
                                     p.partition(),
                                     data.highwatermark_offset()
@@ -58,7 +53,7 @@ fn main() {
                                 for msg in data.messages() {
                                     println!(
                                         "topic: {} / partition: {} / message.offset: {} / \
-                                              message.len: {}",
+                                         message.len: {}",
                                         t.topic(),
                                         p.partition(),
                                         msg.offset,
