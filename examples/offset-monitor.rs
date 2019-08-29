@@ -4,7 +4,6 @@ extern crate time;
 #[macro_use]
 extern crate error_chain;
 
-use std::ascii::AsciiExt;
 use std::cmp;
 use std::env;
 use std::io::{self, stderr, stdout, BufWriter, Write};
@@ -18,7 +17,7 @@ use kafka::client::{FetchOffset, GroupOffsetStorage, KafkaClient};
 /// the lag for a particular consumer group. Dumps the offset/lag of
 /// the monitored topic/group to stdout every few seconds.
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     macro_rules! abort {
         ($e:expr) => {{

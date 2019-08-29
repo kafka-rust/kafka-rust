@@ -61,10 +61,10 @@
 
 use crate::client::{self, KafkaClient, SecurityConfig};
 use crate::error::{ErrorKind, Result};
-use ref_slice::ref_slice;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
+use std::slice;
 use std::time::Duration;
 use twox_hash::XxHash32;
 
@@ -252,7 +252,7 @@ impl<P: Partitioner> Producer<P> {
         K: AsBytes,
         V: AsBytes,
     {
-        let mut rs = self.send_all(ref_slice(rec))?;
+        let mut rs = self.send_all(slice::from_ref(rec))?;
 
         if self.config.required_acks == 0 {
             // ~ with no required_acks we get no response and

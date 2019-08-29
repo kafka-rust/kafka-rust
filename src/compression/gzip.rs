@@ -7,7 +7,7 @@ use flate2::Compression;
 use crate::error::Result;
 
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
-    let mut e = GzEncoder::new(Vec::new(), Compression::Default);
+    let mut e = GzEncoder::new(Vec::new(), Compression::default());
 
     e.write_all(src)?;
     let compressed_bytes = e.finish()?;
@@ -15,7 +15,7 @@ pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
 }
 
 pub fn uncompress<T: Read>(src: T) -> Result<Vec<u8>> {
-    let mut d = GzDecoder::new(src)?;
+    let mut d = GzDecoder::new(src);
 
     let mut buffer: Vec<u8> = Vec::new();
     match d.read_to_end(&mut buffer) {

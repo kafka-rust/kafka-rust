@@ -22,7 +22,7 @@ use kafka::producer::{AsBytes, Producer, Record, DEFAULT_ACK_TIMEOUT_MILLIS};
 /// Alternatively, messages can be read from an input file and sent do
 /// kafka in batches (the typical use-case).
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
@@ -59,7 +59,7 @@ fn produce(cfg: &Config) -> Result<()> {
     }
 }
 
-fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<()> {
+fn produce_impl(src: &mut impl BufRead, client: KafkaClient, cfg: &Config) -> Result<()> {
     let mut producer = Producer::from_client(client)
         .with_ack_timeout(cfg.ack_timeout)
         .with_required_acks(cfg.required_acks)
@@ -115,7 +115,11 @@ fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config
 // This implementation wants to be efficient.  It buffers N lines from
 // the source and sends these in batches to Kafka.  Line buffers
 // across batches are re-used for the sake of avoiding allocations.
-fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Config) -> Result<()> {
+fn produce_impl_inbatches(
+    producer: &mut Producer,
+    src: &mut impl BufRead,
+    cfg: &Config,
+) -> Result<()> {
     assert!(cfg.batch_size > 1);
 
     // ~ a buffer of prepared records to be send in a batch to Kafka
@@ -133,7 +137,7 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
             send_batch(producer, &rec_stash)?;
             next_rec = 0;
         }
-        let mut rec = &mut rec_stash[next_rec];
+        let rec = &mut rec_stash[next_rec];
         rec.value.clear();
         if src.read_line(&mut rec.value)? == 0 {
             break; // ~ EOF reached
@@ -192,8 +196,6 @@ struct Config {
 
 impl Config {
     fn from_cmdline() -> Result<Config> {
-        use std::ascii::AsciiExt;
-
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");

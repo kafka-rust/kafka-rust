@@ -3,7 +3,6 @@ extern crate getopts;
 #[macro_use]
 extern crate error_chain;
 
-use std::ascii::AsciiExt;
 use std::io::{self, Write};
 use std::time::Duration;
 use std::{env, process};
@@ -13,7 +12,7 @@ use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 /// This is a very simple command line application reading from a
 /// specific kafka topic and dumping the messages to standard output.
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,

@@ -20,7 +20,7 @@ mod example {
     use self::openssl::x509::X509_FILETYPE_PEM;
 
     pub fn main() {
-        env_logger::init().unwrap();
+        env_logger::init();
 
         // ~ parse the command line arguments
         let cfg = match Config::from_cmdline() {
@@ -34,27 +34,30 @@ mod example {
         // ~ OpenSSL offers a variety of complex configurations. Here is an example:
         let mut builder = SslConnectorBuilder::new(SslMethod::tls()).unwrap();
         {
-            let mut ctx = builder.builder_mut();
-            ctx.set_cipher_list("DEFAULT").unwrap();
-            ctx.set_verify(SSL_VERIFY_PEER);
+            builder.set_cipher_list("DEFAULT").unwrap();
+            builder.set_verify(SSL_VERIFY_PEER);
             if let (Some(ccert), Some(ckey)) = (cfg.client_cert, cfg.client_key) {
                 info!("loading cert-file={}, key-file={}", ccert, ckey);
 
-                ctx.set_certificate_file(ccert, X509_FILETYPE_PEM).unwrap();
-                ctx.set_private_key_file(ckey, X509_FILETYPE_PEM).unwrap();
-                ctx.check_private_key().unwrap();
+                builder
+                    .set_certificate_file(ccert, X509_FILETYPE_PEM)
+                    .unwrap();
+                builder
+                    .set_private_key_file(ckey, X509_FILETYPE_PEM)
+                    .unwrap();
+                builder.check_private_key().unwrap();
             }
 
             if let Some(ca_cert) = cfg.ca_cert {
                 info!("loading ca-file={}", ca_cert);
 
-                ctx.set_ca_file(ca_cert).unwrap();
+                builder.set_ca_file(ca_cert).unwrap();
             } else {
                 // ~ allow client specify the CAs through the default paths:
                 // "These locations are read from the SSL_CERT_FILE and
                 // SSL_CERT_DIR environment variables if present, or defaults
                 // specified at OpenSSL build time otherwise."
-                ctx.set_default_verify_paths().unwrap();
+                builder.set_default_verify_paths().unwrap();
             }
         }
 
@@ -164,7 +167,7 @@ mod example {
             }
 
             Ok(Config {
-                brokers: brokers,
+                brokers,
                 client_cert: m.opt_str("client-cert"),
                 client_key: m.opt_str("client-key"),
                 ca_cert: m.opt_str("ca-cert"),

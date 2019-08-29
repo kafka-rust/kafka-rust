@@ -11,7 +11,7 @@ use kafka::client::{FetchOffset, KafkaClient};
 
 /// Dumps available topic metadata to stdout.
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
@@ -99,7 +99,7 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
 
         for (topic, offsets) in offsets {
-            let mut offs = m.get_mut(&topic).expect("unknown topic");
+            let offs = m.get_mut(&topic).expect("unknown topic");
             for offset in offsets {
                 offs[offset.partition as usize].earliest = offset.offset;
             }
