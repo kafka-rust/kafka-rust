@@ -56,7 +56,7 @@ fn run(cfg: Config) -> Result<()> {
 
         let mut buf = BufWriter::with_capacity(1024, stdout());
         for name in names {
-            let _ = write!(buf, "topic: {}\n", name);
+            let _ = writeln!(buf, "topic: {}", name);
         }
         bail!("choose a topic");
     }
@@ -373,10 +373,10 @@ impl Config {
                 .split(',')
                 .map(|s| s.trim().to_owned())
                 .collect(),
-            topic: m.opt_str("topic").unwrap_or_else(|| String::new()),
-            group: m.opt_str("group").unwrap_or_else(|| String::new()),
-            offset_storage: offset_storage,
-            period: period,
+            topic: m.opt_str("topic").unwrap_or_else(String::new),
+            group: m.opt_str("group").unwrap_or_else(String::new),
+            offset_storage,
+            period,
             commited_not_consumed: m.opt_present("committed-not-yet-consumed"),
             summary: !m.opt_present("partitions"),
             diff: !m.opt_present("no-growth"),

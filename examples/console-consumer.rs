@@ -55,7 +55,7 @@ fn process(cfg: Config) -> Result<()> {
                 // ~ clear the output buffer
                 unsafe { buf.set_len(0) };
                 // ~ format the message for output
-                let _ = write!(buf, "{}:{}@{}:\n", ms.topic(), ms.partition(), m.offset);
+                let _ = writeln!(buf, "{}:{}@{}:", ms.topic(), ms.partition(), m.offset);
                 buf.extend_from_slice(m.value);
                 buf.push(b'\n');
                 // ~ write to output channel
@@ -156,11 +156,11 @@ impl Config {
             }
         }
         Ok(Config {
-            brokers: brokers,
-            group: m.opt_str("group").unwrap_or_else(|| String::new()),
-            topics: topics,
+            brokers,
+            group: m.opt_str("group").unwrap_or_else(String::new),
+            topics,
             no_commit: m.opt_present("no-commit"),
-            offset_storage: offset_storage,
+            offset_storage,
             fallback_offset: if m.opt_present("earliest") {
                 FetchOffset::Earliest
             } else {

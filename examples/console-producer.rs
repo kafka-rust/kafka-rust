@@ -94,7 +94,11 @@ impl DerefMut for Trimmed {
     }
 }
 
-fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config) -> Result<()> {
+fn produce_impl_nobatch(
+    producer: &mut Producer,
+    src: &mut impl BufRead,
+    cfg: &Config,
+) -> Result<()> {
     let mut stderr = stderr();
     let mut rec = Record::from_value(&cfg.topic, Trimmed(String::new()));
     loop {

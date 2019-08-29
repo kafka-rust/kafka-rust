@@ -14,18 +14,14 @@ fn main() {
     let broker = "localhost:9092";
     let topic = "my-topic";
 
-    let data = "hello, kafka".as_bytes();
+    let data = b"hello, kafka";
 
     if let Err(e) = produce_message(data, topic, vec![broker.to_owned()]) {
         println!("Failed producing messages: {}", e);
     }
 }
 
-fn produce_message<'a, 'b>(
-    data: &'a [u8],
-    topic: &'b str,
-    brokers: Vec<String>,
-) -> Result<(), KafkaError> {
+fn produce_message(data: &[u8], topic: &str, brokers: Vec<String>) -> Result<(), KafkaError> {
     println!("About to publish a message at {:?} to: {}", brokers, topic);
 
     // ~ create a producer. this is a relatively costly operation, so

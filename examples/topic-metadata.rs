@@ -157,7 +157,7 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
                 if cfg.topic_separators && ti != 0 {
                     out_buf.push('\n');
                 }
-                let _ = write!(out_buf, "{1:0$} - not available!\n", topic_width, topic);
+                let _ = writeln!(out_buf, "{1:0$} - not available!", topic_width, topic);
                 {
                     use std::io::Write;
                     let _ = out.write_all(out_buf.as_bytes());
