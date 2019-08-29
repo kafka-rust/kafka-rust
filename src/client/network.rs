@@ -13,7 +13,6 @@ use std::time::{Duration, Instant};
 
 #[cfg(feature = "security")]
 use openssl::ssl::SslConnector;
-use openssl::ssl::SslStream;
 
 use crate::error::Result;
 
@@ -32,7 +31,7 @@ impl SecurityConfig {
     /// In the future this will also support a kerbos via #51.
     pub fn new(connector: SslConnector) -> Self {
         SecurityConfig {
-            connector: connector,
+            connector,
             verify_hostname: true,
         }
     }
@@ -40,7 +39,7 @@ impl SecurityConfig {
     /// Initiates a client-side TLS session with/without performing hostname verification.
     pub fn with_hostname_verification(self, verify_hostname: bool) -> SecurityConfig {
         SecurityConfig {
-            verify_hostname: verify_hostname,
+            verify_hostname,
             ..self
         }
     }
@@ -148,8 +147,8 @@ impl Connections {
             conns: HashMap::new(),
             state: State::new(),
             config: Config {
-                rw_timeout: rw_timeout,
-                idle_timeout: idle_timeout,
+                rw_timeout,
+                idle_timeout,
             },
         }
     }
@@ -169,8 +168,8 @@ impl Connections {
             conns: HashMap::new(),
             state: State::new(),
             config: Config {
-                rw_timeout: rw_timeout,
-                idle_timeout: idle_timeout,
+                rw_timeout,
+                idle_timeout,
                 security_config: security,
             },
         }

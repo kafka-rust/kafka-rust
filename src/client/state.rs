@@ -416,8 +416,8 @@ mod tests {
     fn new_partition(id: i32, leader: i32) -> md::PartitionMetadata {
         md::PartitionMetadata {
             error: 0,
-            id: id,
-            leader: leader,
+            id,
+            leader,
             replicas: vec![],
             isr: vec![],
         }

@@ -605,7 +605,7 @@ impl DefaultPartitioner {
     /// builder to hash message keys.
     pub fn with_hasher<B: BuildHasher>(hash_builder: B) -> DefaultPartitioner<B> {
         DefaultPartitioner {
-            hash_builder: hash_builder.into(),
+            hash_builder,
             cntr: 0,
         }
     }
@@ -659,7 +659,7 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
                 // ~ no key available, determine a partition from the
                 // available ones.
                 let avail = partitions.available_ids();
-                if avail.len() > 0 {
+                if !avail.is_empty() {
                     rec.partition = avail[self.cntr as usize % avail.len()];
                     // ~ update internal state so that the next time we choose
                     // a different partition

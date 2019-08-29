@@ -139,10 +139,10 @@ pub trait FromByte {
 }
 
 macro_rules! dec_helper {
-    ($val: expr, $dest:expr) => {{
+    ($val: expr, $dest: expr) => {{
         match $val {
             Ok(val) => {
-                let length = val;
+                $dest = val;
                 Ok(())
             }
             Err(e) => Err(From::from(e)),
@@ -150,10 +150,10 @@ macro_rules! dec_helper {
     }};
 }
 macro_rules! decode {
-    ($src:expr, $dest:expr) => {{
+    ($src:expr, $dest: expr) => {{
         dec_helper!($src.read_i8(), $dest)
     }};
-    ($src:expr, $method:ident, $dest:expr) => {{
+    ($src:expr, $method:ident, $dest: expr) => {{
         dec_helper!($src.$method::<BigEndian>(), $dest)
     }};
 }
@@ -162,7 +162,7 @@ impl FromByte for i8 {
     type R = i8;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        decode!(buffer, self)
+        decode!(buffer, *self)
     }
 }
 
@@ -170,7 +170,7 @@ impl FromByte for i16 {
     type R = i16;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        decode!(buffer, read_i16, self)
+        decode!(buffer, read_i16, *self)
     }
 }
 
@@ -178,14 +178,14 @@ impl FromByte for i32 {
     type R = i32;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        decode!(buffer, read_i32, self)
+        decode!(buffer, read_i32, *self)
     }
 }
 
 impl FromByte for i64 {
     type R = i64;
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        decode!(buffer, read_i64, self)
+        decode!(buffer, read_i64, *self)
     }
 }
 
@@ -193,7 +193,7 @@ impl FromByte for String {
     type R = String;
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i16 = 0;
-        if let Err(e) = decode!(buffer, read_i16, &mut length) {
+        if let Err(e) = decode!(buffer, read_i16, length) {
             return Err(e);
         }
         if length <= 0 {
@@ -213,7 +213,7 @@ impl<V: FromByte + Default> FromByte for Vec<V> {
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i32 = 0;
-        if let Err(e) = decode!(buffer, read_i32, &mut length) {
+        if let Err(e) = decode!(buffer, read_i32, length) {
             return Err(e);
         }
         if length <= 0 {
@@ -234,7 +234,7 @@ impl FromByte for Vec<u8> {
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i32 = 0;
-        match decode!(buffer, read_i32, &mut length) {
+        match decode!(buffer, read_i32, length) {
             Ok(_) => {}
             Err(e) => return Err(e),
         }

@@ -9,7 +9,7 @@ use crc::crc32;
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {
     ($($expr:expr),*) => ({
-        $(($expr)?;)*;
+        $(($expr)?;)*
         Ok(())
     })
 }
@@ -184,7 +184,7 @@ pub fn to_millis_i32(d: Duration) -> Result<i32> {
     let m = d
         .as_secs()
         .saturating_mul(1_000)
-        .saturating_add((d.subsec_nanos() / 1_000_000) as u64);
+        .saturating_add(u64::from(d.subsec_millis()));
     if m > i32::MAX as u64 {
         bail!(ErrorKind::InvalidDuration)
     } else {
