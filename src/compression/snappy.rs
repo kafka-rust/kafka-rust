@@ -115,15 +115,14 @@ impl<'a> SnappyReader<'a> {
         })
     }
 
+    #[allow(clippy::if_same_then_else)]
     fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if self.uncompressed_pos < self.uncompressed_chunk.len() {
             self.read_uncompressed(buf)
+        } else if self.next_chunk()? {
+            self.read_uncompressed(buf)
         } else {
-            if self.next_chunk()? {
-                self.read_uncompressed(buf)
-            } else {
-                Ok(0)
-            }
+            Ok(0)
         }
     }
 

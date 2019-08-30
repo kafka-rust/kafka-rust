@@ -162,14 +162,14 @@ pub enum GroupOffsetStorage {
 }
 
 impl GroupOffsetStorage {
-    fn offset_fetch_version(&self) -> protocol::OffsetFetchVersion {
-        match *self {
+    fn offset_fetch_version(self) -> protocol::OffsetFetchVersion {
+        match self {
             GroupOffsetStorage::Zookeeper => protocol::OffsetFetchVersion::V0,
             GroupOffsetStorage::Kafka => protocol::OffsetFetchVersion::V1,
         }
     }
-    fn offset_commit_version(&self) -> protocol::OffsetCommitVersion {
-        match *self {
+    fn offset_commit_version(self) -> protocol::OffsetCommitVersion {
+        match self {
             GroupOffsetStorage::Zookeeper => protocol::OffsetCommitVersion::V0,
             // ~ if we knew we'll be communicating with a kafka 0.9+
             // broker we could set the commit-version to V2; however,
@@ -406,7 +406,7 @@ impl KafkaClient {
                 default_conn_rw_timeout(),
                 Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
             ),
-            state: state::ClientState::new(),
+            state: state::ClientState::default(),
         }
     }
 
@@ -475,7 +475,7 @@ impl KafkaClient {
                 Duration::from_millis(DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS),
                 Some(security),
             ),
-            state: state::ClientState::new(),
+            state: state::ClientState::default(),
         }
     }
 
@@ -894,7 +894,7 @@ impl KafkaClient {
                         }
                     };
                     for p in tp.partitions {
-                        let partition_offset = match p.into_offset() {
+                        let partition_offset = match p.to_offset() {
                             Ok(po) => po,
                             Err(code) => {
                                 err = Some((p.partition, code));
@@ -949,7 +949,7 @@ impl KafkaClient {
         let topic = topic.as_ref();
 
         let mut m = self.fetch_offsets(&[topic], offset)?;
-        let offs = m.remove(topic).unwrap_or(vec![]);
+        let offs = m.remove(topic).unwrap_or_default();
         if offs.is_empty() {
             bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition))
         } else {
@@ -1350,7 +1350,7 @@ fn __get_group_coordinator<'a>(
         );
         let r = __send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req)?;
         let retry_code;
-        match r.to_result() {
+        match r.into_result() {
             Ok(r) => {
                 return Ok(state.set_group_coordinator(group, &r));
             }

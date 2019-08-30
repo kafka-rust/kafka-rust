@@ -289,7 +289,7 @@ impl<P: Partitioner> Producer<P> {
         client.internal_produce_messages(
             config.required_acks,
             config.ack_timeout,
-            recs.into_iter().map(|r| {
+            recs.iter().map(|r| {
                 let mut m = client::ProduceMessage {
                     key: to_option(r.key.as_bytes()),
                     value: to_option(r.value.as_bytes()),

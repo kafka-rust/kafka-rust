@@ -63,7 +63,7 @@ impl<'a, 'b> FetchRequest<'a, 'b> {
     pub fn add(&mut self, topic: &'b str, partition: i32, offset: i64, max_bytes: i32) {
         self.topic_partitions
             .entry(topic)
-            .or_insert_with(|| TopicPartitionFetchRequest::new())
+            .or_insert_with(TopicPartitionFetchRequest::new)
             .add(partition, offset, max_bytes)
     }
 

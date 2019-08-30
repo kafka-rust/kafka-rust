@@ -6,7 +6,7 @@ use std::u32;
 use crate::error::Result;
 use crate::protocol;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ClientState {
     // ~ the last correlation used when communicating with kafka
     // (see `#next_correlation_id`)
@@ -81,7 +81,7 @@ impl BrokerRef {
         BrokerRef { _index: index }
     }
 
-    fn index(&self) -> usize {
+    fn index(self) -> usize {
         self._index as usize
     }
 
@@ -200,15 +200,6 @@ impl<'a> Iterator for TopicNames<'a> {
 }
 
 impl ClientState {
-    pub fn new() -> Self {
-        ClientState {
-            correlation: 0,
-            brokers: Vec::new(),
-            topic_partitions: HashMap::new(),
-            group_coordinators: HashMap::new(),
-        }
-    }
-
     pub fn num_topics(&self) -> usize {
         self.topic_partitions.len()
     }
@@ -630,7 +621,7 @@ mod tests {
 
     #[test]
     fn test_loading_metadata() {
-        let mut state = ClientState::new();
+        let mut state = ClientState::default();
         // Test loading metadata into a new, empty client state.
         state.update_metadata(metadata_response_initial()).unwrap();
         assert_initial_metadata_load(&state);

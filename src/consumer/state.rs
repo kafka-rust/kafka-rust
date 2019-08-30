@@ -91,10 +91,7 @@ impl State {
                 }
                 subs
             };
-            let n = subscriptions
-                .iter()
-                .map(|s| s.partitions.len())
-                .fold(0, |acc, n| acc + n);
+            let n = subscriptions.iter().map(|s| s.partitions.len()).sum();
             let consumed =
                 load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n)?;
 
@@ -120,14 +117,14 @@ impl State {
 
     /// Returns a wrapper around `self.fetch_offsets` for nice dumping
     /// in debug messages
-    pub fn fetch_offsets_debug<'a>(&'a self) -> OffsetsMapDebug<'a, FetchState> {
+    pub fn fetch_offsets_debug(&self) -> OffsetsMapDebug<FetchState> {
         OffsetsMapDebug {
             state: self,
             offsets: &self.fetch_offsets,
         }
     }
 
-    pub fn consumed_offsets_debug<'a>(&'a self) -> OffsetsMapDebug<'a, ConsumedOffset> {
+    pub fn consumed_offsets_debug(&self) -> OffsetsMapDebug<ConsumedOffset> {
         OffsetsMapDebug {
             state: self,
             offsets: &self.consumed_offsets,

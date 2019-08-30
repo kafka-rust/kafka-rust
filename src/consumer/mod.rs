@@ -255,8 +255,8 @@ impl Consumer {
                     // transparently for the caller.
                     let data = match p.data() {
                         // XXX need to prevent updating fetch_offsets in case we're gonna fail here
-                        &Err(ref e) => return Err(e.clone()),
-                        &Ok(ref data) => data,
+                        Err(ref e) => return Err(e.clone()),
+                        Ok(ref data) => data,
                     };
 
                     let mut fetch_state = self
@@ -452,7 +452,7 @@ impl Consumer {
                     CommitOffset::new(topic, tp.partition, o.offset + 1)
                 }),
         )?;
-        for (_, co) in &mut state.consumed_offsets {
+        for co in &mut state.consumed_offsets.values_mut() {
             if co.dirty {
                 co.dirty = false;
             }
@@ -546,10 +546,10 @@ impl<'a> Iterator for MessageSetsIter<'a> {
                 // ~ skip errornous partitions
                 // ~ skip empty partitions
                 match p.data() {
-                    &Err(_) => {
+                    Err(_) => {
                         continue;
                     }
-                    &Ok(ref pdata) => {
+                    Ok(ref pdata) => {
                         let msgs = pdata.messages();
                         if msgs.is_empty() {
                             continue;
