@@ -73,24 +73,31 @@ scala_version_for_kafka() {
 
 vers=$@
 
-if [[ -z "$vers" ]]; then
+if [[ -z "${vers}" ]]; then
   vers=$DEFAULT_VERS
 fi
 
-if [[ -z "$COMPRESSIONS" ]]; then
+# we want to tell the difference between explicitly set to empty vs
+# unset, so we do the +x expansion. See
+# https://stackoverflow.com/questions/3601515/how-to-check-if-a-variable-is-set-in-bash
+if [[ -z "${COMPRESSIONS+x}" ]]; then
   COMPRESSIONS=$DEFAULT_COMPRESSIONS
 fi
 
-if [[ -z "$SECURES" ]]; then
+# if completely unset, set defaults
+if [[ -z "${SECURES+x}" ]]; then
   SECURES=$DEFAULT_SECURES
+
+# if it is explicitly set to empty, set it to just : so the for loop will
+# yield once with the empty string
+elif [[ -z "${SECURES}" ]]; then
+  SECURES=':'
 fi
 
 IFS=':'
 for ver in $vers; do
   for compression in $COMPRESSIONS; do
     for secure in $SECURES; do
-
-      
       if [[ ! -z "$secure" ]] && echo $ver | grep '^0.8'; then
         echo "Skipping secure test for 0.8 -- unsupported"
         continue
