@@ -29,7 +29,7 @@ mod integration {
     use openssl::x509::X509;
     use openssl::pkey::PKey;
     use openssl::rsa::Rsa;
-    use openssl::ssl::{SslConnectorBuilder, SslMethod, SSL_VERIFY_NONE};
+    use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 
     mod client;
     mod consumer_producer;
@@ -112,14 +112,11 @@ mod integration {
     pub(crate) fn get_security_config(
         keypair: openssl::x509::X509,
     ) -> Result<SecurityConfig, openssl::error::ErrorStack> {
-        let mut builder = SslConnectorBuilder::new(SslMethod::tls()).unwrap();
+        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
 
-        {
-            let ctx = builder.builder_mut();
-            ctx.set_cipher_list("DEFAULT").unwrap();
-            ctx.set_certificate(&*keypair).unwrap();
-            ctx.set_verify(SSL_VERIFY_NONE);
-        }
+        builder.set_cipher_list("DEFAULT").unwrap();
+        builder.set_certificate(&*keypair).unwrap();
+        builder.set_verify(SslVerifyMode::NONE);
 
         let connector = builder.build();
         let security_config = SecurityConfig::new(connector);
