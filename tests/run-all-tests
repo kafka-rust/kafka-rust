@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Usage: ./run-all-tests <Kafka version>...
+# Usage: ./run-all-tests <Kafka versions separated by ':'>...
 #
 # This script will automatically set up the Docker environment for Kafka, and then
 # run all cargo tests, including integration tests, for each Kafka version specified.
 # For example, running:
 #
-# ./run-all-tests 0.8.2.2 0.9.0.0
+# ./run-all-tests 0.8.2.2:0.9.0.0
 #
 # will run the tests against Kafka versions 0.8.2.2 and 0.9.0.0. The arguments
 # should correspond to a Docker tag of the `wurstmeister/kafka` image, so any valid
@@ -23,9 +23,10 @@ stop_docker() {
 }
 
 start_docker() {
-  # pull all images before starting anything
+  # pull zookeeper and build the kafka image
   docker-compose pull
-  docker-compose up -d
+  docker-compose build kafka
+  docker-compose up -d zookeeper kafka
 
   # wait for Kafka to be ready and the test topic to be created
   ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test\"'"
@@ -37,6 +38,7 @@ setup() {
   (
     cd "$(dirname $0)"
     stop_docker # just in case something went wrong with a previous shutdown
+
     start_docker
   )
 }
@@ -53,26 +55,79 @@ teardown() {
 
 # need to run tests serially to avoid the tests stepping on each others' toes
 export RUST_TEST_THREADS=1
-DEFAULT_VERS='0.8.2.2 0.9.0.1 0.10.2.1 latest'
+DEFAULT_VERS='0.8.2.2:0.9.0.1:0.10.2.1:0.11.0.1:1.0.0'
+DEFAULT_COMPRESSIONS='NONE:SNAPPY:GZIP'
+DEFAULT_SECURES=':secure'
+
+declare SCALA_VERS_0_8_2_2='2.11'
+declare SCALA_VERS_0_9_0_1='2.11'
+declare SCALA_VERS_0_10_2_1='2.12'
+declare SCALA_VERS_0_11_0_1='2.12'
+declare SCALA_VERS_1_0_0='2.12'
+
+scala_version_for_kafka() {
+    local kv=$(echo $1 | sed 's/\./_/g')
+    local sv="SCALA_VERS_${kv}"
+    printf '%s' "${!sv}"
+}
+
 vers=$@
 
-if [[ -z "$vers" ]]; then
+if [[ -z "${vers}" ]]; then
   vers=$DEFAULT_VERS
 fi
 
+# we want to tell the difference between explicitly set to empty vs
+# unset, so we do the +x expansion. See
+# https://stackoverflow.com/questions/3601515/how-to-check-if-a-variable-is-set-in-bash
+if [[ -z "${COMPRESSIONS+x}" ]]; then
+  COMPRESSIONS=$DEFAULT_COMPRESSIONS
+fi
+
+# if completely unset, set defaults
+if [[ -z "${SECURES+x}" ]]; then
+  SECURES=$DEFAULT_SECURES
+
+# if it is explicitly set to empty, set it to just : so the for loop will
+# yield once with the empty string
+elif [[ -z "${SECURES}" ]]; then
+  SECURES=':'
+fi
+
+IFS=':'
 for ver in $vers; do
-  export KAFKA_VER=$ver
-  echo "Running tests with KAFKA_VER=$KAFKA_VER"
+  for compression in $COMPRESSIONS; do
+    for secure in $SECURES; do
+      if [[ ! -z "$secure" ]] && echo $ver | grep '^0.8'; then
+        echo "Skipping secure test for 0.8 -- unsupported"
+        continue
+      fi
 
-  setup || {
-    teardown
-    exit 1
-  }
+      export KAFKA_VER=$ver
+      export KAFKA_CLIENT_COMPRESSION=$compression
+      export KAFKA_CLIENT_SECURE=$secure
+      export SCALA_VER=$(scala_version_for_kafka "${ver}")
+      if [ "x$SCALA_VER" = "x" ] ; then
+          echo >&2 "Unknown Scala version for Kafka $KAFKA_VER"
+          exit 1
+      fi
 
-  cargo test --features integration_tests || {
-    teardown
-    exit 1
-  }
+      echo -n "Running tests with KAFKA_VER=$KAFKA_VER, "
+      echo -n "SCALA_VER=$SCALA_VER, "
+      echo -n "KAFKA_CLIENT_COMPRESSION=$compression, "
+      echo "KAFKA_CLIENT_SECURE=$secure"
 
-  teardown
+      setup || {
+        teardown
+        exit 1
+      }
+
+      cargo test --features integration_tests || {
+        teardown
+        exit 1
+      }
+
+      teardown
+    done
+  done
 done

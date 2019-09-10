@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.0] 2019-09-10
+
+* Upgrade openssl to v0.10. This may be a **breaking change** for your
+  application code, since openssl v0.10 is a breaking change. Thanks to @l4l!
+* Run integration tests on various configurations with compression and
+  encryption.
+
 ## [0.7.0] 2017-10-17
 
 ### Fixed

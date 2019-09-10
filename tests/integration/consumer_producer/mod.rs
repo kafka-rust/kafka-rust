@@ -15,7 +15,9 @@ use rand::Rng;
 const RANDOM_MESSAGE_SIZE: usize = 32;
 
 pub fn test_producer() -> Producer {
-    Producer::from_hosts(vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()])
+    let client = new_ready_kafka_client();
+
+    Producer::from_client(client)
         .with_ack_timeout(Duration::from_secs(1))
         .with_required_acks(RequiredAcks::All)
         .create()
@@ -38,7 +40,7 @@ macro_rules! test_consumer_config {
 
 /// Return a Consumer builder with some defaults
 pub fn test_consumer_builder() -> kafka::consumer::Builder {
-    test_consumer_config!(Consumer::from_hosts(vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()]))
+    test_consumer_config!(Consumer::from_client(new_ready_kafka_client()))
 }
 
 pub fn test_consumer() -> Consumer {

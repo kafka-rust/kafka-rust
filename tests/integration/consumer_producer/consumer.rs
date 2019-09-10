@@ -8,6 +8,8 @@ use env_logger;
 /// Tests that consuming one message works
 #[test]
 fn test_consumer_poll() {
+    let _ = env_logger::init();
+
     // poll once to set a position in the topic
     let mut consumer = test_consumer();
     let mut messages = consumer.poll().unwrap();

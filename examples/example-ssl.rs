@@ -7,18 +7,15 @@ fn main() {
 
 #[cfg(feature = "security")]
 mod example {
-    extern crate openssl;
     extern crate kafka;
-    extern crate getopts;
-    extern crate env_logger;
+    extern crate openssl;
 
     use std::env;
     use std::process;
 
     use self::kafka::client::{FetchOffset, KafkaClient, SecurityConfig};
 
-    use self::openssl::ssl::{SslConnectorBuilder, SslMethod, SSL_VERIFY_PEER};
-    use self::openssl::x509::X509_FILETYPE_PEM;
+    use self::openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
 
     pub fn main() {
         env_logger::init().unwrap();
@@ -33,40 +30,40 @@ mod example {
         };
 
         // ~ OpenSSL offers a variety of complex configurations. Here is an example:
-        let mut builder = SslConnectorBuilder::new(SslMethod::tls()).unwrap();
-        {
-            let mut ctx = builder.builder_mut();
-            ctx.set_cipher_list("DEFAULT").unwrap();
-            ctx.set_verify(SSL_VERIFY_PEER);
-            if let (Some(ccert), Some(ckey)) = (cfg.client_cert, cfg.client_key) {
-                info!("loading cert-file={}, key-file={}", ccert, ckey);
+        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+        builder.set_cipher_list("DEFAULT").unwrap();
+        builder.set_verify(SslVerifyMode::PEER);
+        if let (Some(ccert), Some(ckey)) = (cfg.client_cert, cfg.client_key) {
+            info!("loading cert-file={}, key-file={}", ccert, ckey);
 
-                ctx.set_certificate_file(ccert, X509_FILETYPE_PEM).unwrap();
-                ctx.set_private_key_file(ckey, X509_FILETYPE_PEM).unwrap();
-                ctx.check_private_key().unwrap();
-            }
+            builder
+                .set_certificate_file(ccert, SslFiletype::PEM)
+                .unwrap();
+            builder
+                .set_private_key_file(ckey, SslFiletype::PEM)
+                .unwrap();
+            builder.check_private_key().unwrap();
+        }
 
-            if let Some(ca_cert) = cfg.ca_cert {
-                info!("loading ca-file={}", ca_cert);
+        if let Some(ca_cert) = cfg.ca_cert {
+            info!("loading ca-file={}", ca_cert);
 
-                ctx.set_ca_file(ca_cert).unwrap();
-            } else {
-                // ~ allow client specify the CAs through the default paths:
-                // "These locations are read from the SSL_CERT_FILE and
-                // SSL_CERT_DIR environment variables if present, or defaults
-                // specified at OpenSSL build time otherwise."
-                ctx.set_default_verify_paths().unwrap();
-            }
+            builder.set_ca_file(ca_cert).unwrap();
+        } else {
+            // ~ allow client specify the CAs through the default paths:
+            // "These locations are read from the SSL_CERT_FILE and
+            // SSL_CERT_DIR environment variables if present, or defaults
+            // specified at OpenSSL build time otherwise."
+            builder.set_default_verify_paths().unwrap();
         }
 
         let connector = builder.build();
 
         // ~ instantiate KafkaClient with the previous OpenSSL setup
-        let mut client =
-            KafkaClient::new_secure(
-                cfg.brokers,
-                SecurityConfig::new(connector).with_hostname_verification(cfg.verify_hostname),
-            );
+        let mut client = KafkaClient::new_secure(
+            cfg.brokers,
+            SecurityConfig::new(connector).with_hostname_verification(cfg.verify_hostname),
+        );
 
         // ~ communicate with the brokers
         match client.load_metadata_all() {
@@ -121,10 +118,20 @@ mod example {
         fn from_cmdline() -> Result<Config, String> {
             let mut opts = getopts::Options::new();
             opts.optflag("h", "help", "Print this help screen");
-            opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+            opts.optopt(
+                "",
+                "brokers",
+                "Specify kafka brokers (comma separated)",
+                "HOSTS",
+            );
             opts.optopt("", "ca-cert", "Specify the trusted CA certificates", "FILE");
             opts.optopt("", "client-cert", "Specify the client certificate", "FILE");
-            opts.optopt("", "client-key", "Specify key for the client certificate", "FILE");
+            opts.optopt(
+                "",
+                "client-key",
+                "Specify key for the client certificate",
+                "FILE",
+            );
             opts.optflag(
                 "",
                 "no-hostname-verification",
@@ -142,7 +149,8 @@ mod example {
                 return Err(opts.usage(&brief));
             };
 
-            let brokers = m.opt_str("brokers")
+            let brokers = m
+                .opt_str("brokers")
                 .map(|s| {
                     s.split(',')
                         .map(|s| s.trim().to_owned())

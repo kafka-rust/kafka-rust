@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::{Read, Write};
 use std::mem;
-use std::net::{TcpStream, Shutdown};
-use std::time::{Instant, Duration};
+use std::net::{Shutdown, TcpStream};
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "security")]
 use openssl::ssl::SslConnector;
@@ -31,7 +31,7 @@ impl SecurityConfig {
     /// In the future this will also support a kerbos via #51.
     pub fn new(connector: SslConnector) -> Self {
         SecurityConfig {
-            connector: connector,
+            connector,
             verify_hostname: true,
         }
     }
@@ -39,7 +39,7 @@ impl SecurityConfig {
     /// Initiates a client-side TLS session with/without performing hostname verification.
     pub fn with_hostname_verification(self, verify_hostname: bool) -> SecurityConfig {
         SecurityConfig {
-            verify_hostname: verify_hostname,
+            verify_hostname,
             ..self
         }
     }
@@ -48,7 +48,11 @@ impl SecurityConfig {
 #[cfg(feature = "security")]
 impl fmt::Debug for SecurityConfig {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SecurityConfig {{ verify_hostname: {} }}", self.verify_hostname)
+        write!(
+            f,
+            "SecurityConfig {{ verify_hostname: {} }}",
+            self.verify_hostname
+        )
     }
 }
 
@@ -62,15 +66,19 @@ struct Pooled<T> {
 impl<T> Pooled<T> {
     fn new(last_checkout: Instant, item: T) -> Self {
         Pooled {
-            last_checkout: last_checkout,
-            item: item,
+            last_checkout,
+            item,
         }
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Pooled<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Pooled {{ last_checkout: {:?}, item: {:?} }}", self.last_checkout, self.item)
+        write!(
+            f,
+            "Pooled {{ last_checkout: {:?}, item: {:?} }}",
+            self.last_checkout, self.item
+        )
     }
 }
 
@@ -97,10 +105,11 @@ impl Config {
             id,
             host,
             self.rw_timeout,
-            self.security_config.as_ref().map(|c| {
-                (c.connector.clone(), c.verify_hostname)
-            }),
-        ).map(|c| {
+            self.security_config
+                .as_ref()
+                .map(|c| (c.connector.clone(), c.verify_hostname)),
+        )
+        .map(|c| {
             debug!("Established: {:?}", c);
             c
         })
@@ -138,8 +147,8 @@ impl Connections {
             conns: HashMap::new(),
             state: State::new(),
             config: Config {
-                rw_timeout: rw_timeout,
-                idle_timeout: idle_timeout,
+                rw_timeout,
+                idle_timeout,
             },
         }
     }
@@ -159,8 +168,8 @@ impl Connections {
             conns: HashMap::new(),
             state: State::new(),
             config: Config {
-                rw_timeout: rw_timeout,
-                idle_timeout: idle_timeout,
+                rw_timeout,
+                idle_timeout,
                 security_config: security,
             },
         }
@@ -193,10 +202,7 @@ impl Connections {
         let cid = self.state.next_conn_id();
         self.conns.insert(
             host.to_owned(),
-            Pooled::new(
-                now,
-                try!(self.config.new_conn(cid, host)),
-            ),
+            Pooled::new(now, try!(self.config.new_conn(cid, host))),
         );
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
@@ -248,7 +254,7 @@ use self::openssled::KafkaStream;
 #[cfg(feature = "security")]
 mod openssled {
     use std::io::{self, Read, Write};
-    use std::net::{TcpStream, Shutdown};
+    use std::net::{Shutdown, TcpStream};
     use std::time::Duration;
 
     use openssl::ssl::SslStream;
@@ -378,9 +384,9 @@ impl KafkaConnection {
         try!(stream.set_read_timeout(rw_timeout));
         try!(stream.set_write_timeout(rw_timeout));
         Ok(KafkaConnection {
-            id: id,
+            id,
             host: host.to_owned(),
-            stream: stream,
+            stream,
         })
     }
 
@@ -399,16 +405,21 @@ impl KafkaConnection {
         let stream = try!(TcpStream::connect(host));
         let stream = match security {
             Some((connector, verify_hostname)) => {
-                let connection = if verify_hostname {
-                    let domain = match host.rfind(':') {
-                        None => host,
-                        Some(i) => &host[..i],
-                    };
-
-                    try!(connector.connect(domain, stream))
-                } else {
-                    try!(connector.danger_connect_without_providing_domain_for_certificate_verification_and_server_name_indication(stream))
+                if !verify_hostname {
+                    connector
+                        .configure()
+                        .map_err(|err| {
+                            let err: crate::error::Error =
+                                crate::error::ErrorKind::Ssl(From::from(err)).into();
+                            err
+                        })?
+                        .set_verify_hostname(false);
+                }
+                let domain = match host.rfind(':') {
+                    None => host,
+                    Some(i) => &host[..i],
                 };
+                let connection = try!(connector.connect(domain, stream));
                 KafkaStream::Ssl(connection)
             }
             None => KafkaStream::Plain(stream),

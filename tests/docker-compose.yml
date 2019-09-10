@@ -6,14 +6,15 @@ services:
       - "2181:2181"
   
   kafka:
-    image: wurstmeister/kafka:${KAFKA_VER}
+    build:
+      context: kafka-rust-image
+      args:
+        kafka_version: ${KAFKA_VER}
+        scala_version: ${SCALA_VER}
     ports:
       - "9092:9092"
     links:
       - zookeeper
     environment:
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper
-      KAFKA_ADVERTISED_HOST_NAME: localhost
-      KAFKA_ADVERTISED_PORT: 9092
       KAFKA_CREATE_TOPICS: kafka-rust-test:2:1,kafka-rust-test2:2:1
-      KAFKA_BROKER_ID: 0
+      KAFKA_CLIENT_SECURE: ${KAFKA_CLIENT_SECURE}
