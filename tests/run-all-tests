@@ -39,7 +39,6 @@ setup() {
     cd "$(dirname $0)"
     stop_docker # just in case something went wrong with a previous shutdown
 
-    export SCALA_VER=${SCALA_VERS[$KAFKA_VER]:-'2.11'}
     start_docker
   )
 }
@@ -60,12 +59,17 @@ DEFAULT_VERS='0.8.2.2:0.9.0.1:0.10.2.1:0.11.0.1:1.0.0'
 DEFAULT_COMPRESSIONS='NONE:SNAPPY:GZIP'
 DEFAULT_SECURES=':secure'
 
-declare -A SCALA_VERS
-SCALA_VERS['0.8.2.2']='2.11'
-SCALA_VERS['0.9.0.1']='2.11'
-SCALA_VERS['0.10.2.1']='2.12'
-SCALA_VERS['0.11.0.1']='2.12'
-SCALA_VERS['1.0.0']='2.12'
+declare SCALA_VERS_0_8_2_2='2.11'
+declare SCALA_VERS_0_9_0_1='2.11'
+declare SCALA_VERS_0_10_2_1='2.12'
+declare SCALA_VERS_0_11_0_1='2.12'
+declare SCALA_VERS_1_0_0='2.12'
+
+scala_version_for_kafka() {
+    local kv=$(echo $1 | sed 's/\./_/g')
+    local sv="SCALA_VERS_${kv}"
+    printf '%s' "${!sv}"
+}
 
 vers=$@
 
@@ -87,7 +91,7 @@ for ver in $vers; do
     for secure in $SECURES; do
 
       
-      if [[ ! -z "$secure" ]] && echo $ver | grep -P '^0.8'; then
+      if [[ ! -z "$secure" ]] && echo $ver | grep '^0.8'; then
         echo "Skipping secure test for 0.8 -- unsupported"
         continue
       fi
@@ -95,8 +99,14 @@ for ver in $vers; do
       export KAFKA_VER=$ver
       export KAFKA_CLIENT_COMPRESSION=$compression
       export KAFKA_CLIENT_SECURE=$secure
+      export SCALA_VER=$(scala_version_for_kafka "${ver}")
+      if [ "x$SCALA_VER" = "x" ] ; then
+          echo >&2 "Unknown Scala version for Kafka $KAFKA_VER"
+          exit 1
+      fi
 
       echo -n "Running tests with KAFKA_VER=$KAFKA_VER, "
+      echo -n "SCALA_VER=$SCALA_VER, "
       echo -n "KAFKA_CLIENT_COMPRESSION=$compression, "
       echo "KAFKA_CLIENT_SECURE=$secure"
 
