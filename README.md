@@ -19,7 +19,7 @@ expect the version number to grow quickly).
 
 ```toml
 [dependencies]
-kafka = "0.7"
+kafka = "0.8"
 ```
 
 To build kafka-rust the usual `cargo build` should suffice. The crate
