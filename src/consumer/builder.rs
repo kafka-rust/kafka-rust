@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use client::{self, KafkaClient, FetchOffset, GroupOffsetStorage};
+use client::{self, FetchOffset, GroupOffsetStorage, KafkaClient};
 use error::{ErrorKind, Result};
 
-use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
+use super::assignment;
 use super::config::Config;
 use super::state::State;
-use super::assignment;
+use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
 
 #[cfg(feature = "security")]
 use client::SecurityConfig;
@@ -228,10 +228,13 @@ impl Builder {
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {
             Some(client) => (client, false),
-            None => (Self::new_kafka_client(self.hosts, self.security_config), true),
+            None => (
+                Self::new_kafka_client(self.hosts, self.security_config),
+                true,
+            ),
         };
         // ~ apply configuration settings
-        try!(client.set_fetch_max_wait_time(self.fetch_max_wait_time));
+        client.set_fetch_max_wait_time(self.fetch_max_wait_time)?;
         client.set_fetch_min_bytes(self.fetch_min_bytes);
         client.set_fetch_max_bytes_per_partition(self.fetch_max_bytes_per_partition);
         client.set_group_offset_storage(self.group_offset_storage);
@@ -241,7 +244,7 @@ impl Builder {
         }
         // ~ load metadata if necessary
         if need_metadata {
-            try!(client.load_metadata_all());
+            client.load_metadata_all()?;
         }
         // ~ load consumer state
         let config = Config {
@@ -249,8 +252,11 @@ impl Builder {
             fallback_offset: self.fallback_offset,
             retry_max_bytes_limit: self.retry_max_bytes_limit,
         };
-        let state = try!(State::new(&mut client, &config, assignment::from_map(self.assignments)));
-        debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}", config, state);
+        let state = State::new(&mut client, &config, assignment::from_map(self.assignments))?;
+        debug!(
+            "initialized: Consumer {{ config: {:?}, state: {:?} }}",
+            config, state
+        );
         Ok(Consumer {
             client: client,
             state: state,

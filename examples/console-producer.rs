@@ -1,17 +1,19 @@
-extern crate kafka;
-extern crate getopts;
 extern crate env_logger;
+extern crate getopts;
+extern crate kafka;
 #[macro_use]
 extern crate error_chain;
 
-use std::{env, process};
 use std::fs::File;
-use std::str::FromStr;
-use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
+use std::io::{self, stderr, stdin, BufRead, BufReader, Write};
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 use std::time::Duration;
+use std::{env, process};
 
-use kafka::client::{KafkaClient, Compression, RequiredAcks, DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS};
+use kafka::client::{
+    Compression, KafkaClient, RequiredAcks, DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
+};
 use kafka::producer::{AsBytes, Producer, Record, DEFAULT_ACK_TIMEOUT_MILLIS};
 
 /// This is a very simple command line application sending every
@@ -39,7 +41,7 @@ fn main() {
 fn produce(cfg: &Config) -> Result<()> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
     client.set_client_id("kafka-rust-console-producer".into());
-    try!(client.load_metadata_all());
+    client.load_metadata_all()?;
 
     // ~ verify that the remote brokers do know about the target topic
     if !client.topics().contains(&cfg.topic) {
@@ -52,21 +54,19 @@ fn produce(cfg: &Config) -> Result<()> {
             produce_impl(&mut stdin, client, &cfg)
         }
         Some(ref file) => {
-            let mut r = BufReader::new(try!(File::open(file)));
+            let mut r = BufReader::new(File::open(file)?);
             produce_impl(&mut r, client, &cfg)
         }
     }
 }
 
 fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<()> {
-    let mut producer = try!(
-        Producer::from_client(client)
-            .with_ack_timeout(cfg.ack_timeout)
-            .with_required_acks(cfg.required_acks)
-            .with_compression(cfg.compression)
-            .with_connection_idle_timeout(cfg.conn_idle_timeout)
-            .create()
-    );
+    let mut producer = Producer::from_client(client)
+        .with_ack_timeout(cfg.ack_timeout)
+        .with_required_acks(cfg.required_acks)
+        .with_compression(cfg.compression)
+        .with_connection_idle_timeout(cfg.conn_idle_timeout)
+        .create()?;
     if cfg.batch_size < 2 {
         produce_impl_nobatch(&mut producer, src, cfg)
     } else {
@@ -100,14 +100,14 @@ fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config
     let mut rec = Record::from_value(&cfg.topic, Trimmed(String::new()));
     loop {
         rec.value.clear();
-        if try!(src.read_line(&mut rec.value)) == 0 {
+        if src.read_line(&mut rec.value)? == 0 {
             break; // ~ EOF reached
         }
         if rec.value.trim().is_empty() {
             continue; // ~ skip empty lines
         }
         // ~ directly send to kafka
-        try!(producer.send(&rec));
+        producer.send(&rec)?;
         let _ = write!(stderr, "Sent: {}", *rec.value);
     }
     Ok(())
@@ -131,12 +131,12 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
     loop {
         // ~ send out a batch if it's ready
         if next_rec == rec_stash.len() {
-            try!(send_batch(producer, &rec_stash));
+            send_batch(producer, &rec_stash)?;
             next_rec = 0;
         }
         let mut rec = &mut rec_stash[next_rec];
         rec.value.clear();
-        if try!(src.read_line(&mut rec.value)) == 0 {
+        if src.read_line(&mut rec.value)? == 0 {
             break; // ~ EOF reached
         }
         if rec.value.trim().is_empty() {
@@ -147,13 +147,13 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
     }
     // ~ flush pending messages - if any
     if next_rec > 0 {
-        try!(send_batch(producer, &rec_stash[..next_rec]));
+        send_batch(producer, &rec_stash[..next_rec])?;
     }
     Ok(())
 }
 
 fn send_batch(producer: &mut Producer, batch: &[Record<(), Trimmed>]) -> Result<()> {
-    let rs = try!(producer.send_all(batch));
+    let rs = producer.send_all(batch)?;
 
     for r in rs {
         for tpc in r.partition_confirms {
@@ -198,10 +198,20 @@ impl Config {
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
-        opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+        opts.optopt(
+            "",
+            "brokers",
+            "Specify kafka brokers (comma separated)",
+            "HOSTS",
+        );
         opts.optopt("", "topic", "Specify target topic", "NAME");
         opts.optopt("", "input", "Specify input file", "FILE");
-        opts.optopt("", "compression", "Compress messages [NONE, GZIP, SNAPPY]", "TYPE");
+        opts.optopt(
+            "",
+            "compression",
+            "Compress messages [NONE, GZIP, SNAPPY]",
+            "TYPE",
+        );
         opts.optopt(
             "",
             "required-acks",
@@ -210,7 +220,12 @@ impl Config {
         );
         opts.optopt("", "ack-timeout", "Specify time to wait for acks", "MILLIS");
         opts.optopt("", "batch-size", "Send N message in one batch.", "N");
-        opts.optopt("", "idle-timeout", "Specify timeout for idle connections", "MILLIS");
+        opts.optopt(
+            "",
+            "idle-timeout",
+            "Specify timeout for idle connections",
+            "MILLIS",
+        );
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -221,7 +236,8 @@ impl Config {
             bail!(opts.usage(&brief));
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
+            brokers: m
+                .opt_str("brokers")
                 .unwrap_or_else(|| "localhost:9092".to_owned())
                 .split(',')
                 .map(|s| s.trim().to_owned())
@@ -244,14 +260,15 @@ impl Config {
                 Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
                 Some(s) => bail!(format!("Unknown --required-acks argument: {}", s)),
             },
-            batch_size: try!(to_number(m.opt_str("batch-size"), 1)),
-            conn_idle_timeout: Duration::from_millis(try!(to_number(
+            batch_size: to_number(m.opt_str("batch-size"), 1)?,
+            conn_idle_timeout: Duration::from_millis(to_number(
                 m.opt_str("idle-timeout"),
                 DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
-            ))),
-            ack_timeout: Duration::from_millis(
-                try!(to_number(m.opt_str("ack-timeout"), DEFAULT_ACK_TIMEOUT_MILLIS)),
-            ),
+            )?),
+            ack_timeout: Duration::from_millis(to_number(
+                m.opt_str("ack-timeout"),
+                DEFAULT_ACK_TIMEOUT_MILLIS,
+            )?),
         })
     }
 }
@@ -259,11 +276,9 @@ impl Config {
 fn to_number<N: FromStr>(s: Option<String>, _default: N) -> Result<N> {
     match s {
         None => Ok(_default),
-        Some(s) => {
-            match s.parse::<N>() {
-                Ok(n) => Ok(n),
-                Err(_) => bail!(format!("Not a number: {}", s)),
-            }
-        }
+        Some(s) => match s.parse::<N>() {
+            Ok(n) => Ok(n),
+            Err(_) => bail!(format!("Not a number: {}", s)),
+        },
     }
 }

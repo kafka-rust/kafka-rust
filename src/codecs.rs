@@ -1,8 +1,8 @@
-use std::io::{Read, Write};
 use std::default::Default;
+use std::io::{Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use error::{Result, ErrorKind};
+use error::{ErrorKind, Result};
 
 // Helper macro to safely convert an usize expression into a signed
 // integer.  If the conversion is not possible the macro issues a
@@ -19,13 +19,12 @@ macro_rules! try_usize_to_int {
         } else {
             bail!(ErrorKind::CodecError)
         }
-    }}
+    }};
 }
 
 pub trait ToByte {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()>;
 }
-
 
 impl<'a, T: ToByte + 'a + ?Sized> ToByte for &'a T {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
@@ -41,35 +40,35 @@ impl ToByte for i8 {
 
 impl ToByte for i16 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        buffer.write_i16::<BigEndian>(*self).or_else(
-            |e| Err(From::from(e)),
-        )
+        buffer
+            .write_i16::<BigEndian>(*self)
+            .or_else(|e| Err(From::from(e)))
     }
 }
 
 impl ToByte for i32 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        buffer.write_i32::<BigEndian>(*self).or_else(
-            |e| Err(From::from(e)),
-        )
+        buffer
+            .write_i32::<BigEndian>(*self)
+            .or_else(|e| Err(From::from(e)))
     }
 }
 
 impl ToByte for i64 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        buffer.write_i64::<BigEndian>(*self).or_else(
-            |e| Err(From::from(e)),
-        )
+        buffer
+            .write_i64::<BigEndian>(*self)
+            .or_else(|e| Err(From::from(e)))
     }
 }
 
 impl ToByte for str {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try_usize_to_int!(self.len(), i16);
-        try!(buffer.write_i16::<BigEndian>(l));
-        buffer.write_all(self.as_bytes()).or_else(
-            |e| Err(From::from(e)),
-        )
+        buffer.write_i16::<BigEndian>(l)?;
+        buffer
+            .write_all(self.as_bytes())
+            .or_else(|e| Err(From::from(e)))
     }
 }
 
@@ -93,7 +92,7 @@ impl<V: ToByte> ToByte for [V] {
 impl ToByte for [u8] {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try_usize_to_int!(self.len(), i32);
-        try!(buffer.write_i32::<BigEndian>(l));
+        buffer.write_i32::<BigEndian>(l)?;
         buffer.write_all(self).or_else(|e| Err(From::from(e)))
     }
 }
@@ -117,9 +116,9 @@ where
     W: Write,
 {
     let l = try_usize_to_int!(xs.len(), i32);
-    try!(buffer.write_i32::<BigEndian>(l));
+    buffer.write_i32::<BigEndian>(l)?;
     for x in xs {
-        try!(f(buffer, x));
+        f(buffer, x)?;
     }
     Ok(())
 }
@@ -139,27 +138,24 @@ pub trait FromByte {
     }
 }
 
-
 macro_rules! dec_helper {
-    ($val: expr, $dest:expr) => ({
+    ($val: expr, $dest:expr) => {{
         match $val {
             Ok(val) => {
                 *$dest = val;
                 Ok(())
-                },
-            Err(e) => Err(From::from(e))
+            }
+            Err(e) => Err(From::from(e)),
         }
-    })
+    }};
 }
 macro_rules! decode {
-    ($src:expr, $dest:expr) => ({
+    ($src:expr, $dest:expr) => {{
         dec_helper!($src.read_i8(), $dest)
-
-    });
-    ($src:expr, $method:ident, $dest:expr) => ({
+    }};
+    ($src:expr, $method:ident, $dest:expr) => {{
         dec_helper!($src.$method::<BigEndian>(), $dest)
-
-    });
+    }};
 }
 
 impl FromByte for i8 {
@@ -226,7 +222,7 @@ impl<V: FromByte + Default> FromByte for Vec<V> {
         self.reserve(length as usize);
         for _ in 0..length {
             let mut e: V = Default::default();
-            try!(e.decode(buffer));
+            e.decode(buffer)?;
             self.push(e);
         }
         Ok(())
@@ -381,7 +377,6 @@ fn codec_vec_u8() {
 
 #[test]
 fn codec_as_strings() {
-
     macro_rules! enc_dec_cmp {
         ($orig:expr) => {{
             use std::io::Cursor;
@@ -391,9 +386,10 @@ fn codec_as_strings() {
             // Encode into buffer
             let mut buf = Vec::new();
             AsStrings(&orig).encode(&mut buf).unwrap();
-            assert_eq!(buf, [0, 0, 0, 2,
-                             0, 3, b'a', b'b', b'c',
-                             0, 4, b'd', b'e', b'f', b'g']);
+            assert_eq!(
+                buf,
+                [0, 0, 0, 2, 0, 3, b'a', b'b', b'c', 0, 4, b'd', b'e', b'f', b'g']
+            );
 
             // Decode from buffer into existing value
             {
@@ -407,7 +403,7 @@ fn codec_as_strings() {
                 let dec = Vec::<String>::decode_new(&mut Cursor::new(&buf[..])).unwrap();
                 assert_eq!(dec, orig);
             }
-        }}
+        }};
     }
 
     {
