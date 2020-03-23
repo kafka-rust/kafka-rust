@@ -10,14 +10,13 @@ use super::state::State;
 use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
 
 #[cfg(feature = "security")]
-use client::SecurityConfig;
+use rustls::ClientConfig;
 
 #[cfg(not(feature = "security"))]
-type SecurityConfig = ();
+type ClientConfig = ();
 
 /// A Kafka Consumer builder easing the process of setting up various
 /// configuration settings.
-#[derive(Debug)]
 pub struct Builder {
     client: Option<KafkaClient>,
     hosts: Vec<String>,
@@ -29,7 +28,7 @@ pub struct Builder {
     fetch_max_bytes_per_partition: i32,
     retry_max_bytes_limit: i32,
     fetch_crc_validation: bool,
-    security_config: Option<SecurityConfig>,
+    security_config: Option<ClientConfig>,
     group_offset_storage: GroupOffsetStorage,
     conn_idle_timeout: Duration,
     client_id: Option<String>,
@@ -107,7 +106,7 @@ impl Builder {
     /// Specifies the security config to use.
     /// See `KafkaClient::new_secure` for more info.
     #[cfg(feature = "security")]
-    pub fn with_security(mut self, sec: SecurityConfig) -> Builder {
+    pub fn with_security(mut self, sec: ClientConfig) -> Builder {
         self.security_config = Some(sec);
         self
     }
@@ -201,12 +200,12 @@ impl Builder {
     }
 
     #[cfg(not(feature = "security"))]
-    fn new_kafka_client(hosts: Vec<String>, _: Option<SecurityConfig>) -> KafkaClient {
+    fn new_kafka_client(hosts: Vec<String>, _: Option<ClientConfig>) -> KafkaClient {
         KafkaClient::new(hosts)
     }
 
     #[cfg(feature = "security")]
-    fn new_kafka_client(hosts: Vec<String>, security: Option<SecurityConfig>) -> KafkaClient {
+    fn new_kafka_client(hosts: Vec<String>, security: Option<ClientConfig>) -> KafkaClient {
         if let Some(security) = security {
             KafkaClient::new_secure(hosts, security)
         } else {

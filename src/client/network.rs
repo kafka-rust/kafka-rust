@@ -12,49 +12,11 @@ use std::net::{Shutdown, TcpStream};
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "security")]
-use openssl::ssl::SslConnector;
+use rustls::ClientConfig;
 
 use error::Result;
 
 // --------------------------------------------------------------------
-
-/// Security relevant configuration options for `KafkaClient`.
-// This will be expanded in the future. See #51.
-#[cfg(feature = "security")]
-pub struct SecurityConfig {
-    connector: SslConnector,
-    verify_hostname: bool,
-}
-
-#[cfg(feature = "security")]
-impl SecurityConfig {
-    /// In the future this will also support a kerbos via #51.
-    pub fn new(connector: SslConnector) -> Self {
-        SecurityConfig {
-            connector,
-            verify_hostname: true,
-        }
-    }
-
-    /// Initiates a client-side TLS session with/without performing hostname verification.
-    pub fn with_hostname_verification(self, verify_hostname: bool) -> SecurityConfig {
-        SecurityConfig {
-            verify_hostname,
-            ..self
-        }
-    }
-}
-
-#[cfg(feature = "security")]
-impl fmt::Debug for SecurityConfig {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "SecurityConfig {{ verify_hostname: {} }}",
-            self.verify_hostname
-        )
-    }
-}
 
 // --------------------------------------------------------------------
 
@@ -82,12 +44,11 @@ impl<T: fmt::Debug> fmt::Debug for Pooled<T> {
     }
 }
 
-#[derive(Debug)]
 pub struct Config {
     rw_timeout: Option<Duration>,
     idle_timeout: Duration,
     #[cfg(feature = "security")]
-    security_config: Option<SecurityConfig>,
+    security_config: Option<ClientConfig>,
 }
 
 impl Config {
@@ -101,15 +62,7 @@ impl Config {
 
     #[cfg(feature = "security")]
     fn new_conn(&self, id: u32, host: &str) -> Result<KafkaConnection> {
-        KafkaConnection::new(
-            id,
-            host,
-            self.rw_timeout,
-            self.security_config
-                .as_ref()
-                .map(|c| (c.connector.clone(), c.verify_hostname)),
-        )
-        .map(|c| {
+        KafkaConnection::new(id, host, self.rw_timeout, self.security_config.clone()).map(|c| {
             debug!("Established: {:?}", c);
             c
         })
@@ -133,7 +86,6 @@ impl State {
     }
 }
 
-#[derive(Debug)]
 pub struct Connections {
     conns: HashMap<String, Pooled<KafkaConnection>>,
     state: State,
@@ -162,7 +114,7 @@ impl Connections {
     pub fn new_with_security(
         rw_timeout: Option<Duration>,
         idle_timeout: Duration,
-        security: Option<SecurityConfig>,
+        security: Option<ClientConfig>,
     ) -> Connections {
         Connections {
             conns: HashMap::new(),
@@ -249,27 +201,24 @@ impl IsSecured for KafkaStream {
 }
 
 #[cfg(feature = "security")]
-use self::openssled::KafkaStream;
+use self::tls::KafkaStream;
 
 #[cfg(feature = "security")]
-mod openssled {
+mod tls {
     use std::io::{self, Read, Write};
     use std::net::{Shutdown, TcpStream};
-    use std::time::Duration;
-
-    use openssl::ssl::SslStream;
 
     use super::IsSecured;
 
     pub enum KafkaStream {
         Plain(TcpStream),
-        Ssl(SslStream<TcpStream>),
+        Tls(rustls::StreamOwned<rustls::ClientSession, TcpStream>),
     }
 
     impl IsSecured for KafkaStream {
         fn is_secured(&self) -> bool {
             match *self {
-                KafkaStream::Ssl(_) => true,
+                KafkaStream::Tls(_) => true,
                 _ => false,
             }
         }
@@ -279,16 +228,8 @@ mod openssled {
         fn get_ref(&self) -> &TcpStream {
             match *self {
                 KafkaStream::Plain(ref s) => s,
-                KafkaStream::Ssl(ref s) => s.get_ref(),
+                KafkaStream::Tls(ref s) => s.get_ref(),
             }
-        }
-
-        pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-            self.get_ref().set_read_timeout(dur)
-        }
-
-        pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-            self.get_ref().set_write_timeout(dur)
         }
 
         pub fn shutdown(&mut self, how: Shutdown) -> io::Result<()> {
@@ -300,7 +241,7 @@ mod openssled {
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
             match *self {
                 KafkaStream::Plain(ref mut s) => s.read(buf),
-                KafkaStream::Ssl(ref mut s) => s.read(buf),
+                KafkaStream::Tls(ref mut s) => s.read(buf),
             }
         }
     }
@@ -309,13 +250,13 @@ mod openssled {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
             match *self {
                 KafkaStream::Plain(ref mut s) => s.write(buf),
-                KafkaStream::Ssl(ref mut s) => s.write(buf),
+                KafkaStream::Tls(ref mut s) => s.write(buf),
             }
         }
         fn flush(&mut self) -> io::Result<()> {
             match *self {
                 KafkaStream::Plain(ref mut s) => s.flush(),
-                KafkaStream::Ssl(ref mut s) => s.flush(),
+                KafkaStream::Tls(ref mut s) => s.flush(),
             }
         }
     }
@@ -375,14 +316,11 @@ impl KafkaConnection {
         r.map_err(From::from)
     }
 
-    fn from_stream(
-        stream: KafkaStream,
-        id: u32,
-        host: &str,
-        rw_timeout: Option<Duration>,
-    ) -> Result<KafkaConnection> {
-        stream.set_read_timeout(rw_timeout)?;
-        stream.set_write_timeout(rw_timeout)?;
+    #[cfg(not(feature = "security"))]
+    fn new(id: u32, host: &str, rw_timeout: Option<Duration>) -> Result<KafkaConnection> {
+        let tcp = TcpStream::connect(host)?;
+        tcp.set_read_timeout(rw_timeout)?;
+        tcp.set_write_timeout(rw_timeout)?;
         Ok(KafkaConnection {
             id,
             host: host.to_owned(),
@@ -390,40 +328,31 @@ impl KafkaConnection {
         })
     }
 
-    #[cfg(not(feature = "security"))]
-    fn new(id: u32, host: &str, rw_timeout: Option<Duration>) -> Result<KafkaConnection> {
-        KafkaConnection::from_stream(TcpStream::connect(host)?, id, host, rw_timeout)
-    }
-
     #[cfg(feature = "security")]
     fn new(
         id: u32,
         host: &str,
         rw_timeout: Option<Duration>,
-        security: Option<(SslConnector, bool)>,
+        tls_config: Option<rustls::ClientConfig>,
     ) -> Result<KafkaConnection> {
-        let stream = TcpStream::connect(host)?;
-        let stream = match security {
-            Some((connector, verify_hostname)) => {
-                if !verify_hostname {
-                    connector
-                        .configure()
-                        .map_err(|err| {
-                            let err: crate::error::Error =
-                                crate::error::ErrorKind::Ssl(From::from(err)).into();
-                            err
-                        })?
-                        .set_verify_hostname(false);
-                }
-                let domain = match host.rfind(':') {
-                    None => host,
-                    Some(i) => &host[..i],
-                };
-                let connection = connector.connect(domain, stream)?;
-                KafkaStream::Ssl(connection)
+        let tcp = TcpStream::connect(host)?;
+        tcp.set_read_timeout(rw_timeout)?;
+        tcp.set_write_timeout(rw_timeout)?;
+
+        let stream = match tls_config {
+            None => KafkaStream::Plain(tcp),
+            Some(config) => {
+                let rc_config = std::sync::Arc::new(config);
+                let dns = webpki::DNSNameRef::try_from_ascii_str(host)?;
+                let client = rustls::ClientSession::new(&rc_config, dns);
+                KafkaStream::Tls(rustls::StreamOwned::new(client, tcp))
             }
-            None => KafkaStream::Plain(stream),
         };
-        KafkaConnection::from_stream(stream, id, host, rw_timeout)
+
+        Ok(KafkaConnection {
+            id,
+            host: host.to_owned(),
+            stream,
+        })
     }
 }

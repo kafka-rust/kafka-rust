@@ -88,7 +88,6 @@ pub const DEFAULT_FALLBACK_OFFSET: FetchOffset = FetchOffset::Latest;
 /// The Kafka Consumer
 ///
 /// See module level documentation.
-#[derive(Debug)]
 pub struct Consumer {
     client: KafkaClient,
     state: state::State,
@@ -231,7 +230,7 @@ impl Consumer {
     ) -> Result<MessageSets> {
         let single_partition_consumer = self.single_partition_consumer();
         let mut empty = true;
-        let mut retry_partitions = &mut self.state.retry_partitions;
+        let retry_partitions = &mut self.state.retry_partitions;
 
         for resp in &resps {
             for t in resp.topics() {

@@ -11,7 +11,7 @@ pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
 
     e.write(src)?;
     let compressed_bytes = e.finish()?;
-    Ok((compressed_bytes))
+    Ok(compressed_bytes)
 }
 
 pub fn uncompress<T: Read>(src: T) -> Result<Vec<u8>> {

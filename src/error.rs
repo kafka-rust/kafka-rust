@@ -3,16 +3,17 @@
 use std::io;
 
 #[cfg(feature = "security")]
-use openssl::error::ErrorStack;
+use rustls::TLSError;
 #[cfg(feature = "security")]
-use openssl::ssl::{self, Error as SslError};
+use webpki::InvalidDNSNameError;
 
-/// The various errors this library can produce.
 error_chain! {
     foreign_links {
         Io(io::Error) #[doc="Input/Output error while communicating with Kafka"];
 
-        Ssl(SslError) #[cfg(feature = "security")] #[doc="An error as reported by OpenSsl"];
+        Tls(TLSError) #[cfg(feature = "security")] #[doc="An error as reported by Rust-TLS"];
+
+        Dns(InvalidDNSNameError) #[cfg(feature = "security")] #[doc="An error as reported by WebPKI"];
 
         InvalidSnappy(::snap::Error) #[cfg(feature = "snappy")] #[doc="Failure to encode/decode a snappy compressed response from Kafka"];
     }
@@ -195,18 +196,6 @@ pub enum KafkaCode {
     UnsupportedVersion = 35,
 }
 
-#[cfg(feature = "security")]
-impl<S> From<ssl::HandshakeError<S>> for Error {
-    fn from(err: ssl::HandshakeError<S>) -> Error {
-        match err {
-            ssl::HandshakeError::SetupFailure(e) => from_sslerror_ref(&From::from(e)).into(),
-            ssl::HandshakeError::Failure(s) | ssl::HandshakeError::WouldBlock(s) => {
-                from_sslerror_ref(s.error()).into()
-            }
-        }
-    }
-}
-
 impl Clone for Error {
     fn clone(&self) -> Error {
         match self {
@@ -216,7 +205,9 @@ impl Clone for Error {
                 ErrorKind::TopicPartitionError(topic.clone(), partition, error_code).into()
             }
             #[cfg(feature = "security")]
-            &Error(ErrorKind::Ssl(ref x), _) => from_sslerror_ref(x).into(),
+            &Error(ErrorKind::Dns(x), _) => ErrorKind::Dns(x).into(),
+            #[cfg(feature = "security")]
+            &Error(ErrorKind::Tls(ref x), _) => ErrorKind::Tls(x.clone()).into(),
             &Error(ErrorKind::UnsupportedProtocol, _) => ErrorKind::UnsupportedProtocol.into(),
             &Error(ErrorKind::UnsupportedCompression, _) => {
                 ErrorKind::UnsupportedCompression.into()
@@ -232,19 +223,6 @@ impl Clone for Error {
             &Error(ErrorKind::Msg(ref msg), _) => ErrorKind::Msg(msg.clone()).into(),
         }
     }
-}
-
-#[cfg(feature = "security")]
-fn from_sslerror_ref(err: &ssl::Error) -> ErrorKind {
-    if let Some(io_err) = err.io_error() {
-        return ErrorKind::Io(clone_ioe(io_err));
-    }
-    if let Some(ssl_err) = err.ssl_error() {
-        return ErrorKind::Ssl(From::from(ssl_err.to_owned()));
-    }
-
-    // xxx: return something as default?
-    unreachable!()
 }
 
 #[cfg(feature = "snappy")]

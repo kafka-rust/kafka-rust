@@ -23,7 +23,9 @@ extern crate error_chain;
 extern crate log;
 
 #[cfg(feature = "security")]
-extern crate openssl;
+extern crate rustls;
+#[cfg(feature = "security")]
+extern crate webpki;
 
 #[cfg(feature = "gzip")]
 extern crate flate2;

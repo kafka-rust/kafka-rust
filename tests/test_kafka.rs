@@ -12,7 +12,7 @@ extern crate log;
 extern crate env_logger;
 
 #[cfg(feature = "integration_tests")]
-extern crate openssl;
+extern crate rustls;
 
 #[cfg(feature = "integration_tests")]
 #[macro_use]
@@ -23,13 +23,9 @@ mod integration {
     use std;
     use std::collections::HashMap;
 
-    use kafka::client::{KafkaClient, Compression, GroupOffsetStorage, SecurityConfig};
+    use kafka::client::{Compression, GroupOffsetStorage, KafkaClient};
 
-    use openssl;
-    use openssl::x509::X509;
-    use openssl::pkey::PKey;
-    use openssl::rsa::Rsa;
-    use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+    use rustls::ClientConfig;
 
     mod client;
     mod consumer_producer;
@@ -77,11 +73,10 @@ mod integration {
         let hosts = vec![LOCAL_KAFKA_BOOTSTRAP_HOST.to_owned()];
 
         let mut client = if let Some(security_config) = new_security_config() {
-            KafkaClient::new_secure(hosts, security_config.unwrap())
+            KafkaClient::new_secure(hosts, security_config)
         } else {
             KafkaClient::new(hosts)
         };
-
 
         client.set_group_offset_storage(GroupOffsetStorage::Kafka);
 
@@ -89,45 +84,18 @@ mod integration {
         let compression = COMPRESSIONS.get(&*compression).unwrap();
 
         client.set_compression(*compression);
-        debug!("Constructing client: {:?}", client);
 
         client
     }
 
     /// Returns a new security config if the `KAFKA_CLIENT_SECURE`
     /// environment variable is set to a non-empty string.
-    pub(crate) fn new_security_config()
-        -> Option<Result<SecurityConfig, openssl::error::ErrorStack>>
-    {
+    pub(crate) fn new_security_config() -> Option<ClientConfig> {
         match std::env::var_os(KAFKA_CLIENT_SECURE) {
             Some(ref val) if val.as_os_str() != "" => (),
             _ => return None,
         }
 
-        Some(new_key_pair().and_then(get_security_config))
-    }
-
-    /// If the `KAFKA_CLIENT_SECURE` environment variable is set, return a
-    /// `SecurityConfig`.
-    pub(crate) fn get_security_config(
-        keypair: openssl::x509::X509,
-    ) -> Result<SecurityConfig, openssl::error::ErrorStack> {
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-
-        builder.set_cipher_list("DEFAULT").unwrap();
-        builder.set_certificate(&*keypair).unwrap();
-        builder.set_verify(SslVerifyMode::NONE);
-
-        let connector = builder.build();
-        let security_config = SecurityConfig::new(connector);
-        Ok(security_config.with_hostname_verification(false))
-    }
-
-    pub(crate) fn new_key_pair() -> Result<X509, openssl::error::ErrorStack> {
-        let rsa = Rsa::generate(RSA_KEY_SIZE)?;
-        let pkey = PKey::from_rsa(rsa)?;
-        let mut builder = X509::builder()?;
-        builder.set_pubkey(&*pkey)?;
-        Ok(builder.build())
+        Some(ClientConfig::new())
     }
 }

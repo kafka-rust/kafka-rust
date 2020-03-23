@@ -18,7 +18,7 @@ pub use compression::Compression;
 pub use utils::PartitionOffset;
 
 #[cfg(feature = "security")]
-pub use self::network::SecurityConfig;
+use rustls::ClientConfig as TlsClientConfig;
 
 use codecs::{FromByte, ToByte};
 use error::{Error, ErrorKind, KafkaCode, Result};
@@ -79,7 +79,6 @@ pub const DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS: u64 = 540_000;
 /// Implements methods described by the [Kafka Protocol](http://kafka.apache.org/protocol.html).
 ///
 /// You will have to load metadata before making any other request.
-#[derive(Debug)]
 pub struct KafkaClient {
     // ~ this kafka client configuration
     config: ClientConfig,
@@ -413,31 +412,15 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// extern crate openssl;
+    /// extern crate rustls;
     /// extern crate kafka;
     ///
-    /// use openssl::ssl::{SslConnector, SslMethod, SslFiletype, SslVerifyMode};
-    /// use kafka::client::{KafkaClient, SecurityConfig};
+    /// use rustls::ClientConfig;
+    /// use kafka::client::KafkaClient;
     ///
     /// fn main() {
-    ///     let (key, cert) = ("client.key".to_string(), "client.crt".to_string());
-    ///
-    ///     // OpenSSL offers a variety of complex configurations. Here is an example:
-    ///     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-    ///     builder.set_cipher_list("DEFAULT").unwrap();
-    ///     builder
-    ///         .set_certificate_file(cert, SslFiletype::PEM)
-    ///         .unwrap();
-    ///     builder
-    ///         .set_private_key_file(key, SslFiletype::PEM)
-    ///         .unwrap();
-    ///     builder.check_private_key().unwrap();
-    ///     builder.set_default_verify_paths().unwrap();
-    ///     builder.set_verify(SslVerifyMode::PEER);
-    ///     let connector = builder.build();
-    ///
     ///     let mut client = KafkaClient::new_secure(vec!("localhost:9092".to_owned()),
-    ///                                              SecurityConfig::new(connector));
+    ///                                              ClientConfig::new());
     ///     client.load_metadata_all().unwrap();
     /// }
     /// ```
@@ -450,7 +433,7 @@ impl KafkaClient {
     /// as well as
     /// [Kafka's documentation](https://kafka.apache.org/documentation.html#security_ssl).
     #[cfg(feature = "security")]
-    pub fn new_secure(hosts: Vec<String>, security: SecurityConfig) -> KafkaClient {
+    pub fn new_secure(hosts: Vec<String>, security: TlsClientConfig) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
                 client_id: String::new(),
@@ -1279,14 +1262,14 @@ impl KafkaClient {
         )
     }
 
-    pub(crate) fn internal_produce_messages<'a, 'b, I, J>(
+    pub(crate) fn internal_produce_messages<'x, 'z, I, J>(
         &mut self,
         required_acks: i16,
         ack_timeout: i32,
         messages: I,
     ) -> Result<Vec<ProduceConfirm>>
     where
-        J: AsRef<ProduceMessage<'a, 'b>>,
+        J: AsRef<ProduceMessage<'x, 'z>>,
         I: IntoIterator<Item = J>,
     {
         let state = &mut self.state;
