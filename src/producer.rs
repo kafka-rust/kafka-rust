@@ -73,7 +73,6 @@ use client::SecurityConfig;
 
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
-use client_internals::KafkaClientInternals;
 use protocol;
 
 // public re-exports

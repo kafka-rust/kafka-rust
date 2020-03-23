@@ -24,8 +24,6 @@ use codecs::{FromByte, ToByte};
 use error::{Error, ErrorKind, KafkaCode, Result};
 use protocol::{self, ResponseParser};
 
-use client_internals::KafkaClientInternals;
-
 pub mod metadata;
 mod network;
 mod state;
@@ -1280,10 +1278,8 @@ impl KafkaClient {
                 .unwrap_or_else(Vec::new),
         )
     }
-}
 
-impl KafkaClientInternals for KafkaClient {
-    fn internal_produce_messages<'a, 'b, I, J>(
+    pub(crate) fn internal_produce_messages<'a, 'b, I, J>(
         &mut self,
         required_acks: i16,
         ack_timeout: i32,
