@@ -109,7 +109,7 @@ following command (where `kafka-topics.sh` is part of the Kafka
 distribution):
 
 ```
-kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181  --partition 1 --replication-factor 1
+kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181 --partitions 1 --replication-factor 1
 ```
 
 See also [Kafka's quickstart guide](https://kafka.apache.org/documentation.html#quickstart)
