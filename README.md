@@ -2,7 +2,15 @@
 
 [![Build Status](https://travis-ci.org/spicavigo/kafka-rust.svg?branch=master)](https://travis-ci.org/spicavigo/kafka-rust) [![](http://meritbadge.herokuapp.com/kafka)](https://crates.io/crates/kafka)
 
-### Documentation
+## Project Status
+
+This project has not had an active maintainer in quite some time. **At this
+point, it is probably best to use
+[rust-rdkafka](https://github.com/fede1024/rust-rdkafka) instead.** If you are
+interested in becoming a maintainer, please post in the [related
+issue](https://github.com/fede1024/rust-rdkafka/issues/285).
+
+## Documentation
 
 * This library is primarily documented through examples in its [API
   documentation](https://docs.rs/kafka/).
@@ -10,7 +18,7 @@
 home page](http://kafka.apache.org/).
 
 
-### Installation
+## Installation
 
 This crate works with Cargo and is on
 [crates.io](https://crates.io/crates/kafka). The API is currently
@@ -27,12 +35,12 @@ supports various features which can be turned off at compile time.
 See kafka-rust's `Cargo.toml` and [cargo's
 documentation](http://doc.crates.io/manifest.html#the-features-section).
 
-### Supported Kafka version
+## Supported Kafka version
 
 `kafka-rust` is tested for compatibility with Kafka 0.8.2 and newer. However,
 not all features from Kafka 0.9 and newer are supported yet.
 
-### Examples
+## Examples
 
 As mentioned, the [cargo generated
 documentation](https://docs.rs/kafka/) contains some examples.
@@ -41,7 +49,7 @@ Further, standalone, compilable example programs are provided in the
 repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
 
 
-### Consumer
+## Consumer
 
 This is a higher-level consumer API for Kafka and is provided by the
 module `kafka::consumer`. It provides convenient offset management
@@ -50,7 +58,7 @@ application of this library wants to use for receiving messages from
 Kafka.
 
 
-### Producer
+## Producer
 
 This is a higher-level producer API for Kafka and is provided by the
 module `kafka::producer`. It provides convenient automatic partition
@@ -59,7 +67,7 @@ client application of this library wants to use for sending messsages
 to Kafka.
 
 
-### KafkaClient
+## KafkaClient
 
 `KafkaClient` in the `kafka::client` module is the central point of
 this API. However, this is a mid-level abstraction for Kafka rather
@@ -75,7 +83,7 @@ Nevertheless, the main features or `KafkaClient` are:
 * Fetching a consumer group's offsets
 
 
-### Bugs / Features / Contributing
+## Bugs / Features / Contributing
 
 There's still a lot of room for improvement on `kafka-rust`.
 Not everything works right at the moment, and testing coverage could be better.
@@ -96,7 +104,7 @@ included `run-all-tests` script in the `tests` directory. See the `run-all-tests
 script itself for details on its usage.
 
 
-### Creating a topic
+## Creating a topic
 
 Note unless otherwise explicitly stated in the documentation, this
 library will ignore requests to topics which it doesn't know about.
@@ -116,7 +124,7 @@ See also [Kafka's quickstart guide](https://kafka.apache.org/documentation.html#
 for more information.
 
 
-### Alternative/Related projects
+## Alternative/Related projects
 
 * [rust-rdkafka](https://github.com/fede1024/rust-rdkafka) is an
   emerging alternative Kafka client library for Rust based on
