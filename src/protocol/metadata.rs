@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 
+use codecs::{AsStrings, FromByte, ToByte};
 use error::Result;
-use codecs::{AsStrings, ToByte, FromByte};
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_METADATA, API_VERSION};
@@ -23,7 +23,9 @@ impl<'a, T: AsRef<str>> MetadataRequest<'a, T> {
 
 impl<'a, T: AsRef<str> + 'a> ToByte for MetadataRequest<'a, T> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(self.header.encode(buffer), AsStrings(self.topics).encode(buffer))
+        self.header.encode(buffer)?;
+        AsStrings(self.topics).encode(buffer)?;
+        Ok(())
     }
 }
 
@@ -64,11 +66,10 @@ impl FromByte for MetadataResponse {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.header.decode(buffer),
-            self.brokers.decode(buffer),
-            self.topics.decode(buffer)
-        )
+        self.header.decode(buffer)?;
+        self.brokers.decode(buffer)?;
+        self.topics.decode(buffer)?;
+        Ok(())
     }
 }
 
@@ -77,7 +78,10 @@ impl FromByte for BrokerMetadata {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.node_id.decode(buffer), self.host.decode(buffer), self.port.decode(buffer))
+        self.node_id.decode(buffer)?;
+        self.host.decode(buffer)?;
+        self.port.decode(buffer)?;
+        Ok(())
     }
 }
 
@@ -86,11 +90,10 @@ impl FromByte for TopicMetadata {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.error.decode(buffer),
-            self.topic.decode(buffer),
-            self.partitions.decode(buffer)
-        )
+        self.error.decode(buffer)?;
+        self.topic.decode(buffer)?;
+        self.partitions.decode(buffer)?;
+        Ok(())
     }
 }
 
@@ -99,12 +102,11 @@ impl FromByte for PartitionMetadata {
 
     #[allow(unused_must_use)]
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            self.error.decode(buffer),
-            self.id.decode(buffer),
-            self.leader.decode(buffer),
-            self.replicas.decode(buffer),
-            self.isr.decode(buffer)
-        )
+        self.error.decode(buffer)?;
+        self.id.decode(buffer)?;
+        self.leader.decode(buffer)?;
+        self.replicas.decode(buffer)?;
+        self.isr.decode(buffer)?;
+        Ok(())
     }
 }
