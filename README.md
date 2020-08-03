@@ -8,7 +8,7 @@ This project has not had an active maintainer in quite some time. **At this
 point, it is probably best to use
 [rust-rdkafka](https://github.com/fede1024/rust-rdkafka) instead.** If you are
 interested in becoming a maintainer, please post in the [related
-issue](https://github.com/fede1024/rust-rdkafka/issues/285).
+issue](https://github.com/spicavigo/kafka-rust/issues/185).
 
 ## Documentation
 
