@@ -1,24 +1,24 @@
 //! A representation of fetched messages from Kafka.
 
 use std::borrow::Cow;
-use std::io::Write;
-use std::mem;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
+use std::io::Write;
+use std::mem;
 
 use fnv::FnvHasher;
 
 use codecs::ToByte;
-use error::{Error, ErrorKind, KafkaCode, Result};
-use compression::Compression;
 #[cfg(feature = "gzip")]
 use compression::gzip;
 #[cfg(feature = "snappy")]
 use compression::snappy::SnappyReader;
+use compression::Compression;
+use error::{Error, ErrorKind, KafkaCode, Result};
 
-use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
-use super::zreader::ZReader;
 use super::to_crc;
+use super::zreader::ZReader;
+use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
 
 pub type PartitionHasher = BuildHasherDefault<FnvHasher>;
 
@@ -74,14 +74,14 @@ impl<'a, 'b> FetchRequest<'a, 'b> {
 
 impl TopicPartitionFetchRequest {
     pub fn new() -> TopicPartitionFetchRequest {
-        TopicPartitionFetchRequest { partitions: HashMap::default() }
+        TopicPartitionFetchRequest {
+            partitions: HashMap::default(),
+        }
     }
 
     pub fn add(&mut self, partition: i32, offset: i64, max_bytes: i32) {
-        self.partitions.insert(
-            partition,
-            PartitionFetchRequest::new(offset, max_bytes),
-        );
+        self.partitions
+            .insert(partition, PartitionFetchRequest::new(offset, max_bytes));
     }
 
     pub fn get(&self, partition: i32) -> Option<&PartitionFetchRequest> {
@@ -100,14 +100,14 @@ impl PartitionFetchRequest {
 
 impl<'a, 'b> ToByte for FetchRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try!(self.header.encode(buffer));
-        try!(self.replica.encode(buffer));
-        try!(self.max_wait_time.encode(buffer));
-        try!(self.min_bytes.encode(buffer));
+        self.header.encode(buffer)?;
+        self.replica.encode(buffer)?;
+        self.max_wait_time.encode(buffer)?;
+        self.min_bytes.encode(buffer)?;
         // encode the hashmap as a vector
-        try!((self.topic_partitions.len() as i32).encode(buffer));
+        (self.topic_partitions.len() as i32).encode(buffer)?;
         for (name, tp) in self.topic_partitions.iter() {
-            try!(tp.encode(name, buffer));
+            tp.encode(name, buffer)?;
         }
         Ok(())
     }
@@ -115,11 +115,11 @@ impl<'a, 'b> ToByte for FetchRequest<'a, 'b> {
 
 impl TopicPartitionFetchRequest {
     fn encode<W: Write>(&self, topic: &str, buffer: &mut W) -> Result<()> {
-        try!(topic.encode(buffer));
+        topic.encode(buffer)?;
         // encode the hashmap as a vector
-        try!((self.partitions.len() as i32).encode(buffer));
+        (self.partitions.len() as i32).encode(buffer)?;
         for (&pid, p) in self.partitions.iter() {
-            try!(p.encode(pid, buffer));
+            p.encode(pid, buffer)?;
         }
         Ok(())
     }
@@ -127,11 +127,10 @@ impl TopicPartitionFetchRequest {
 
 impl PartitionFetchRequest {
     fn encode<T: Write>(&self, partition: i32, buffer: &mut T) -> Result<()> {
-        try_multi!(
-            partition.encode(buffer),
-            self.offset.encode(buffer),
-            self.max_bytes.encode(buffer)
-        )
+        partition.encode(buffer)?;
+        self.offset.encode(buffer)?;
+        self.max_bytes.encode(buffer)?;
+        Ok(())
     }
 }
 
@@ -157,13 +156,13 @@ impl<'a, 'b, 'c> super::ResponseParser for ResponseParser<'a, 'b, 'c> {
 // Kafka protocol.)
 macro_rules! array_of {
     ($zreader:ident, $parse_elem:expr) => {{
-        let n_elems = try!($zreader.read_array_len());
+        let n_elems = $zreader.read_array_len()?;
         let mut array = Vec::with_capacity(n_elems);
         for _ in 0..n_elems {
-            array.push(try!($parse_elem));
+            array.push($parse_elem?);
         }
         array
-    }}
+    }};
 }
 
 /// The result of a "fetch messages" request from a particular Kafka
@@ -195,7 +194,7 @@ impl Response {
     ) -> Result<Response> {
         let slice = unsafe { mem::transmute(&response[..]) };
         let mut r = ZReader::new(slice);
-        let correlation_id = try!(r.read_i32());
+        let correlation_id = r.read_i32()?;
         let topics = array_of!(r, Topic::read(&mut r, reqs, validate_crc));
         Ok(Response {
             raw_data: response,
@@ -235,7 +234,7 @@ impl<'a> Topic<'a> {
         reqs: Option<&FetchRequest>,
         validate_crc: bool,
     ) -> Result<Topic<'a>> {
-        let name = try!(r.read_str());
+        let name = r.read_str()?;
         let preqs = reqs.and_then(|reqs| reqs.get(name));
         let partitions = array_of!(r, Partition::read(r, preqs, validate_crc));
         Ok(Topic {
@@ -280,26 +279,24 @@ impl<'a> Partition<'a> {
         preqs: Option<&TopicPartitionFetchRequest>,
         validate_crc: bool,
     ) -> Result<Partition<'a>> {
-        let partition = try!(r.read_i32());
+        let partition = r.read_i32()?;
         let proffs = preqs
             .and_then(|preqs| preqs.get(partition))
             .map(|preq| preq.offset)
             .unwrap_or(0);
-        let error = Error::from_protocol(try!(r.read_i16()));
+        let error = Error::from_protocol(r.read_i16()?);
         // we need to parse the rest even if there was an error to
         // consume the input stream (zreader)
-        let highwatermark = try!(r.read_i64());
-        let msgset = try!(MessageSet::from_slice(try!(r.read_bytes()), proffs, validate_crc));
+        let highwatermark = r.read_i64()?;
+        let msgset = MessageSet::from_slice(r.read_bytes()?, proffs, validate_crc)?;
         Ok(Partition {
             partition: partition,
             data: match error {
                 Some(error) => Err(error),
-                None => {
-                    Ok(Data {
-                        highwatermark_offset: highwatermark,
-                        message_set: msgset,
-                    })
-                }
+                None => Ok(Data {
+                    highwatermark_offset: highwatermark,
+                    message_set: msgset,
+                }),
             },
         })
     }
@@ -372,11 +369,11 @@ impl<'a> MessageSet<'a> {
         // further modifying it and providing
         // publicly no mutability possibilities
         // this is safe
-        let ms = try!(MessageSet::from_slice(
+        let ms = MessageSet::from_slice(
             unsafe { mem::transmute(&data[..]) },
             req_offset,
             validate_crc,
-        ));
+        )?;
         return Ok(MessageSet {
             raw_data: Cow::Owned(data),
             messages: ms.messages,
@@ -419,15 +416,15 @@ impl<'a> MessageSet<'a> {
                         // XXX handle recursive compression in future
                         #[cfg(feature = "gzip")]
                         c if c == Compression::GZIP as i8 => {
-                            let v = try!(gzip::uncompress(pmsg.value));
-                            return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
+                            let v = gzip::uncompress(pmsg.value)?;
+                            return Ok(MessageSet::from_vec(v, req_offset, validate_crc)?);
                         }
                         #[cfg(feature = "snappy")]
                         c if c == Compression::SNAPPY as i8 => {
                             use std::io::Read;
                             let mut v = Vec::new();
-                            try!(try!(SnappyReader::new(pmsg.value)).read_to_end(&mut v));
-                            return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
+                            SnappyReader::new(pmsg.value)?.read_to_end(&mut v)?;
+                            return Ok(MessageSet::from_vec(v, req_offset, validate_crc)?);
                         }
                         _ => bail!(ErrorKind::UnsupportedCompression),
                     }
@@ -444,9 +441,9 @@ impl<'a> MessageSet<'a> {
         r: &mut ZReader<'b>,
         validate_crc: bool,
     ) -> Result<(i64, ProtocolMessage<'b>)> {
-        let offset = try!(r.read_i64());
-        let msg_data = try!(r.read_bytes());
-        Ok((offset, try!(ProtocolMessage::from_slice(msg_data, validate_crc))))
+        let offset = r.read_i64()?;
+        let msg_data = r.read_bytes()?;
+        Ok((offset, ProtocolMessage::from_slice(msg_data, validate_crc)?))
     }
 }
 
@@ -464,19 +461,19 @@ impl<'a> ProtocolMessage<'a> {
         let mut r = ZReader::new(raw_data);
 
         // ~ optionally validate the crc checksum
-        let msg_crc = try!(r.read_i32());
+        let msg_crc = r.read_i32()?;
         if validate_crc && to_crc(r.rest()) as i32 != msg_crc {
             bail!(ErrorKind::Kafka(KafkaCode::CorruptMessage));
         }
         // ~ we support parsing only messages with the "zero"
         // magic_byte; this covers kafka 0.8 and 0.9.
-        let msg_magic = try!(r.read_i8());
+        let msg_magic = r.read_i8()?;
         if msg_magic != 0 {
             bail!(ErrorKind::UnsupportedProtocol);
         }
-        let msg_attr = try!(r.read_i8());
-        let msg_key = try!(r.read_bytes());
-        let msg_val = try!(r.read_bytes());
+        let msg_attr = r.read_i8()?;
+        let msg_key = r.read_bytes()?;
+        let msg_val = r.read_bytes()?;
 
         debug_assert!(r.is_empty());
 
@@ -494,7 +491,7 @@ impl<'a> ProtocolMessage<'a> {
 mod tests {
     use std::str;
 
-    use super::{FetchRequest, Response, Message};
+    use super::{FetchRequest, Message, Response};
     use error::{Error, ErrorKind, KafkaCode};
 
     static FETCH1_TXT: &'static str = include_str!("../../test-data/fetch1.txt");
@@ -612,8 +609,11 @@ mod tests {
     fn test_unsupported_compression_snappy() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 0, -1);
-        let r =
-            Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
+        let r = Response::from_vec(
+            FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(),
+            Some(&req),
+            false,
+        );
         assert!(match r {
             bail!(ErrorKind::UnsupportedCompression) => true,
             _ => false,
@@ -726,7 +726,7 @@ mod tests {
     mod benches {
         use test::{black_box, Bencher};
 
-        use super::super::{Response, FetchRequest};
+        use super::super::{FetchRequest, Response};
         use super::into_messages;
 
         fn bench_decode_new_fetch_response(b: &mut Bencher, data: Vec<u8>, validate_crc: bool) {

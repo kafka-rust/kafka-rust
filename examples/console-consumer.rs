@@ -1,13 +1,13 @@
-extern crate kafka;
-extern crate getopts;
 extern crate env_logger;
+extern crate getopts;
+extern crate kafka;
 #[macro_use]
 extern crate error_chain;
 
-use std::{env, process};
-use std::time::Duration;
-use std::io::{self, Write};
 use std::ascii::AsciiExt;
+use std::io::{self, Write};
+use std::time::Duration;
+use std::{env, process};
 
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
@@ -43,7 +43,7 @@ fn process(cfg: Config) -> Result<()> {
         for topic in cfg.topics {
             cb = cb.with_topic(topic);
         }
-        try!(cb.create())
+        cb.create()?
     };
 
     let stdout = io::stdout();
@@ -52,7 +52,7 @@ fn process(cfg: Config) -> Result<()> {
 
     let do_commit = !cfg.no_commit;
     loop {
-        for ms in try!(c.poll()).iter() {
+        for ms in c.poll()?.iter() {
             for m in ms.messages() {
                 // ~ clear the output buffer
                 unsafe { buf.set_len(0) };
@@ -61,12 +61,12 @@ fn process(cfg: Config) -> Result<()> {
                 buf.extend_from_slice(m.value);
                 buf.push(b'\n');
                 // ~ write to output channel
-                try!(stdout.write_all(&buf));
+                stdout.write_all(&buf)?;
             }
             let _ = c.consume_messageset(ms);
         }
         if do_commit {
-            try!(c.commit_consumed());
+            c.commit_consumed()?;
         }
     }
 }
@@ -96,11 +96,21 @@ impl Config {
         let args: Vec<_> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
-        opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+        opts.optopt(
+            "",
+            "brokers",
+            "Specify kafka brokers (comma separated)",
+            "HOSTS",
+        );
         opts.optopt("", "topics", "Specify topics (comma separated)", "NAMES");
         opts.optopt("", "group", "Specify the consumer group", "NAME");
         opts.optflag("", "no-commit", "Do not commit group offsets");
-        opts.optopt("", "storage", "Specify the offset store [zookeeper, kafka]", "STORE");
+        opts.optopt(
+            "",
+            "storage",
+            "Specify the offset store [zookeeper, kafka]",
+            "STORE",
+        );
         opts.optflag(
             "",
             "earliest",
@@ -121,13 +131,17 @@ impl Config {
                 let opt = $name;
                 let xs: Vec<_> = match m.opt_str(opt) {
                     None => bail!(format!("Required option --{} missing", opt)),
-                    Some(s) => s.split(',').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect(),
+                    Some(s) => s
+                        .split(',')
+                        .map(|s| s.trim().to_owned())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
                 };
                 if xs.is_empty() {
                     bail!(format!("Invalid --{} specified!", opt));
                 }
                 xs
-            }}
+            }};
         };
 
         let brokers = required_list!("brokers");

@@ -59,25 +59,24 @@
 // XXX 1) rethink return values for the send_all() method
 // XXX 2) Handle recoverable errors behind the scenes through retry attempts
 
-use std::collections::HashMap;
-use std::fmt;
-use std::hash::{Hasher, BuildHasher, BuildHasherDefault};
-use std::time::Duration;
 use client::{self, KafkaClient};
 use error::{ErrorKind, Result};
 use ref_slice::ref_slice;
+use std::collections::HashMap;
+use std::fmt;
+use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
+use std::time::Duration;
 use twox_hash::XxHash32;
 
 #[cfg(feature = "security")]
-use client::SecurityConfig;
+use rustls::ClientConfig;
 
 #[cfg(not(feature = "security"))]
-type SecurityConfig = ();
-use client_internals::KafkaClientInternals;
+type ClientConfig = ();
 use protocol;
 
 // public re-exports
-pub use client::{Compression, RequiredAcks, ProduceConfirm, ProducePartitionConfirm};
+pub use client::{Compression, ProduceConfirm, ProducePartitionConfirm, RequiredAcks};
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
@@ -192,10 +191,7 @@ impl<'a, K: fmt::Debug, V: fmt::Debug> fmt::Debug for Record<'a, K, V> {
         write!(
             f,
             "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
-            self.topic,
-            self.partition,
-            self.key,
-            self.value
+            self.topic, self.partition, self.key, self.value
         )
     }
 }
@@ -250,7 +246,6 @@ impl Producer {
     }
 }
 
-
 impl<P: Partitioner> Producer<P> {
     /// Synchronously send the specified message to Kafka.
     pub fn send<'a, K, V>(&mut self, rec: &Record<'a, K, V>) -> Result<()>
@@ -258,7 +253,7 @@ impl<P: Partitioner> Producer<P> {
         K: AsBytes,
         V: AsBytes,
     {
-        let mut rs = try!(self.send_all(ref_slice(rec)));
+        let mut rs = self.send_all(ref_slice(rec))?;
 
         if self.config.required_acks == 0 {
             // ~ with no required_acks we get no response and
@@ -310,7 +305,11 @@ impl<P: Partitioner> Producer<P> {
 }
 
 fn to_option(data: &[u8]) -> Option<&[u8]> {
-    if data.is_empty() { None } else { Some(data) }
+    if data.is_empty() {
+        None
+    } else {
+        Some(data)
+    }
 }
 
 // --------------------------------------------------------------------
@@ -348,7 +347,7 @@ pub struct Builder<P = DefaultPartitioner> {
     conn_idle_timeout: Duration,
     required_acks: RequiredAcks,
     partitioner: P,
-    security_config: Option<SecurityConfig>,
+    security_config: Option<rustls::ClientConfig>,
     client_id: Option<String>,
 }
 
@@ -377,7 +376,7 @@ impl Builder {
     /// Specifies the security config to use.
     /// See `KafkaClient::new_secure` for more info.
     #[cfg(feature = "security")]
-    pub fn with_security(mut self, security: SecurityConfig) -> Self {
+    pub fn with_security(mut self, security: ClientConfig) -> Self {
         self.security_config = Some(security);
         self
     }
@@ -441,12 +440,12 @@ impl<P> Builder<P> {
     }
 
     #[cfg(not(feature = "security"))]
-    fn new_kafka_client(hosts: Vec<String>, _: Option<SecurityConfig>) -> KafkaClient {
+    fn new_kafka_client(hosts: Vec<String>, _: Option<ClientConfig>) -> KafkaClient {
         KafkaClient::new(hosts)
     }
 
     #[cfg(feature = "security")]
-    fn new_kafka_client(hosts: Vec<String>, security: Option<SecurityConfig>) -> KafkaClient {
+    fn new_kafka_client(hosts: Vec<String>, security: Option<ClientConfig>) -> KafkaClient {
         if let Some(security) = security {
             KafkaClient::new_secure(hosts, security)
         } else {
@@ -460,7 +459,10 @@ impl<P> Builder<P> {
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {
             Some(client) => (client, false),
-            None => (Self::new_kafka_client(self.hosts, self.security_config), true),
+            None => (
+                Self::new_kafka_client(self.hosts, self.security_config),
+                true,
+            ),
         };
         // ~ apply configuration settings
         client.set_compression(self.compression);
@@ -469,15 +471,15 @@ impl<P> Builder<P> {
             client.set_client_id(client_id);
         }
         let producer_config = Config {
-            ack_timeout: try!(protocol::to_millis_i32(self.ack_timeout)),
+            ack_timeout: protocol::to_millis_i32(self.ack_timeout)?,
             required_acks: self.required_acks as i16,
         };
         // ~ load metadata if necessary
         if need_metadata {
-            try!(client.load_metadata_all());
+            client.load_metadata_all()?;
         }
         // ~ create producer state
-        let state = try!(State::new(&mut client, self.partitioner));
+        let state = State::new(&mut client, self.partitioner)?;
         Ok(Producer {
             client: client,
             state: state,
@@ -530,7 +532,9 @@ impl Partitions {
 
 impl<'a> Topics<'a> {
     fn new(partitions: &'a HashMap<String, Partitions>) -> Topics<'a> {
-        Topics { partitions: partitions }
+        Topics {
+            partitions: partitions,
+        }
     }
 
     /// Retrieves informationa about a topic's partitions.
@@ -673,11 +677,11 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
 
 #[cfg(test)]
 mod default_partitioner_tests {
-    use std::hash::{Hasher, BuildHasherDefault};
     use std::collections::HashMap;
+    use std::hash::{BuildHasherDefault, Hasher};
 
+    use super::{DefaultHasher, DefaultPartitioner, Partitioner, Partitions, Topics};
     use client;
-    use super::{DefaultPartitioner, DefaultHasher, Partitioner, Partitions, Topics};
 
     fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {
         let mut h = HashMap::new();
@@ -714,14 +718,14 @@ mod default_partitioner_tests {
                 Partitions {
                     available_ids: vec![0, 1, 4],
                     num_all_partitions: 5,
-                }
+                },
             ),
             (
                 "bar",
                 Partitions {
                     available_ids: vec![0, 1],
                     num_all_partitions: 2,
-                }
+                },
             ),
         ]);
 
@@ -766,14 +770,14 @@ mod default_partitioner_tests {
                 Partitions {
                     available_ids: vec![0, 1],
                     num_all_partitions: 2,
-                }
+                },
             ),
             (
                 "contents",
                 Partitions {
                     available_ids: vec![0, 1, 9],
                     num_all_partitions: 10,
-                }
+                },
             ),
         ]);
 

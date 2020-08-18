@@ -1,14 +1,14 @@
-extern crate kafka;
-extern crate getopts;
 extern crate env_logger;
+extern crate getopts;
+extern crate kafka;
 
-use std::collections::HashMap;
 use std::cmp;
+use std::collections::HashMap;
 use std::env;
-use std::process;
 use std::io;
+use std::process;
 
-use kafka::client::{KafkaClient, FetchOffset};
+use kafka::client::{FetchOffset, KafkaClient};
 
 /// Dumps available topic metadata to stdout.
 fn main() {
@@ -44,7 +44,7 @@ impl Default for Offsets {
 fn dump_metadata(cfg: Config) -> Result<(), String> {
     // ~ establish connection to kafka
     let mut client = KafkaClient::new(cfg.brokers);
-    try!(client.load_metadata_all().map_err(|e| e.to_string()));
+    client.load_metadata_all().map_err(|e| e.to_string())?;
     // ~ determine the list of topics we're supposed to report about
     let topics = if cfg.topics.is_empty() {
         let topics = client.topics();
@@ -61,11 +61,9 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
     let (topic_width, offsets) = {
         let mut topic_width = 0;
         let mut m = HashMap::with_capacity(topics.len());
-        let mut offsets = try!(client.fetch_offsets(&topics, FetchOffset::Latest).map_err(
-            |e| {
-                e.to_string()
-            },
-        ));
+        let mut offsets = client
+            .fetch_offsets(&topics, FetchOffset::Latest)
+            .map_err(|e| e.to_string())?;
         for (topic, offsets) in offsets {
             topic_width = cmp::max(topic_width, topic.len());
             let mut offs = Vec::with_capacity(offsets.len());
@@ -97,11 +95,9 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
             m.insert(topic, offs);
         }
 
-        offsets = try!(
-            client
-                .fetch_offsets(&topics, FetchOffset::Earliest)
-                .map_err(|e| e.to_string())
-        );
+        offsets = client
+            .fetch_offsets(&topics, FetchOffset::Earliest)
+            .map_err(|e| e.to_string())?;
 
         for (topic, offsets) in offsets {
             let mut offs = m.get_mut(&topic).expect("unknown topic");
@@ -123,20 +119,23 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
     // ~ compute the width of the leader-hosts column
     let md = client.topics();
     let host_width = if cfg.host {
-        2 +
-            topics
-                .iter()
-                .filter_map(|t| md.partitions(t))
-                .flat_map(|t| t)
-                .map(|p| p.leader().map(|b| b.host().len()).unwrap_or(0))
-                .fold(0, cmp::max)
+        2 + topics
+            .iter()
+            .filter_map(|t| md.partitions(t))
+            .flat_map(|t| t)
+            .map(|p| p.leader().map(|b| b.host().len()).unwrap_or(0))
+            .fold(0, cmp::max)
     } else {
         0
     };
     // ~ print header line
     if cfg.header {
         use std::fmt::Write;
-        let _ = write!(out_buf, "{1:0$} {2:4} {3:4}", topic_width, "topic", "p-id", "l-id");
+        let _ = write!(
+            out_buf,
+            "{1:0$} {2:4} {3:4}",
+            topic_width, "topic", "p-id", "l-id"
+        );
         if cfg.host {
             let _ = write!(out_buf, " {1:>0$}", host_width, "(l-host)");
         }
@@ -173,13 +172,17 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
                     if cfg.topic_separators && ti != 0 && pi == 0 {
                         out_buf.push('\n');
                     }
-                    let (leader_id, leader_host) = tmd.partition(pi as i32)
+                    let (leader_id, leader_host) = tmd
+                        .partition(pi as i32)
                         .expect("unknown topic partition metadata")
                         .leader()
                         .map(|b| (b.id(), b.host()))
                         .unwrap_or((-1, ""));
-                    let _ =
-                        write!(out_buf, "{1:0$} {2:>4} {3:>4}", topic_width, topic, pi, leader_id);
+                    let _ = write!(
+                        out_buf,
+                        "{1:0$} {2:>4} {3:>4}",
+                        topic_width, topic, pi, leader_id
+                    );
                     if cfg.host {
                         fmt_buf.clear();
                         let _ = write!(fmt_buf, "({})", leader_host);
@@ -220,7 +223,12 @@ impl Config {
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
         opts.optflag("", "no-header", "Don't print headers");
-        opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+        opts.optopt(
+            "",
+            "brokers",
+            "Specify kafka brokers (comma separated)",
+            "HOSTS",
+        );
         opts.optopt("", "topics", "Specify topics (comma separated)", "NAMES");
         opts.optflag("", "no-host", "Don't print host:port of leaders");
         opts.optflag("", "no-size", "Don't print partition sizes");
@@ -234,7 +242,8 @@ impl Config {
             return Err(opts.usage(&brief));
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
+            brokers: m
+                .opt_str("brokers")
                 .unwrap_or_else(|| "localhost:9092".to_owned())
                 .split(',')
                 .map(|s| s.trim().to_owned())
