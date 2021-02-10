@@ -230,6 +230,7 @@ impl Clone for Error {
             &Error(ErrorKind::NoTopicsAssigned, _) => ErrorKind::NoTopicsAssigned.into(),
             &Error(ErrorKind::InvalidDuration, _) => ErrorKind::InvalidDuration.into(),
             &Error(ErrorKind::Msg(ref msg), _) => ErrorKind::Msg(msg.clone()).into(),
+            _ => unreachable!(),
         }
     }
 }

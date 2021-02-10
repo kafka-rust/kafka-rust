@@ -8,8 +8,8 @@ use error::{Error, ErrorKind, KafkaCode, Result};
 
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {
-    ($($expr:expr),*) => ({
-        $(try!($expr);)*;
+    ($($input_expr:expr),*) => ({
+        $($input_expr;)*
         Ok(())
     })
 }

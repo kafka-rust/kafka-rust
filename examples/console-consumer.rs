@@ -1,20 +1,17 @@
 extern crate kafka;
-extern crate getopts;
 extern crate env_logger;
-#[macro_use]
-extern crate error_chain;
 
 use std::{env, process};
 use std::time::Duration;
 use std::io::{self, Write};
-use std::ascii::AsciiExt;
+//use std::ascii::AsciiExt;
 
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
 /// This is a very simple command line application reading from a
 /// specific kafka topic and dumping the messages to standard output.
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
@@ -29,7 +26,7 @@ fn main() {
     }
 }
 
-fn process(cfg: Config) -> Result<()> {
+fn process(cfg: Config) -> Result<(), &'static str> {
     let mut c = {
         let mut cb = Consumer::from_hosts(cfg.brokers)
             .with_group(cfg.group)
@@ -43,7 +40,7 @@ fn process(cfg: Config) -> Result<()> {
         for topic in cfg.topics {
             cb = cb.with_topic(topic);
         }
-        try!(cb.create())
+        cb.create().unwrap()
     };
 
     let stdout = io::stdout();
@@ -52,7 +49,7 @@ fn process(cfg: Config) -> Result<()> {
 
     let do_commit = !cfg.no_commit;
     loop {
-        for ms in try!(c.poll()).iter() {
+        for ms in c.poll().unwrap().iter() {
             for m in ms.messages() {
                 // ~ clear the output buffer
                 unsafe { buf.set_len(0) };
@@ -61,24 +58,24 @@ fn process(cfg: Config) -> Result<()> {
                 buf.extend_from_slice(m.value);
                 buf.push(b'\n');
                 // ~ write to output channel
-                try!(stdout.write_all(&buf));
+                stdout.write_all(&buf);
             }
             let _ = c.consume_messageset(ms);
         }
         if do_commit {
-            try!(c.commit_consumed());
+            c.commit_consumed();
         }
     }
 }
 
 // --------------------------------------------------------------------
-error_chain! {
-    foreign_links {
-        Kafka(kafka::error::Error);
-        Io(io::Error);
-        Opt(getopts::Fail);
-    }
-}
+// error_chain! {
+//     foreign_links {
+//         Kafka(kafka::error::Error);
+//         Io(io::Error);
+//         Opt(getopts::Fail);
+//     }
+// }
 
 // --------------------------------------------------------------------
 
@@ -92,7 +89,7 @@ struct Config {
 }
 
 impl Config {
-    fn from_cmdline() -> Result<Config> {
+    fn from_cmdline() -> Result<Config,  &'static str> {
         let args: Vec<_> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
@@ -109,22 +106,22 @@ impl Config {
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => bail!(e),
+            Err(e) => { panic!(e.to_string()) },
         };
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
-            bail!(opts.usage(&brief));
+            opts.usage(&brief);
         }
 
         macro_rules! required_list {
             ($name:expr) => {{
                 let opt = $name;
                 let xs: Vec<_> = match m.opt_str(opt) {
-                    None => bail!(format!("Required option --{} missing", opt)),
+                    None => Vec::new(),
                     Some(s) => s.split(',').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect(),
                 };
                 if xs.is_empty() {
-                    bail!(format!("Invalid --{} specified!", opt));
+                    format!("Invalid --{} specified!", opt);
                 }
                 xs
             }}
@@ -140,7 +137,8 @@ impl Config {
             } else if s.eq_ignore_ascii_case("kafka") {
                 offset_storage = GroupOffsetStorage::Kafka;
             } else {
-                bail!(format!("unknown offset store: {}", s));
+               format!("unknown offset store: {}", s);
+               ()
             }
         }
         Ok(Config {
