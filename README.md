@@ -4,11 +4,7 @@
 
 ## Project Status
 
-This project has not had an active maintainer in quite some time. **At this
-point, it is probably best to use
-[rust-rdkafka](https://github.com/fede1024/rust-rdkafka) instead.** If you are
-interested in becoming a maintainer, please post in the [related
-issue](https://github.com/spicavigo/kafka-rust/issues/185).
+This project is starting to be maintained by John Ward, the current status is that I am bring the project up to date with the latest version of Rust and it's dependencies, so there may be a period of instability, which I will keep to a minimum.
 
 ## Documentation
 
