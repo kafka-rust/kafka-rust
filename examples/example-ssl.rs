@@ -18,7 +18,7 @@ mod example {
     use self::openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
 
     pub fn main() {
-        env_logger::init().unwrap();
+        env_logger::init();
 
         // ~ parse the command line arguments
         let cfg = match Config::from_cmdline() {

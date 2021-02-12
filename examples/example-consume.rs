@@ -9,7 +9,7 @@ use kafka::error::Error as KafkaError;
 /// that messages must be marked and commited as consumed to ensure
 /// only once delivery.
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let broker = "localhost:9092".to_owned();
     let topic = "my-topic".to_owned();

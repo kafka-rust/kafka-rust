@@ -21,7 +21,7 @@ use kafka::producer::{AsBytes, Producer, Record, DEFAULT_ACK_TIMEOUT_MILLIS};
 /// Alternatively, messages can be read from an input file and sent do
 /// kafka in batches (the typical use-case).
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,

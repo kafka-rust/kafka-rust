@@ -10,7 +10,7 @@ use kafka::error::Error as KafkaError;
 /// `Producer`.  This is a convenient higher-level client that will
 /// fit most use cases.
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let broker = "localhost:9092";
     let topic = "my-topic";

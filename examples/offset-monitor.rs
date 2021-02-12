@@ -19,7 +19,7 @@ use kafka::client::{KafkaClient, FetchOffset, GroupOffsetStorage};
 /// the lag for a particular consumer group. Dumps the offset/lag of
 /// the monitored topic/group to stdout every few seconds.
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     macro_rules! abort {
         ($e:expr) => {{

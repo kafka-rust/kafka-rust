@@ -12,7 +12,7 @@ use kafka::client::{KafkaClient, FetchOffset};
 
 /// Dumps available topic metadata to stdout.
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
