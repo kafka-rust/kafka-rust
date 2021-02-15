@@ -11,7 +11,8 @@ use std::env;
 use std::io::{self, stdout, stderr, BufWriter, Write};
 use std::process;
 use std::thread;
-use std::time as stdtime;
+//use std::time as stdtime;
+use std::time::{Duration, SystemTime};
 
 use kafka::client::{KafkaClient, FetchOffset, GroupOffsetStorage};
 
@@ -294,7 +295,7 @@ struct Config {
     topic: String,
     group: String,
     offset_storage: GroupOffsetStorage,
-    period: stdtime::Duration,
+    period: Duration,
     commited_not_consumed: bool,
     summary: bool,
     diff: bool,
@@ -338,10 +339,10 @@ impl Config {
                 bail!(format!("unknown offset store: {}", s));
             }
         }
-        let mut period = stdtime::Duration::from_secs(5);
+        let mut period = Duration::from_secs(5);
         if let Some(s) = m.opt_str("sleep") {
             match s.parse::<u64>() {
-                Ok(n) if n != 0 => period = stdtime::Duration::from_secs(n),
+                Ok(n) if n != 0 => period = Duration::from_secs(n),
                 _ => bail!(format!("not a number greater than zero: {}", s)),
             }
         }
