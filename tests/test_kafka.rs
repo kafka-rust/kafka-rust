@@ -23,13 +23,13 @@ mod integration {
     use std;
     use std::collections::HashMap;
 
-    use kafka::client::{KafkaClient, Compression, GroupOffsetStorage, SecurityConfig};
+    use kafka::client::{Compression, GroupOffsetStorage, KafkaClient, SecurityConfig};
 
     use openssl;
-    use openssl::x509::X509;
     use openssl::pkey::PKey;
     use openssl::rsa::Rsa;
     use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+    use openssl::x509::X509;
 
     mod client;
     mod consumer_producer;
@@ -68,7 +68,7 @@ mod integration {
     /// its metadata so it is ready to use.
     pub(crate) fn new_ready_kafka_client() -> KafkaClient {
         let mut client = new_kafka_client();
-        client.load_metadata_all().unwrap();
+        client.load_metadata_all();
         client
     }
 
@@ -81,7 +81,6 @@ mod integration {
         } else {
             KafkaClient::new(hosts)
         };
-
 
         client.set_group_offset_storage(GroupOffsetStorage::Kafka);
 
@@ -96,8 +95,7 @@ mod integration {
 
     /// Returns a new security config if the `KAFKA_CLIENT_SECURE`
     /// environment variable is set to a non-empty string.
-    pub(crate) fn new_security_config()
-        -> Option<Result<SecurityConfig, openssl::error::ErrorStack>>
+    pub(crate) fn new_security_config() -> Option<Result<SecurityConfig, openssl::error::ErrorStack>>
     {
         match std::env::var_os(KAFKA_CLIENT_SECURE) {
             Some(ref val) if val.as_os_str() != "" => (),
