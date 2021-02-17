@@ -4,7 +4,7 @@
 
 ## Project Status
 
-This project is starting to be maintained by John Ward, the current status is that I am bringing the project up to date with the latest version of Rust and it's dependencies, so there may be a period of instability, which I will keep to a minimum.
+This project is starting to be maintained by John Ward, the current status is that I am bringing the project up to date with the latest dependencies, removing deprecated Rust code and adjusting the tests.
 
 ## Documentation
 
@@ -118,10 +118,3 @@ kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181 --partition
 
 See also [Kafka's quickstart guide](https://kafka.apache.org/documentation.html#quickstart)
 for more information.
-
-
-## Alternative/Related projects
-
-* [rust-rdkafka](https://github.com/fede1024/rust-rdkafka) is an
-  emerging alternative Kafka client library for Rust based on
-  `librdkafka`.

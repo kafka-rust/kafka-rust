@@ -1,0 +1,342 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'kafka'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "kafka",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'example-fetch'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=example-fetch",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "example-fetch",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'example-fetch'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=example-fetch",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "example-fetch",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'example-ssl'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=example-ssl",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "example-ssl",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'example-ssl'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=example-ssl",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "example-ssl",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'example-produce'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=example-produce",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "example-produce",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'example-produce'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=example-produce",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "example-produce",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'topic-metadata'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=topic-metadata",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "topic-metadata",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'topic-metadata'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=topic-metadata",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "topic-metadata",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'console-producer'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=console-producer",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "console-producer",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'console-producer'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=console-producer",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "console-producer",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'console-consumer'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=console-consumer",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "console-consumer",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'console-consumer'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=console-consumer",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "console-consumer",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'offset-monitor'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=offset-monitor",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "offset-monitor",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'offset-monitor'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=offset-monitor",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "offset-monitor",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'example-consume'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=example-consume",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "example-consume",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'example-consume'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=example-consume",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "example-consume",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'test_kafka'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=test_kafka",
+                    "--package=kafka"
+                ],
+                "filter": {
+                    "name": "test_kafka",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
