@@ -6,6 +6,10 @@
 
 This project is starting to be maintained by John Ward, the current status is that I am bringing the project up to date with the latest dependencies, removing deprecated Rust code and adjusting the tests.
 
+## New Home
+
+Proposing to move the repo to a new home: https://github.com/kafka-rust
+
 ## Documentation
 
 * This library is primarily documented through examples in its [API
