@@ -8,7 +8,7 @@ This project is starting to be maintained by John Ward, the current status is th
 
 ## New Home
 
-Proposing to move the repo to a new home: https://github.com/kafka-rust
+Welcome to kafka-rust's new home: https://github.com/kafka-rust
 
 ## Documentation
 
