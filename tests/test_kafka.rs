@@ -112,7 +112,7 @@ mod integration {
     ) -> Result<SecurityConfig, openssl::error::ErrorStack> {
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
 
-        builder.set_cipher_list("DEFAULT").unwrap();
+        builder.set_cipher_list("DEFAULT@SECLEVEL=0").unwrap();
         builder.set_certificate(&*keypair).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
 
