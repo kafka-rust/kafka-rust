@@ -5,13 +5,13 @@ use kafka::error;
 use kafka::producer::Record;
 
 // /// Tests that basic message sending results in a successful call.
-// #[test]
-// fn test_producer_send() {
-//     let mut producer = test_producer();
-//     producer
-//         .send(&Record::from_value(TEST_TOPIC_NAME, "foo".as_bytes()))
-//         .unwrap();
-// }
+#[test]
+fn test_producer_send() {
+    let mut producer = test_producer();
+    producer
+        .send(&Record::from_value(TEST_TOPIC_NAME, "foo".as_bytes()))
+        .unwrap();
+}
 
 /// Sending to a non-existent topic should fail.
 #[test]
@@ -35,29 +35,29 @@ fn test_producer_send_non_existent_topic() {
 }
 
 // /// Simple test for send_all
-// #[test]
-// fn test_producer_send_all() {
-//     let mut producer = test_producer();
-//     let records = &[
-//         Record::from_value(TEST_TOPIC_NAME, "foo".as_bytes()),
-//         Record::from_value(TEST_TOPIC_NAME, "bar".as_bytes()),
-//     ];
-//     let confirms = producer.send_all(records).unwrap();
+#[test]
+fn test_producer_send_all() {
+    let mut producer = test_producer();
+    let records = &[
+        Record::from_value(TEST_TOPIC_NAME, "foo".as_bytes()),
+        Record::from_value(TEST_TOPIC_NAME, "bar".as_bytes()),
+    ];
+    let confirms = producer.send_all(records).unwrap();
 
-//     for confirm in confirms {
-//         assert_eq!(TEST_TOPIC_NAME.to_owned(), confirm.topic);
+    for confirm in confirms {
+        assert_eq!(TEST_TOPIC_NAME.to_owned(), confirm.topic);
 
-//         for partition_confirm in confirm.partition_confirms {
-//             assert!(
-//                 partition_confirm.offset.is_ok(),
-//                 format!(
-//                     "should have sent successfully. Got: {:?}",
-//                     partition_confirm.offset
-//                 )
-//             );
-//         }
-//     }
-// }
+        for partition_confirm in confirm.partition_confirms {
+            assert!(
+                partition_confirm.offset.is_ok(),
+                format!(
+                    "should have sent successfully. Got: {:?}",
+                    partition_confirm.offset
+                )
+            );
+        }
+    }
+}
 
 /// calling send_all for a non-existent topic should fail
 #[test]
