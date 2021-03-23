@@ -51,9 +51,6 @@ fn test_kafka_client_load_metadata() {
         .filter(|name| *name != KAFKA_CONSUMER_OFFSETS_TOPIC_NAME)
         .collect();
     let mut correct_topic_names: HashSet<&str> = HashSet::new();
-
-    println!("Topic:{}", TEST_TOPIC_NAME);
-    println!("Topic:{}", TEST_TOPIC_NAME_2);
     correct_topic_names.insert(TEST_TOPIC_NAME);
     correct_topic_names.insert(TEST_TOPIC_NAME_2);
 
@@ -72,11 +69,11 @@ fn test_kafka_client_load_metadata() {
     assert_eq!(correct_topic_partitions, topic_partitions);
 }
 
-// /// Tests:
-// ///
-// /// * KafkaClient::produce_messages
-// /// * KafkaClient::fetch_messages
-// /// * KafkaClient::fetch_offsets
+/// Tests:
+///
+/// * KafkaClient::produce_messages
+/// * KafkaClient::fetch_messages
+/// * KafkaClient::fetch_offsets
 #[test]
 fn test_produce_fetch_messages() {
     let _ = env_logger::try_init();
