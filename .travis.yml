@@ -8,15 +8,12 @@ rust:
 services:
   - docker
 
-before_install:
-  - pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
-
-script:
-  - |
-      travis-cargo build &&
-      ./tests/run-all-tests $KAFKA_VER &&
-      travis-cargo bench &&
-      travis-cargo --only stable doc
+script: |
+  echo "${DOCKER_HUB_TOKEN}" | docker login -u "${DOCKER_HUB_USER}" --password-stdin &&
+  cargo build &&
+  ./tests/run-all-tests $KAFKA_VER &&
+  cargo bench &&
+  cargo --only stable doc
 
 env:
   global:
