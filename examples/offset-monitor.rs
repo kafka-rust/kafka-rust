@@ -44,7 +44,7 @@ fn main() {
 fn run(cfg: Config) -> Result<()> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
     client.set_group_offset_storage(cfg.offset_storage);
-    try!(client.load_metadata_all());
+    client.load_metadata_all()?;
 
     // ~ if no topic specified, print all available and be done.
     if cfg.topic.is_empty() {
@@ -71,18 +71,18 @@ fn run(cfg: Config) -> Result<()> {
     };
     let mut state = State::new(num_partitions, cfg.commited_not_consumed);
     let mut printer = Printer::new(stdout(), &cfg);
-    try!(printer.print_head(num_partitions));
+    printer.print_head(num_partitions)?;
 
     // ~ initialize the state
     let mut first_time = true;
     loop {
         let t = time::now();
-        try!(state.update_partitions(&mut client, &cfg.topic, &cfg.group));
+        state.update_partitions(&mut client, &cfg.topic, &cfg.group)?;
         if first_time {
             state.curr_to_prev();
             first_time = false;
         }
-        try!(printer.print_offsets(&t, &state.offsets));
+        printer.print_offsets(&t, &state.offsets)?;
         thread::sleep(cfg.period);
     }
 }
