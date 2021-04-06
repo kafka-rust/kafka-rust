@@ -122,3 +122,8 @@ kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181 --partition
 
 See also [Kafka's quickstart guide](https://kafka.apache.org/documentation.html#quickstart)
 for more information.
+
+## Alternative/Related projects
+
+* [rust-rdkafka](https://github.com/fede1024/rust-rdkafka) is an emerging alternative Kafka client library for Rust based on
+  `librdkafka`. rust-rdkafka provides a safe Rust interface to librdkafka.
