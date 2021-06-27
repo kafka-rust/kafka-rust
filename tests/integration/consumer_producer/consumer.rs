@@ -5,7 +5,7 @@ use kafka::producer::Record;
 
 use env_logger;
 
-// /// Tests that consuming one message works
+/// Tests that consuming one message works
 #[test]
 fn test_consumer_poll() {
     let _ = env_logger::try_init();
@@ -46,7 +46,7 @@ fn test_consumer_poll() {
     );
 }
 
-// /// Test Consumer::commit_messageset
+/// Test Consumer::commit_messageset
 #[test]
 fn test_consumer_commit_messageset() {
     let _ = env_logger::try_init();
@@ -127,8 +127,8 @@ fn test_consumer_commit_messageset() {
     }
 }
 
-// /// Verify that if Consumer::commit_consumed is called without consuming any
-// /// message sets, nothing is committed.
+/// Verify that if Consumer::commit_consumed is called without consuming any
+/// message sets, nothing is committed.
 #[test]
 fn test_consumer_commit_messageset_no_consumes() {
     let _ = env_logger::try_init();

@@ -4,7 +4,7 @@ use env_logger;
 use kafka::error;
 use kafka::producer::Record;
 
-// /// Tests that basic message sending results in a successful call.
+/// Tests that basic message sending results in a successful call.
 #[test]
 fn test_producer_send() {
     let mut producer = test_producer();
@@ -34,7 +34,7 @@ fn test_producer_send_non_existent_topic() {
     );
 }
 
-// /// Simple test for send_all
+/// Simple test for send_all
 #[test]
 fn test_producer_send_all() {
     let mut producer = test_producer();

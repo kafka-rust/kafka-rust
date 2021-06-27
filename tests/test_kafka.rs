@@ -40,7 +40,7 @@ mod integration {
     pub const TEST_GROUP_NAME: &str = "kafka-rust-tester";
     pub const TEST_TOPIC_PARTITIONS: [i32; 2] = [0, 1];
     pub const KAFKA_CONSUMER_OFFSETS_TOPIC_NAME: &str = "__consumer_offsets";
-    const RSA_KEY_SIZE: u32 = 2024;
+    const RSA_KEY_SIZE: u32 = 4096;
 
     // env vars
     const KAFKA_CLIENT_SECURE: &str = "KAFKA_CLIENT_SECURE";
@@ -112,7 +112,12 @@ mod integration {
     ) -> Result<SecurityConfig, openssl::error::ErrorStack> {
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
 
+        #[cfg(openssl110)]
+        builder.set_cipher_list("DEFAULT@SECLEVEL=0").unwrap();
+
+        #[cfg(not(openssl110))]
         builder.set_cipher_list("DEFAULT").unwrap();
+
         builder.set_certificate(&*keypair).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
 
