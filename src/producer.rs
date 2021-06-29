@@ -244,6 +244,11 @@ impl Producer {
         &self.client
     }
 
+    /// Borrows the underlying kafka client as mut.
+    pub fn client_mut(&mut self) -> &mut KafkaClient {
+        &mut self.client
+    }
+
     /// Destroys this producer returning the underlying kafka client.
     pub fn into_client(self) -> KafkaClient {
         self.client
