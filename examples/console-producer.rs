@@ -235,6 +235,8 @@ impl Config {
                 Some(ref s) if s.eq_ignore_ascii_case("gzip") => Compression::GZIP,
                 #[cfg(feature = "snappy")]
                 Some(ref s) if s.eq_ignore_ascii_case("snappy") => Compression::SNAPPY,
+                #[cfg(feature = "zstandard")]
+                Some(ref s) if s.eq_ignore_ascii_case("zstandard") => Compression::ZSTANDARD,
                 Some(s) => bail!(format!("Unsupported compression type: {}", s)),
             },
             required_acks: match m.opt_str("required-acks") {

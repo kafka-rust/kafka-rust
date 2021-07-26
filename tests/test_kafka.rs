@@ -60,6 +60,9 @@ mod integration {
             m.insert("gzip", Compression::GZIP);
             m.insert("GZIP", Compression::GZIP);
 
+            m.insert("zstandard", Compression::ZSTANDARD);
+            m.insert("ZSTANDARD", Compression::ZSTANDARD);
+
             m
         };
     }

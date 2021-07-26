@@ -15,6 +15,8 @@ use compression::Compression;
 use compression::gzip;
 #[cfg(feature = "snappy")]
 use compression::snappy::SnappyReader;
+#[cfg(feature = "zstandard")]
+use compression::zstandard;
 
 use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
 use super::zreader::ZReader;
@@ -390,6 +392,9 @@ impl<'a> MessageSet<'a> {
     ) -> Result<MessageSet<'b>> {
         let mut r = ZReader::new(raw_data);
         let mut msgs = Vec::new();
+
+        //todo!(); // This Match may need restructuring
+
         while !r.is_empty() {
             match MessageSet::next_message(&mut r, validate_crc) {
                 // this is the last messages which might be
@@ -427,6 +432,11 @@ impl<'a> MessageSet<'a> {
                             use std::io::Read;
                             let mut v = Vec::new();
                             try!(try!(SnappyReader::new(pmsg.value)).read_to_end(&mut v));
+                            return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
+                        }
+                        #[cfg(feature = "zstandard")]
+                        c if c == Compression::ZSTANDARD as i8 => {
+                            let v = zstandard::uncompress(pmsg.value)?;
                             return Ok(try!(MessageSet::from_vec(v, req_offset, validate_crc)));
                         }
                         _ => bail!(ErrorKind::UnsupportedCompression),

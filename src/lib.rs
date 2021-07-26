@@ -31,6 +31,9 @@ extern crate flate2;
 #[cfg(feature = "snappy")]
 extern crate snap;
 
+#[cfg(feature = "zstandard")]
+extern crate zstd;
+
 #[cfg(all(test, feature = "nightly"))]
 extern crate test;
 
@@ -42,6 +45,7 @@ pub mod producer;
 mod utils;
 mod codecs;
 mod protocol;
-mod compression;
+
+pub mod compression;
 
 pub use self::error::{Error, Result};

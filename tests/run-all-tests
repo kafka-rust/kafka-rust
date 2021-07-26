@@ -56,7 +56,7 @@ teardown() {
 # need to run tests serially to avoid the tests stepping on each others' toes
 export RUST_TEST_THREADS=1
 DEFAULT_VERS='0.8.2.2:0.9.0.1:0.10.2.1:0.11.0.1:1.0.0'
-DEFAULT_COMPRESSIONS='NONE:SNAPPY:GZIP'
+DEFAULT_COMPRESSIONS='NONE:SNAPPY:GZIP:ZSTANDARD'
 DEFAULT_SECURES=':secure'
 
 declare SCALA_VERS_0_8_2_2='2.11'

@@ -6,6 +6,8 @@ use compression::Compression;
 use compression::gzip;
 #[cfg(feature = "snappy")]
 use compression::snappy;
+#[cfg(feature = "zstandard")]
+use compression::zstandard;
 
 use error::{KafkaCode, Result};
 
@@ -153,7 +155,7 @@ impl<'a> PartitionProduceRequest<'a> {
     // MessetSet => [Offset MessageSize Message]
     // MessageSets are not preceded by an int32 like other array elements in the protocol.
     fn _encode<W: Write>(&self, out: &mut W, compression: Compression) -> Result<()> {
-        try!(self.partition.encode(out));
+        self.partition.encode(out)?;
 
         // ~ render the whole MessageSet first to a temporary buffer
         let mut buf = Vec::new();
@@ -173,6 +175,11 @@ impl<'a> PartitionProduceRequest<'a> {
             Compression::SNAPPY => {
                 let cdata = try!(snappy::compress(&buf));
                 try!(render_compressed(&mut buf, &cdata, compression));
+            },
+            #[cfg(feature="zstandard")]
+            Compression::ZSTANDARD => {
+                let cdata = zstandard::compress(buf.as_slice(), 3)?;
+                render_compressed(&mut buf, &cdata, compression)?;
             }
         }
         buf.encode(out)
@@ -181,7 +188,7 @@ impl<'a> PartitionProduceRequest<'a> {
 
 // ~ A helper method to render `cdata` into `out` as a compressed message.
 // ~ `out` is first cleared and then populated with the rendered message.
-#[cfg(any(feature = "snappy", feature = "gzip"))]
+#[cfg(any(feature = "snappy", feature = "gzip", feature = "zstandard"))]
 fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) -> Result<()> {
     out.clear();
     let cmsg = MessageProduceRequest::new(None, Some(cdata));
