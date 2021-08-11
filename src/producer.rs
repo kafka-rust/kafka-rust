@@ -59,13 +59,13 @@
 // XXX 1) rethink return values for the send_all() method
 // XXX 2) Handle recoverable errors behind the scenes through retry attempts
 
-use std::collections::HashMap;
-use std::fmt;
-use std::hash::{Hasher, BuildHasher, BuildHasherDefault};
-use std::time::Duration;
 use client::{self, KafkaClient};
 use error::{ErrorKind, Result};
 use ref_slice::ref_slice;
+use std::collections::HashMap;
+use std::fmt;
+use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
+use std::time::Duration;
 use twox_hash::XxHash32;
 
 #[cfg(feature = "security")]
@@ -77,7 +77,7 @@ use client_internals::KafkaClientInternals;
 use protocol;
 
 // public re-exports
-pub use client::{Compression, RequiredAcks, ProduceConfirm, ProducePartitionConfirm};
+pub use client::{Compression, ProduceConfirm, ProducePartitionConfirm, RequiredAcks};
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
@@ -192,10 +192,7 @@ impl<'a, K: fmt::Debug, V: fmt::Debug> fmt::Debug for Record<'a, K, V> {
         write!(
             f,
             "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
-            self.topic,
-            self.partition,
-            self.key,
-            self.value
+            self.topic, self.partition, self.key, self.value
         )
     }
 }
@@ -249,7 +246,6 @@ impl Producer {
         self.client
     }
 }
-
 
 impl<P: Partitioner> Producer<P> {
     /// Synchronously send the specified message to Kafka.
@@ -310,7 +306,11 @@ impl<P: Partitioner> Producer<P> {
 }
 
 fn to_option(data: &[u8]) -> Option<&[u8]> {
-    if data.is_empty() { None } else { Some(data) }
+    if data.is_empty() {
+        None
+    } else {
+        Some(data)
+    }
 }
 
 // --------------------------------------------------------------------
@@ -530,7 +530,9 @@ impl Partitions {
 
 impl<'a> Topics<'a> {
     fn new(partitions: &'a HashMap<String, Partitions>) -> Topics<'a> {
-        Topics { partitions: partitions }
+        Topics {
+            partitions: partitions,
+        }
     }
 
     /// Retrieves informationa about a topic's partitions.
@@ -673,11 +675,11 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
 
 #[cfg(test)]
 mod default_partitioner_tests {
-    use std::hash::{Hasher, BuildHasherDefault};
     use std::collections::HashMap;
+    use std::hash::{BuildHasherDefault, Hasher};
 
+    use super::{DefaultHasher, DefaultPartitioner, Partitioner, Partitions, Topics};
     use client;
-    use super::{DefaultPartitioner, DefaultHasher, Partitioner, Partitions, Topics};
 
     fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {
         let mut h = HashMap::new();
@@ -714,14 +716,14 @@ mod default_partitioner_tests {
                 Partitions {
                     available_ids: vec![0, 1, 4],
                     num_all_partitions: 5,
-                }
+                },
             ),
             (
                 "bar",
                 Partitions {
                     available_ids: vec![0, 1],
                     num_all_partitions: 2,
-                }
+                },
             ),
         ]);
 
@@ -766,14 +768,14 @@ mod default_partitioner_tests {
                 Partitions {
                     available_ids: vec![0, 1],
                     num_all_partitions: 2,
-                }
+                },
             ),
             (
                 "contents",
                 Partitions {
                     available_ids: vec![0, 1, 9],
                     num_all_partitions: 10,
-                }
+                },
             ),
         ]);
 

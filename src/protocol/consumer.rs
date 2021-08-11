@@ -1,11 +1,11 @@
 use std::io::{Read, Write};
 
-use codecs::{self, ToByte, FromByte};
-use error::{self, Error, ErrorKind, Result, KafkaCode};
+use codecs::{self, FromByte, ToByte};
+use error::{self, Error, ErrorKind, KafkaCode, Result};
 use utils::PartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
-use super::{API_KEY_OFFSET_FETCH, API_KEY_OFFSET_COMMIT, API_KEY_GROUP_COORDINATOR, API_VERSION};
+use super::{API_KEY_GROUP_COORDINATOR, API_KEY_OFFSET_COMMIT, API_KEY_OFFSET_FETCH, API_VERSION};
 
 // --------------------------------------------------------------------
 
@@ -141,15 +141,16 @@ impl<'a> TopicPartitionOffsetFetchRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32) {
-        self.partitions.push(
-            PartitionOffsetFetchRequest::new(partition),
-        );
+        self.partitions
+            .push(PartitionOffsetFetchRequest::new(partition));
     }
 }
 
 impl PartitionOffsetFetchRequest {
     pub fn new(partition: i32) -> PartitionOffsetFetchRequest {
-        PartitionOffsetFetchRequest { partition: partition }
+        PartitionOffsetFetchRequest {
+            partition: partition,
+        }
     }
 }
 
@@ -210,12 +211,10 @@ impl PartitionOffsetFetchResponse {
                 })
             }
             Some(e) => Err(e),
-            None => {
-                Ok(PartitionOffset {
-                    partition: self.partition,
-                    offset: self.offset,
-                })
-            }
+            None => Ok(PartitionOffset {
+                partition: self.partition,
+                offset: self.offset,
+            }),
         }
     }
 }
@@ -335,11 +334,8 @@ impl<'a> TopicPartitionOffsetCommitRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32, offset: i64, metadata: &'a str) {
-        self.partitions.push(PartitionOffsetCommitRequest::new(
-            partition,
-            offset,
-            metadata,
-        ))
+        self.partitions
+            .push(PartitionOffsetCommitRequest::new(partition, offset, metadata))
     }
 }
 

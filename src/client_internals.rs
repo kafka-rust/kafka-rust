@@ -2,8 +2,8 @@
 //! within this crate but not outside of it.
 
 use client::ProduceMessage;
-use producer::ProduceConfirm;
 use error::Result;
+use producer::ProduceConfirm;
 
 pub trait KafkaClientInternals {
     fn internal_produce_messages<'a, 'b, I, J>(

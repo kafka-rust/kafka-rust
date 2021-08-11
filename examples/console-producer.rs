@@ -1,17 +1,19 @@
-extern crate kafka;
-extern crate getopts;
 extern crate env_logger;
+extern crate getopts;
+extern crate kafka;
 #[macro_use]
 extern crate error_chain;
 
-use std::{env, process};
 use std::fs::File;
-use std::str::FromStr;
-use std::io::{self, stdin, stderr, Write, BufRead, BufReader};
+use std::io::{self, stderr, stdin, BufRead, BufReader, Write};
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 use std::time::Duration;
+use std::{env, process};
 
-use kafka::client::{KafkaClient, Compression, RequiredAcks, DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS};
+use kafka::client::{
+    Compression, KafkaClient, RequiredAcks, DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
+};
 use kafka::producer::{AsBytes, Producer, Record, DEFAULT_ACK_TIMEOUT_MILLIS};
 
 /// This is a very simple command line application sending every
@@ -59,14 +61,12 @@ fn produce(cfg: &Config) -> Result<()> {
 }
 
 fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<()> {
-    let mut producer = try!(
-        Producer::from_client(client)
-            .with_ack_timeout(cfg.ack_timeout)
-            .with_required_acks(cfg.required_acks)
-            .with_compression(cfg.compression)
-            .with_connection_idle_timeout(cfg.conn_idle_timeout)
-            .create()
-    );
+    let mut producer = try!(Producer::from_client(client)
+        .with_ack_timeout(cfg.ack_timeout)
+        .with_required_acks(cfg.required_acks)
+        .with_compression(cfg.compression)
+        .with_connection_idle_timeout(cfg.conn_idle_timeout)
+        .create());
     if cfg.batch_size < 2 {
         produce_impl_nobatch(&mut producer, src, cfg)
     } else {
@@ -221,7 +221,8 @@ impl Config {
             bail!(opts.usage(&brief));
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
+            brokers: m
+                .opt_str("brokers")
                 .unwrap_or_else(|| "localhost:9092".to_owned())
                 .split(',')
                 .map(|s| s.trim().to_owned())
@@ -249,9 +250,10 @@ impl Config {
                 m.opt_str("idle-timeout"),
                 DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
             ))),
-            ack_timeout: Duration::from_millis(
-                try!(to_number(m.opt_str("ack-timeout"), DEFAULT_ACK_TIMEOUT_MILLIS)),
-            ),
+            ack_timeout: Duration::from_millis(try!(to_number(
+                m.opt_str("ack-timeout"),
+                DEFAULT_ACK_TIMEOUT_MILLIS
+            ))),
         })
     }
 }
@@ -259,11 +261,9 @@ impl Config {
 fn to_number<N: FromStr>(s: Option<String>, _default: N) -> Result<N> {
     match s {
         None => Ok(_default),
-        Some(s) => {
-            match s.parse::<N>() {
-                Ok(n) => Ok(n),
-                Err(_) => bail!(format!("Not a number: {}", s)),
-            }
-        }
+        Some(s) => match s.parse::<N>() {
+            Ok(n) => Ok(n),
+            Err(_) => bail!(format!("Not a number: {}", s)),
+        },
     }
 }

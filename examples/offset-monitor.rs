@@ -1,6 +1,6 @@
-extern crate kafka;
-extern crate getopts;
 extern crate env_logger;
+extern crate getopts;
+extern crate kafka;
 extern crate time;
 #[macro_use]
 extern crate error_chain;
@@ -8,13 +8,13 @@ extern crate error_chain;
 use std::ascii::AsciiExt;
 use std::cmp;
 use std::env;
-use std::io::{self, stdout, stderr, BufWriter, Write};
+use std::io::{self, stderr, stdout, BufWriter, Write};
 use std::process;
 use std::thread;
 //use std::time as stdtime;
 use std::time::{Duration, SystemTime};
 
-use kafka::client::{KafkaClient, FetchOffset, GroupOffsetStorage};
+use kafka::client::{FetchOffset, GroupOffsetStorage, KafkaClient};
 
 /// A very simple offset monitor for a particular topic able to show
 /// the lag for a particular consumer group. Dumps the offset/lag of
@@ -28,7 +28,7 @@ fn main() {
             let _ = write!(out, "error: {}\n", $e);
             let _ = out.flush();
             process::exit(1);
-        }}
+        }};
     };
 
     let cfg = match Config::from_cmdline() {
@@ -127,9 +127,10 @@ impl State {
         let latests = try!(client.fetch_topic_offsets(topic, FetchOffset::Latest));
 
         for l in latests {
-            let off = self.offsets.get_mut(l.partition as usize).expect(
-                "[topic offset] non-existent partition",
-            );
+            let off = self
+                .offsets
+                .get_mut(l.partition as usize)
+                .expect("[topic offset] non-existent partition");
             off.prev_latest = off.curr_latest;
             off.curr_latest = l.offset;
         }
@@ -138,9 +139,10 @@ impl State {
             // ~ get the current group offsets
             let groups = try!(client.fetch_group_topic_offsets(group, topic));
             for g in groups {
-                let off = self.offsets.get_mut(g.partition as usize).expect(
-                    "[group offset] non-existent partition",
-                );
+                let off = self
+                    .offsets
+                    .get_mut(g.partition as usize)
+                    .expect("[group offset] non-existent partition");
 
                 // ~ it's quite likely that we fetched group offsets
                 // which are a bit ahead of the topic's latest offset
@@ -247,9 +249,13 @@ impl<W: Write> Printer<W> {
                     macro_rules! cond_add {
                         ($v:ident) => {
                             if $v != -1 {
-                                if p.$v < 0 { $v = -1; } else { $v += p.$v; }
+                                if p.$v < 0 {
+                                    $v = -1;
+                                } else {
+                                    $v += p.$v;
+                                }
                             }
-                        }
+                        };
                     };
                     cond_add!(prev_latest);
                     cond_add!(curr_latest);
@@ -347,7 +353,8 @@ impl Config {
             }
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
+            brokers: m
+                .opt_str("brokers")
                 .unwrap_or_else(|| "localhost:9092".to_owned())
                 .split(',')
                 .map(|s| s.trim().to_owned())

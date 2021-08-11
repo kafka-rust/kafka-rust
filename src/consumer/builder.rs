@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use client::{self, KafkaClient, FetchOffset, GroupOffsetStorage};
+use client::{self, FetchOffset, GroupOffsetStorage, KafkaClient};
 use error::{ErrorKind, Result};
 
-use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
+use super::assignment;
 use super::config::Config;
 use super::state::State;
-use super::assignment;
+use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
 
 #[cfg(feature = "security")]
 use client::SecurityConfig;

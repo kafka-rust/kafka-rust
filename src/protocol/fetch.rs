@@ -1,24 +1,24 @@
 //! A representation of fetched messages from Kafka.
 
 use std::borrow::Cow;
-use std::io::Write;
-use std::mem;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
+use std::io::Write;
+use std::mem;
 
 use fnv::FnvHasher;
 
 use codecs::ToByte;
-use error::{Error, ErrorKind, KafkaCode, Result};
-use compression::Compression;
 #[cfg(feature = "gzip")]
 use compression::gzip;
 #[cfg(feature = "snappy")]
 use compression::snappy::SnappyReader;
+use compression::Compression;
+use error::{Error, ErrorKind, KafkaCode, Result};
 
-use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
-use super::zreader::ZReader;
 use super::to_crc;
+use super::zreader::ZReader;
+use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
 
 pub type PartitionHasher = BuildHasherDefault<FnvHasher>;
 
@@ -74,14 +74,14 @@ impl<'a, 'b> FetchRequest<'a, 'b> {
 
 impl TopicPartitionFetchRequest {
     pub fn new() -> TopicPartitionFetchRequest {
-        TopicPartitionFetchRequest { partitions: HashMap::default() }
+        TopicPartitionFetchRequest {
+            partitions: HashMap::default(),
+        }
     }
 
     pub fn add(&mut self, partition: i32, offset: i64, max_bytes: i32) {
-        self.partitions.insert(
-            partition,
-            PartitionFetchRequest::new(offset, max_bytes),
-        );
+        self.partitions
+            .insert(partition, PartitionFetchRequest::new(offset, max_bytes));
     }
 
     pub fn get(&self, partition: i32) -> Option<&PartitionFetchRequest> {
@@ -163,7 +163,7 @@ macro_rules! array_of {
             array.push(try!($parse_elem));
         }
         array
-    }}
+    }};
 }
 
 /// The result of a "fetch messages" request from a particular Kafka
@@ -294,12 +294,10 @@ impl<'a> Partition<'a> {
             partition: partition,
             data: match error {
                 Some(error) => Err(error),
-                None => {
-                    Ok(Data {
-                        highwatermark_offset: highwatermark,
-                        message_set: msgset,
-                    })
-                }
+                None => Ok(Data {
+                    highwatermark_offset: highwatermark,
+                    message_set: msgset,
+                }),
             },
         })
     }
@@ -494,7 +492,7 @@ impl<'a> ProtocolMessage<'a> {
 mod tests {
     use std::str;
 
-    use super::{FetchRequest, Response, Message};
+    use super::{FetchRequest, Message, Response};
     use error::{Error, ErrorKind, KafkaCode};
 
     static FETCH1_TXT: &'static str = include_str!("../../test-data/fetch1.txt");
@@ -726,7 +724,7 @@ mod tests {
     mod benches {
         use test::{black_box, Bencher};
 
-        use super::super::{Response, FetchRequest};
+        use super::super::{FetchRequest, Response};
         use super::into_messages;
 
         fn bench_decode_new_fetch_response(b: &mut Bencher, data: Vec<u8>, validate_crc: bool) {

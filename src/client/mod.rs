@@ -1278,14 +1278,11 @@ impl KafkaClient {
             }
         }
 
-        Ok(try!(__fetch_group_offsets(
-            req,
-            &mut self.state,
-            &mut self.conn_pool,
-            &self.config
-        ))
-        .remove(topic)
-        .unwrap_or_else(Vec::new))
+        Ok(
+            try!(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config))
+                .remove(topic)
+                .unwrap_or_else(Vec::new),
+        )
     }
 }
 
@@ -1351,10 +1348,7 @@ fn __get_group_coordinator<'a>(
         // try connecting to the user specified bootstrap server similar
         // to the way `load_metadata` works.
         let conn = conn_pool.get_conn_any(now).expect("available connection");
-        debug!(
-            "get_group_coordinator: asking for coordinator of '{}' on: {:?}",
-            group, conn
-        );
+        debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
         let r = try!(__send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req));
         let retry_code;
         match r.to_result() {
@@ -1392,17 +1386,10 @@ fn __commit_offsets(
         let now = Instant::now();
 
         let tps = {
-            let host = try!(__get_group_coordinator(
-                req.group, state, conn_pool, config, now
-            ));
-            debug!(
-                "__commit_offsets: sending offset commit request '{:?}' to: {}",
-                req, host
-            );
-            try!(__send_receive::<_, protocol::OffsetCommitResponse>(
-                conn_pool, host, now, &req
-            ))
-            .topic_partitions
+            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
+            debug!("__commit_offsets: sending offset commit request '{:?}' to: {}", req, host);
+            try!(__send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, now, &req))
+                .topic_partitions
         };
 
         let mut retry_code = None;
@@ -1416,10 +1403,7 @@ fn __commit_offsets(
                         break 'rproc;
                     }
                     Some(e @ KafkaCode::NotCoordinatorForGroup) => {
-                        debug!(
-                            "commit_offsets: resetting group coordinator for '{}'",
-                            req.group
-                        );
+                        debug!("commit_offsets: resetting group coordinator for '{}'", req.group);
                         state.remove_group_coordinator(&req.group);
                         retry_code = Some(e);
                         break 'rproc;
@@ -1460,16 +1444,9 @@ fn __fetch_group_offsets(
         let now = Instant::now();
 
         let r = {
-            let host = try!(__get_group_coordinator(
-                req.group, state, conn_pool, config, now
-            ));
-            debug!(
-                "fetch_group_offsets: sending request {:?} to: {}",
-                req, host
-            );
-            try!(__send_receive::<_, protocol::OffsetFetchResponse>(
-                conn_pool, host, now, &req
-            ))
+            let host = try!(__get_group_coordinator(req.group, state, conn_pool, config, now));
+            debug!("fetch_group_offsets: sending request {:?} to: {}", req, host);
+            try!(__send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, now, &req))
         };
 
         debug!("fetch_group_offsets: received response: {:#?}", r);
@@ -1557,17 +1534,14 @@ fn __produce_messages(
     let now = Instant::now();
     if no_acks {
         for (host, req) in reqs {
-            try!(__send_noack::<_, protocol::ProduceResponse>(
-                conn_pool, host, now, req
-            ));
+            try!(__send_noack::<_, protocol::ProduceResponse>(conn_pool, host, now, req));
         }
         Ok(vec![])
     } else {
         let mut res: Vec<ProduceConfirm> = vec![];
         for (host, req) in reqs {
-            let resp = try!(__send_receive::<_, protocol::ProduceResponse>(
-                conn_pool, &host, now, req
-            ));
+            let resp =
+                try!(__send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, now, req));
             for tpo in resp.get_response() {
                 res.push(tpo);
             }

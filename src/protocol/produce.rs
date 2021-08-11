@@ -1,18 +1,18 @@
 use std::io::{Read, Write};
 
-use codecs::{ToByte, FromByte};
-use compression::Compression;
+use codecs::{FromByte, ToByte};
 #[cfg(feature = "gzip")]
 use compression::gzip;
 #[cfg(feature = "snappy")]
 use compression::snappy;
+use compression::Compression;
 
 use error::{KafkaCode, Result};
 
-use producer::{ProduceConfirm, ProducePartitionConfirm};
+use super::to_crc;
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
-use super::to_crc;
+use producer::{ProduceConfirm, ProducePartitionConfirm};
 
 /// The magic byte (a.k.a version) we use for sent messages.
 const MESSAGE_MAGIC_BYTE: i8 = 0;
@@ -97,11 +97,8 @@ impl<'a> TopicPartitionProduceRequest<'a> {
                 return;
             }
         }
-        self.partitions.push(PartitionProduceRequest::new(
-            partition,
-            key,
-            value,
-        ));
+        self.partitions
+            .push(PartitionProduceRequest::new(partition, key, value));
     }
 }
 
@@ -209,7 +206,6 @@ impl<'a> MessageProduceRequest<'a> {
     //
     // note: the rendered data corresponds to a single MessageSet in the kafka protocol
     fn _encode_to_buf(&self, buffer: &mut Vec<u8>, magic: i8, attributes: i8) -> Result<()> {
-
         try!((0i64).encode(buffer)); // offset in the response request can be anything
 
         let size_pos = buffer.len();
@@ -277,7 +273,8 @@ impl ProduceResponse {
 
 impl TopicPartitionProduceResponse {
     pub fn get_response(self) -> ProduceConfirm {
-        let confirms = self.partitions
+        let confirms = self
+            .partitions
             .iter()
             .map(|ref p| p.get_response())
             .collect();

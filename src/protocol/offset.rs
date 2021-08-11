@@ -1,12 +1,11 @@
 use std::io::{Read, Write};
 
-use std;
-use codecs::{ToByte, FromByte};
-use error::{Result, KafkaCode};
-use utils::PartitionOffset;
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET, API_VERSION};
-
+use codecs::{FromByte, ToByte};
+use error::{KafkaCode, Result};
+use std;
+use utils::PartitionOffset;
 
 #[derive(Debug)]
 pub struct OffsetRequest<'a> {
@@ -59,9 +58,8 @@ impl<'a> TopicPartitionOffsetRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32, time: i64) {
-        self.partitions.push(
-            PartitionOffsetRequest::new(partition, time),
-        );
+        self.partitions
+            .push(PartitionOffsetRequest::new(partition, time));
     }
 }
 

@@ -4,8 +4,8 @@
 use std::collections::hash_map;
 use std::fmt;
 
+use super::state::{ClientState, TopicPartition, TopicPartitionIter, TopicPartitions};
 use super::KafkaClient;
-use super::state::{ClientState, TopicPartitions, TopicPartitionIter, TopicPartition};
 
 // public re-export
 pub use super::state::Broker;
@@ -21,7 +21,9 @@ impl<'a> Topics<'a> {
     /// the specified kafka client.
     #[inline]
     pub fn new(client: &KafkaClient) -> Topics {
-        Topics { state: &client.state }
+        Topics {
+            state: &client.state,
+        }
     }
 
     /// Retrieves the number of the underlying topics.
@@ -53,11 +55,9 @@ impl<'a> Topics<'a> {
     /// Retrieves the partitions of a specified topic.
     #[inline]
     pub fn partitions(&'a self, topic: &str) -> Option<Partitions<'a>> {
-        self.state.partitions_for(topic).map(|tp| {
-            Partitions {
-                state: self.state,
-                tp: tp,
-            }
+        self.state.partitions_for(topic).map(|tp| Partitions {
+            state: self.state,
+            tp: tp,
         })
     }
 }
@@ -114,12 +114,10 @@ impl<'a> Iterator for TopicIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(name, tps)| {
-            Topic {
-                state: self.state,
-                name: &name[..],
-                tp: tps,
-            }
+        self.iter.next().map(|(name, tps)| Topic {
+            state: self.state,
+            name: &name[..],
+            tp: tps,
         })
     }
 }
@@ -182,9 +180,9 @@ impl<'a> Partitions<'a> {
     /// Finds a specified partition identified by its id.
     #[inline]
     pub fn partition(&self, partition_id: i32) -> Option<Partition<'a>> {
-        self.tp.partition(partition_id).map(|p| {
-            Partition::new(self.state, p, partition_id)
-        })
+        self.tp
+            .partition(partition_id)
+            .map(|p| Partition::new(self.state, p, partition_id))
     }
 
     /// Convenience method to retrieve the identifiers of all
@@ -251,9 +249,9 @@ impl<'a> Iterator for PartitionIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(
-            |(id, p)| Partition::new(self.state, p, id),
-        )
+        self.iter
+            .next()
+            .map(|(id, p)| Partition::new(self.state, p, id))
     }
 }
 

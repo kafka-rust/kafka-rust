@@ -3,7 +3,7 @@ use std::io::{self, Read};
 use byteorder::{BigEndian, ByteOrder};
 use snap;
 
-use error::{Result, Error, ErrorKind};
+use error::{Error, ErrorKind, Result};
 
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
     let mut buf = vec![0; snap::max_compress_len(src.len())];
@@ -45,11 +45,12 @@ macro_rules! next_i32 {
         if $slice.len() < 4 {
             bail!(ErrorKind::UnexpectedEOF);
         }
-        { let n = BigEndian::read_i32($slice);
-          $slice = &$slice[4..];
-          n
+        {
+            let n = BigEndian::read_i32($slice);
+            $slice = &$slice[4..];
+            n
         }
-    }}
+    }};
 }
 
 /// Validates the expected header at the beginning of the
@@ -81,23 +82,7 @@ fn validate_stream(mut stream: &[u8]) -> Result<&[u8]> {
 #[test]
 fn test_validate_stream() {
     let header = [
-        0x82,
-        0x53,
-        0x4e,
-        0x41,
-        0x50,
-        0x50,
-        0x59,
-        0x00,
-        0,
-        0,
-        0,
-        1,
-        0,
-        0,
-        0,
-        1,
-        0x56,
+        0x82, 0x53, 0x4e, 0x41, 0x50, 0x50, 0x59, 0x00, 0, 0, 0, 1, 0, 0, 0, 1, 0x56,
     ];
     // ~ this must not result in a panic
     let rest = validate_stream(&header).unwrap();
@@ -199,7 +184,7 @@ macro_rules! to_io_error {
             // ~ wrapp our other errors
             Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.description())),
         }
-    }
+    };
 }
 
 impl<'a> Read for SnappyReader<'a> {
@@ -216,11 +201,11 @@ impl<'a> Read for SnappyReader<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::str;
     use std::io::Read;
+    use std::str;
 
-    use error::{Error, ErrorKind, Result};
     use super::{compress, uncompress_to, SnappyReader};
+    use error::{Error, ErrorKind, Result};
 
     fn uncompress(src: &[u8]) -> Result<Vec<u8>> {
         let mut v = Vec::new();
@@ -235,20 +220,7 @@ mod tests {
         let msg = "This is test".as_bytes();
         let compressed = compress(msg).unwrap();
         let expected = &[
-            12,
-            44,
-            84,
-            104,
-            105,
-            115,
-            32,
-            105,
-            115,
-            32,
-            116,
-            101,
-            115,
-            116,
+            12, 44, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116,
         ];
         assert_eq!(&compressed, expected);
     }
@@ -257,20 +229,7 @@ mod tests {
     fn test_uncompress() {
         // The vector should uncompress to "This is test"
         let compressed = &[
-            12,
-            44,
-            84,
-            104,
-            105,
-            115,
-            32,
-            105,
-            115,
-            32,
-            116,
-            101,
-            115,
-            116,
+            12, 44, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116,
         ];
         let uncompressed = String::from_utf8(uncompress(compressed).unwrap()).unwrap();
         assert_eq!(&uncompressed, "This is test");
@@ -280,20 +239,7 @@ mod tests {
     fn test_uncompress_invalid_input() {
         // The vector is an invalid snappy message (second byte modified on purpose)
         let compressed = &[
-            12,
-            42,
-            84,
-            104,
-            105,
-            115,
-            32,
-            105,
-            115,
-            32,
-            116,
-            101,
-            115,
-            116,
+            12, 42, 84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116,
         ];
         let uncompressed = uncompress(compressed);
         assert!(uncompressed.is_err());
