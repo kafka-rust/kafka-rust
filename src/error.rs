@@ -3,7 +3,6 @@
 use std::io;
 
 #[cfg(feature = "security")]
-
 #[cfg(feature = "security")]
 use openssl::ssl::{self, Error as SslError};
 

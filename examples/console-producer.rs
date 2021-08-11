@@ -95,7 +95,11 @@ impl DerefMut for Trimmed {
     }
 }
 
-fn produce_impl_nobatch(producer: &mut Producer, src: &mut dyn BufRead, cfg: &Config) -> Result<()> {
+fn produce_impl_nobatch(
+    producer: &mut Producer,
+    src: &mut dyn BufRead,
+    cfg: &Config,
+) -> Result<()> {
     let mut stderr = stderr();
     let mut rec = Record::from_value(&cfg.topic, Trimmed(String::new()));
     loop {
@@ -116,7 +120,11 @@ fn produce_impl_nobatch(producer: &mut Producer, src: &mut dyn BufRead, cfg: &Co
 // This implementation wants to be efficient.  It buffers N lines from
 // the source and sends these in batches to Kafka.  Line buffers
 // across batches are re-used for the sake of avoiding allocations.
-fn produce_impl_inbatches(producer: &mut Producer, src: &mut dyn BufRead, cfg: &Config) -> Result<()> {
+fn produce_impl_inbatches(
+    producer: &mut Producer,
+    src: &mut dyn BufRead,
+    cfg: &Config,
+) -> Result<()> {
     assert!(cfg.batch_size > 1);
 
     // ~ a buffer of prepared records to be send in a batch to Kafka

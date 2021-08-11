@@ -40,22 +40,19 @@ impl ToByte for i8 {
 
 impl ToByte for i16 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        buffer
-            .write_i16::<BigEndian>(*self).map_err(From::from)
+        buffer.write_i16::<BigEndian>(*self).map_err(From::from)
     }
 }
 
 impl ToByte for i32 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        buffer
-            .write_i32::<BigEndian>(*self).map_err(From::from)
+        buffer.write_i32::<BigEndian>(*self).map_err(From::from)
     }
 }
 
 impl ToByte for i64 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        buffer
-            .write_i64::<BigEndian>(*self).map_err(From::from)
+        buffer.write_i64::<BigEndian>(*self).map_err(From::from)
     }
 }
 
@@ -63,8 +60,7 @@ impl ToByte for str {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try_usize_to_int!(self.len(), i16);
         buffer.write_i16::<BigEndian>(l)?;
-        buffer
-            .write_all(self.as_bytes()).map_err(From::from)
+        buffer.write_all(self.as_bytes()).map_err(From::from)
     }
 }
 

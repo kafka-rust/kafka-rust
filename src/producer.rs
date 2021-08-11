@@ -530,9 +530,7 @@ impl Partitions {
 
 impl<'a> Topics<'a> {
     fn new(partitions: &'a HashMap<String, Partitions>) -> Topics<'a> {
-        Topics {
-            partitions,
-        }
+        Topics { partitions }
     }
 
     /// Retrieves informationa about a topic's partitions.

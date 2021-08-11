@@ -106,9 +106,7 @@ impl Config {
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => {
-                std::panic::panic_any(e.to_string())
-            }
+            Err(e) => std::panic::panic_any(e.to_string()),
         };
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
@@ -144,7 +142,6 @@ impl Config {
                 offset_storage = GroupOffsetStorage::Kafka;
             } else {
                 format!("unknown offset store: {}", s);
-                
             }
         }
         Ok(Config {

@@ -12,7 +12,7 @@ use std::io::{self, stderr, stdout, BufWriter, Write};
 use std::process;
 use std::thread;
 //use std::time as stdtime;
-use std::time::{Duration};
+use std::time::Duration;
 
 use kafka::client::{FetchOffset, GroupOffsetStorage, KafkaClient};
 

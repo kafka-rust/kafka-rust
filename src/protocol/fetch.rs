@@ -91,10 +91,7 @@ impl TopicPartitionFetchRequest {
 
 impl PartitionFetchRequest {
     pub fn new(offset: i64, max_bytes: i32) -> PartitionFetchRequest {
-        PartitionFetchRequest {
-            offset,
-            max_bytes,
-        }
+        PartitionFetchRequest { offset, max_bytes }
     }
 }
 

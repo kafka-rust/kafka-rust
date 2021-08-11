@@ -187,10 +187,7 @@ fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) 
 
 impl<'a> MessageProduceRequest<'a> {
     fn new<'b>(key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> MessageProduceRequest<'b> {
-        MessageProduceRequest {
-            key,
-            value,
-        }
+        MessageProduceRequest { key, value }
     }
 
     // render a single message as: Offset MessageSize Message
@@ -273,11 +270,7 @@ impl ProduceResponse {
 
 impl TopicPartitionProduceResponse {
     pub fn get_response(self) -> ProduceConfirm {
-        let confirms = self
-            .partitions
-            .iter()
-            .map(|p| p.get_response())
-            .collect();
+        let confirms = self.partitions.iter().map(|p| p.get_response()).collect();
 
         ProduceConfirm {
             topic: self.topic,

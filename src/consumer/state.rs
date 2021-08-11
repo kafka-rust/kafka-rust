@@ -90,10 +90,7 @@ impl State {
                 }
                 subs
             };
-            let n = subscriptions
-                .iter()
-                .map(|s| s.partitions.len())
-                .sum();
+            let n = subscriptions.iter().map(|s| s.partitions.len()).sum();
             let consumed =
                 load_consumed_offsets(client, &config.group, &assignments, &subscriptions, n)?;
 
@@ -349,13 +346,7 @@ fn load_fetch_states(
                         }
                     },
                 };
-                fetch_offsets.insert(
-                    tp,
-                    FetchState {
-                        offset,
-                        max_bytes,
-                    },
-                );
+                fetch_offsets.insert(tp, FetchState { offset, max_bytes });
             }
         }
     }

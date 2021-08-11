@@ -869,12 +869,8 @@ impl KafkaClient {
         let now = Instant::now();
         let mut res: HashMap<String, Vec<PartitionOffset>> = HashMap::with_capacity(n_topics);
         for (host, req) in reqs {
-            let resp = __send_receive::<_, protocol::OffsetResponse>(
-                &mut self.conn_pool,
-                host,
-                now,
-                req,
-            )?;
+            let resp =
+                __send_receive::<_, protocol::OffsetResponse>(&mut self.conn_pool, host, now, req)?;
             for tp in resp.topic_partitions {
                 let mut entry = res.entry(tp.topic);
                 let mut new_resp_offsets = None;

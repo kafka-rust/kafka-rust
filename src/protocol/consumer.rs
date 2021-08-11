@@ -148,9 +148,7 @@ impl<'a> TopicPartitionOffsetFetchRequest<'a> {
 
 impl PartitionOffsetFetchRequest {
     pub fn new(partition: i32) -> PartitionOffsetFetchRequest {
-        PartitionOffsetFetchRequest {
-            partition,
-        }
+        PartitionOffsetFetchRequest { partition }
     }
 }
 
