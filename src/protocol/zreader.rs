@@ -1,7 +1,7 @@
 use std::str;
 
 use byteorder::{BigEndian, ByteOrder};
-use error::{ErrorKind, Result};
+use crate::error::{ErrorKind, Result};
 
 static EMPTY_STR: &str = "";
 

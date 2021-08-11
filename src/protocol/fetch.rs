@@ -8,13 +8,13 @@ use std::mem;
 
 use fnv::FnvHasher;
 
-use codecs::ToByte;
+use crate::codecs::ToByte;
 #[cfg(feature = "gzip")]
-use compression::gzip;
+use crate::compression::gzip;
 #[cfg(feature = "snappy")]
-use compression::snappy::SnappyReader;
-use compression::Compression;
-use error::{Error, ErrorKind, KafkaCode, Result};
+use crate::compression::snappy::SnappyReader;
+use crate::compression::Compression;
+use crate::error::{Error, ErrorKind, KafkaCode, Result};
 
 use super::to_crc;
 use super::zreader::ZReader;
@@ -487,7 +487,7 @@ mod tests {
     use std::str;
 
     use super::{FetchRequest, Message, Response};
-    use error::{Error, ErrorKind, KafkaCode};
+    use crate::error::{Error, ErrorKind, KafkaCode};
 
     static FETCH1_TXT: &str = include_str!("../../test-data/fetch1.txt");
 

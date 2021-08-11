@@ -1,8 +1,8 @@
 use std::io::{Read, Write};
 
-use codecs::{self, FromByte, ToByte};
-use error::{self, Error, ErrorKind, KafkaCode, Result};
-use utils::PartitionOffset;
+use crate::codecs::{self, FromByte, ToByte};
+use crate::error::{self, Error, ErrorKind, KafkaCode, Result};
+use crate::utils::PartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_GROUP_COORDINATOR, API_KEY_OFFSET_COMMIT, API_KEY_OFFSET_FETCH, API_VERSION};

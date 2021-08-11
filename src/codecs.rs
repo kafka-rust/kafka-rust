@@ -2,7 +2,7 @@ use std::default::Default;
 use std::io::{Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use error::{ErrorKind, Result};
+use crate::error::{ErrorKind, Result};
 
 // Helper macro to safely convert an usize expression into a signed
 // integer.  If the conversion is not possible the macro issues a

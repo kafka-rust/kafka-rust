@@ -14,17 +14,17 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 // pub re-export
-pub use compression::Compression;
-pub use utils::PartitionOffset;
+pub use crate::compression::Compression;
+pub use crate::utils::PartitionOffset;
 
 #[cfg(feature = "security")]
 pub use self::network::SecurityConfig;
 
-use codecs::{FromByte, ToByte};
-use error::{Error, ErrorKind, KafkaCode, Result};
-use protocol::{self, ResponseParser};
+use crate::codecs::{FromByte, ToByte};
+use crate::error::{Error, ErrorKind, KafkaCode, Result};
+use crate::protocol::{self, ResponseParser};
 
-use client_internals::KafkaClientInternals;
+use crate::client_internals::KafkaClientInternals;
 
 pub mod metadata;
 mod network;
@@ -35,7 +35,7 @@ mod state;
 pub mod fetch {
     //! A representation of fetched messages from Kafka.
 
-    pub use protocol::fetch::{Data, Message, Partition, Response, Topic};
+    pub use crate::protocol::fetch::{Data, Message, Partition, Response, Topic};
 }
 
 const DEFAULT_CONNECTION_RW_TIMEOUT_SECS: u64 = 120;

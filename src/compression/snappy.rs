@@ -3,7 +3,7 @@ use std::io::{self, Read};
 use byteorder::{BigEndian, ByteOrder};
 use snap;
 
-use error::{Error, ErrorKind, Result};
+use crate::error::{Error, ErrorKind, Result};
 
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
     let mut buf = vec![0; snap::max_compress_len(src.len())];
@@ -205,7 +205,7 @@ mod tests {
     use std::str;
 
     use super::{compress, uncompress_to, SnappyReader};
-    use error::{Error, ErrorKind, Result};
+    use crate::error::{Error, ErrorKind, Result};
 
     fn uncompress(src: &[u8]) -> Result<Vec<u8>> {
         let mut v = Vec::new();

@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 #[cfg(feature = "security")]
 use openssl::ssl::SslConnector;
 
-use error::Result;
+use crate::error::Result;
 
 // --------------------------------------------------------------------
 

@@ -3,8 +3,8 @@ use std::convert::AsRef;
 use std::slice;
 use std::u32;
 
-use error::Result;
-use protocol;
+use crate::error::Result;
+use crate::protocol;
 
 #[derive(Debug)]
 pub struct ClientState {
@@ -407,8 +407,8 @@ impl ClientState {
 #[cfg(test)]
 mod tests {
     use super::ClientState;
-    use protocol;
-    use protocol::metadata as md;
+    use crate::protocol;
+    use crate::protocol::metadata as md;
 
     fn new_partition(id: i32, leader: i32) -> md::PartitionMetadata {
         md::PartitionMetadata {

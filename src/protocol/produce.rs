@@ -1,18 +1,18 @@
 use std::io::{Read, Write};
 
-use codecs::{FromByte, ToByte};
+use crate::codecs::{FromByte, ToByte};
 #[cfg(feature = "gzip")]
-use compression::gzip;
+use crate::compression::gzip;
 #[cfg(feature = "snappy")]
-use compression::snappy;
-use compression::Compression;
+use crate::compression::snappy;
+use crate::compression::Compression;
 
-use error::{KafkaCode, Result};
+use crate::error::{KafkaCode, Result};
 
 use super::to_crc;
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
-use producer::{ProduceConfirm, ProducePartitionConfirm};
+use crate::producer::{ProduceConfirm, ProducePartitionConfirm};
 
 /// The magic byte (a.k.a version) we use for sent messages.
 const MESSAGE_MAGIC_BYTE: i8 = 0;

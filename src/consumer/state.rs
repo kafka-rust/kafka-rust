@@ -5,9 +5,9 @@ use std::hash::BuildHasherDefault;
 
 use fnv::FnvHasher;
 
-use client::metadata::Topics;
-use client::{FetchGroupOffset, FetchOffset, KafkaClient};
-use error::{ErrorKind, KafkaCode, Result};
+use crate::client::metadata::Topics;
+use crate::client::{FetchGroupOffset, FetchOffset, KafkaClient};
+use crate::error::{ErrorKind, KafkaCode, Result};
 
 use super::assignment::{Assignment, AssignmentRef, Assignments};
 use super::config::Config;

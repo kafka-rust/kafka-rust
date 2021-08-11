@@ -59,8 +59,8 @@
 // XXX 1) rethink return values for the send_all() method
 // XXX 2) Handle recoverable errors behind the scenes through retry attempts
 
-use client::{self, KafkaClient};
-use error::{ErrorKind, Result};
+use crate::client::{self, KafkaClient};
+use crate::error::{ErrorKind, Result};
 use ref_slice::ref_slice;
 use std::collections::HashMap;
 use std::fmt;
@@ -69,15 +69,15 @@ use std::time::Duration;
 use twox_hash::XxHash32;
 
 #[cfg(feature = "security")]
-use client::SecurityConfig;
+use crate::client::SecurityConfig;
 
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
-use client_internals::KafkaClientInternals;
-use protocol;
+use crate::client_internals::KafkaClientInternals;
+use crate::protocol;
 
 // public re-exports
-pub use client::{Compression, ProduceConfirm, ProducePartitionConfirm, RequiredAcks};
+pub use crate::client::{Compression, ProduceConfirm, ProducePartitionConfirm, RequiredAcks};
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
@@ -677,7 +677,7 @@ mod default_partitioner_tests {
     use std::hash::{BuildHasherDefault, Hasher};
 
     use super::{DefaultHasher, DefaultPartitioner, Partitioner, Partitions, Topics};
-    use client;
+    use crate::client;
 
     fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {
         let mut h = HashMap::new();

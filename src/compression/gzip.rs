@@ -4,7 +4,7 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
-use error::Result;
+use crate::error::Result;
 
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
     let mut e = GzEncoder::new(Vec::new(), Compression::best());
