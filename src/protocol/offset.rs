@@ -4,8 +4,8 @@ use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_OFFSET, API_VERSION};
 use crate::codecs::{FromByte, ToByte};
 use crate::error::{KafkaCode, Result};
-use std;
 use crate::utils::PartitionOffset;
+use std;
 
 #[derive(Debug)]
 pub struct OffsetRequest<'a> {

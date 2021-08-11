@@ -3,8 +3,8 @@ use std::mem;
 use std::time::Duration;
 
 use crate::codecs::{FromByte, ToByte};
-use crc::crc32;
 use crate::error::{Error, ErrorKind, KafkaCode, Result};
+use crc::crc32;
 
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {

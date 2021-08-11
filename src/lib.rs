@@ -10,21 +10,11 @@
 #![recursion_limit = "128"]
 #![cfg_attr(feature = "nightly", feature(test))]
 
-
-
-
-
-
-
 #[macro_use]
 extern crate error_chain;
 
 #[macro_use]
 extern crate log;
-
-
-
-
 
 #[cfg(feature = "snappy")]
 extern crate snap;

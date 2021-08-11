@@ -134,8 +134,7 @@ impl PartitionFetchRequest {
 
 // ~ response related -------------------------------------------------
 
-pub struct ResponseParser<'a, 'b, 'c>
-{
+pub struct ResponseParser<'a, 'b, 'c> {
     pub validate_crc: bool,
     pub requests: Option<&'c FetchRequest<'a, 'b>>,
 }

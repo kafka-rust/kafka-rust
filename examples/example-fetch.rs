@@ -1,6 +1,5 @@
 use env_logger;
 
-
 use kafka::client::{FetchPartition, KafkaClient};
 
 /// This program demonstrates the low level api for fetching messages.
