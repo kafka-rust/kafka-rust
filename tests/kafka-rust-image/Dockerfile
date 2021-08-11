@@ -2,7 +2,7 @@ FROM ubuntu:xenial
 
 RUN apt-get update && apt-get install -y curl jq coreutils net-tools openjdk-8-jre
 
-ARG kafka_version=1.0.0
+ARG kafka_version=2.1.0
 ARG scala_version=2.12
 
 ENV KAFKA_VERSION=$kafka_version SCALA_VERSION=$scala_version
@@ -29,14 +29,14 @@ COPY server.properties secure.server.properties /opt/kafka/config/
 
 # set up an SSL certificate for secure mode
 RUN keytool \
-        -keystore server.keystore.jks \
-        -alias localhost \
-        -validity 1 \
-        -genkeypair \
-        -keyalg RSA \
-        -dname "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown" \
-        -storepass xxxxxx \
-        -keypass xxxxxx
+    -keystore server.keystore.jks \
+    -alias localhost \
+    -validity 1 \
+    -genkeypair \
+    -keyalg RSA \
+    -dname "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown" \
+    -storepass xxxxxx \
+    -keypass xxxxxx
 
 EXPOSE 9092
 
