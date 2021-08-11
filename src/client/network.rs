@@ -179,7 +179,7 @@ impl Connections {
         if let Some(conn) = self.conns.get_mut(host) {
             if now.duration_since(conn.last_checkout) >= self.config.idle_timeout {
                 debug!("Idle timeout reached: {:?}", conn.item);
-                let new_conn = try!(self.config.new_conn(self.state.next_conn_id(), host));
+                let new_conn = self.config.new_conn(self.state.next_conn_id(), host)?;
                 let _ = conn.item.shutdown();
                 conn.item = new_conn;
             }
@@ -193,7 +193,7 @@ impl Connections {
         }
         let cid = self.state.next_conn_id();
         self.conns
-            .insert(host.to_owned(), Pooled::new(now, try!(self.config.new_conn(cid, host))));
+            .insert(host.to_owned(), Pooled::new(now, self.config.new_conn(cid, host)?));
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
 
@@ -355,7 +355,7 @@ impl KafkaConnection {
         // following call to `read_exact` or discard the vector (in
         // the error case)
         unsafe { buffer.set_len(size) };
-        try!(self.read_exact(buffer.as_mut_slice()));
+        self.read_exact(buffer.as_mut_slice())?;
         Ok(buffer)
     }
 
@@ -371,8 +371,8 @@ impl KafkaConnection {
         host: &str,
         rw_timeout: Option<Duration>,
     ) -> Result<KafkaConnection> {
-        try!(stream.set_read_timeout(rw_timeout));
-        try!(stream.set_write_timeout(rw_timeout));
+        stream.set_read_timeout(rw_timeout)?;
+        stream.set_write_timeout(rw_timeout)?;
         Ok(KafkaConnection {
             id,
             host: host.to_owned(),
@@ -382,7 +382,7 @@ impl KafkaConnection {
 
     #[cfg(not(feature = "security"))]
     fn new(id: u32, host: &str, rw_timeout: Option<Duration>) -> Result<KafkaConnection> {
-        KafkaConnection::from_stream(try!(TcpStream::connect(host)), id, host, rw_timeout)
+        KafkaConnection::from_stream(TcpStream::connect(host)?, id, host, rw_timeout)
     }
 
     #[cfg(feature = "security")]
@@ -392,7 +392,7 @@ impl KafkaConnection {
         rw_timeout: Option<Duration>,
         security: Option<(SslConnector, bool)>,
     ) -> Result<KafkaConnection> {
-        let stream = try!(TcpStream::connect(host));
+        let stream = TcpStream::connect(host)?;
         let stream = match security {
             Some((connector, verify_hostname)) => {
                 if !verify_hostname {
@@ -409,7 +409,7 @@ impl KafkaConnection {
                     None => host,
                     Some(i) => &host[..i],
                 };
-                let connection = try!(connector.connect(domain, stream));
+                let connection = connector.connect(domain, stream)?;
                 KafkaStream::Ssl(connection)
             }
             None => KafkaStream::Plain(stream),

@@ -124,7 +124,7 @@ impl State {
         group: &str,
     ) -> Result<()> {
         // ~ get the latest topic offsets
-        let latests = try!(client.fetch_topic_offsets(topic, FetchOffset::Latest));
+        let latests = client.fetch_topic_offsets(topic, FetchOffset::Latest)?;
 
         for l in latests {
             let off = self
@@ -137,7 +137,7 @@ impl State {
 
         if !group.is_empty() {
             // ~ get the current group offsets
-            let groups = try!(client.fetch_group_topic_offsets(group, topic));
+            let groups = client.fetch_group_topic_offsets(group, topic)?;
             for g in groups {
                 let off = self
                     .offsets
@@ -226,7 +226,7 @@ impl<W: Write> Printer<W> {
         }
         {
             // ~ print
-            try!(self.out.write_all(self.out_buf.as_bytes()));
+            self.out.write_all(self.out_buf.as_bytes())?;
             Ok(())
         }
     }
@@ -289,7 +289,7 @@ impl<W: Write> Printer<W> {
             }
         }
         self.out_buf.push('\n');
-        try!(self.out.write_all(self.out_buf.as_bytes()));
+        self.out.write_all(self.out_buf.as_bytes())?;
         Ok(())
     }
 }

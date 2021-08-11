@@ -155,7 +155,7 @@ impl Consumer {
     /// Polls for the next available message data.
     pub fn poll(&mut self) -> Result<MessageSets> {
         let (n, resps) = self.fetch_messages();
-        self.process_fetch_responses(n, try!(resps))
+        self.process_fetch_responses(n, resps?)
     }
 
     /// Determines whether this consumer is set up to consume only a
@@ -425,7 +425,7 @@ impl Consumer {
             self.state.consumed_offsets_debug()
         );
         let (client, state) = (&mut self.client, &mut self.state);
-        try!(client.commit_offsets(
+        client.commit_offsets(
             &self.config.group,
             state
                 .consumed_offsets
@@ -441,7 +441,7 @@ impl Consumer {
                     // https://kafka.apache.org/090/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html
                     CommitOffset::new(topic, tp.partition, o.offset + 1)
                 }),
-        ));
+        )?;
         for (_, co) in &mut state.consumed_offsets {
             if co.dirty {
                 co.dirty = false;

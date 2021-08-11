@@ -254,7 +254,7 @@ impl<P: Partitioner> Producer<P> {
         K: AsBytes,
         V: AsBytes,
     {
-        let mut rs = try!(self.send_all(ref_slice(rec)));
+        let mut rs = self.send_all(ref_slice(rec))?;
 
         if self.config.required_acks == 0 {
             // ~ with no required_acks we get no response and
@@ -469,15 +469,15 @@ impl<P> Builder<P> {
             client.set_client_id(client_id);
         }
         let producer_config = Config {
-            ack_timeout: try!(protocol::to_millis_i32(self.ack_timeout)),
+            ack_timeout: protocol::to_millis_i32(self.ack_timeout)?,
             required_acks: self.required_acks as i16,
         };
         // ~ load metadata if necessary
         if need_metadata {
-            try!(client.load_metadata_all());
+            client.load_metadata_all()?;
         }
         // ~ create producer state
-        let state = try!(State::new(&mut client, self.partitioner));
+        let state = State::new(&mut client, self.partitioner)?;
         Ok(Producer {
             client: client,
             state: state,

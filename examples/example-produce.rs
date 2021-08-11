@@ -49,16 +49,16 @@ fn produce_message<'a, 'b>(
     // ~ we leave the partition "unspecified" - this is a negative
     // partition - which causes the producer to find out one on its
     // own using its underlying partitioner.
-    try!(producer.send(&Record {
+    producer.send(&Record {
         topic: topic,
         partition: -1,
         key: (),
         value: data,
-    }));
+    })?;
 
     // ~ we can achieve exactly the same as above in a shorter way with
     // the following call
-    try!(producer.send(&Record::from_value(topic, data)));
+    producer.send(&Record::from_value(topic, data))?;
 
     Ok(())
 }

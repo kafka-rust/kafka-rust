@@ -41,7 +41,7 @@ fn main() {
 fn produce(cfg: &Config) -> Result<()> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
     client.set_client_id("kafka-rust-console-producer".into());
-    try!(client.load_metadata_all());
+    client.load_metadata_all()?;
 
     // ~ verify that the remote brokers do know about the target topic
     if !client.topics().contains(&cfg.topic) {
@@ -54,19 +54,19 @@ fn produce(cfg: &Config) -> Result<()> {
             produce_impl(&mut stdin, client, &cfg)
         }
         Some(ref file) => {
-            let mut r = BufReader::new(try!(File::open(file)));
+            let mut r = BufReader::new(File::open(file)?);
             produce_impl(&mut r, client, &cfg)
         }
     }
 }
 
 fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<()> {
-    let mut producer = try!(Producer::from_client(client)
+    let mut producer = Producer::from_client(client)
         .with_ack_timeout(cfg.ack_timeout)
         .with_required_acks(cfg.required_acks)
         .with_compression(cfg.compression)
         .with_connection_idle_timeout(cfg.conn_idle_timeout)
-        .create());
+        .create()?;
     if cfg.batch_size < 2 {
         produce_impl_nobatch(&mut producer, src, cfg)
     } else {
@@ -100,14 +100,14 @@ fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config
     let mut rec = Record::from_value(&cfg.topic, Trimmed(String::new()));
     loop {
         rec.value.clear();
-        if try!(src.read_line(&mut rec.value)) == 0 {
+        if src.read_line(&mut rec.value)? == 0 {
             break; // ~ EOF reached
         }
         if rec.value.trim().is_empty() {
             continue; // ~ skip empty lines
         }
         // ~ directly send to kafka
-        try!(producer.send(&rec));
+        producer.send(&rec)?;
         let _ = write!(stderr, "Sent: {}", *rec.value);
     }
     Ok(())
@@ -131,12 +131,12 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
     loop {
         // ~ send out a batch if it's ready
         if next_rec == rec_stash.len() {
-            try!(send_batch(producer, &rec_stash));
+            send_batch(producer, &rec_stash)?;
             next_rec = 0;
         }
         let mut rec = &mut rec_stash[next_rec];
         rec.value.clear();
-        if try!(src.read_line(&mut rec.value)) == 0 {
+        if src.read_line(&mut rec.value)? == 0 {
             break; // ~ EOF reached
         }
         if rec.value.trim().is_empty() {
@@ -147,13 +147,13 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
     }
     // ~ flush pending messages - if any
     if next_rec > 0 {
-        try!(send_batch(producer, &rec_stash[..next_rec]));
+        send_batch(producer, &rec_stash[..next_rec])?;
     }
     Ok(())
 }
 
 fn send_batch(producer: &mut Producer, batch: &[Record<(), Trimmed>]) -> Result<()> {
-    let rs = try!(producer.send_all(batch));
+    let rs = producer.send_all(batch)?;
 
     for r in rs {
         for tpc in r.partition_confirms {
@@ -245,15 +245,15 @@ impl Config {
                 Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
                 Some(s) => bail!(format!("Unknown --required-acks argument: {}", s)),
             },
-            batch_size: try!(to_number(m.opt_str("batch-size"), 1)),
-            conn_idle_timeout: Duration::from_millis(try!(to_number(
+            batch_size: to_number(m.opt_str("batch-size"), 1)?,
+            conn_idle_timeout: Duration::from_millis(to_number(
                 m.opt_str("idle-timeout"),
                 DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
-            ))),
-            ack_timeout: Duration::from_millis(try!(to_number(
+            )?),
+            ack_timeout: Duration::from_millis(to_number(
                 m.opt_str("ack-timeout"),
-                DEFAULT_ACK_TIMEOUT_MILLIS
-            ))),
+                DEFAULT_ACK_TIMEOUT_MILLIS,
+            )?),
         })
     }
 }

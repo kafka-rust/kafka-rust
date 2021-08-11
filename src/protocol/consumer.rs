@@ -352,17 +352,17 @@ impl<'a> PartitionOffsetCommitRequest<'a> {
 impl<'a, 'b> ToByte for OffsetCommitRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         let v = OffsetCommitVersion::from_protocol(self.header.api_version);
-        try!(self.header.encode(buffer));
-        try!(self.group.encode(buffer));
+        self.header.encode(buffer)?;
+        self.group.encode(buffer)?;
         match v {
             OffsetCommitVersion::V1 => {
-                try!((-1i32).encode(buffer));
-                try!("".encode(buffer));
+                (-1i32).encode(buffer)?;
+                "".encode(buffer)?;
             }
             OffsetCommitVersion::V2 => {
-                try!((-1i32).encode(buffer));
-                try!("".encode(buffer));
-                try!((-1i64).encode(buffer));
+                (-1i32).encode(buffer)?;
+                "".encode(buffer)?;
+                (-1i64).encode(buffer)?;
             }
             _ => {
                 // nothing to do
@@ -372,10 +372,10 @@ impl<'a, 'b> ToByte for OffsetCommitRequest<'a, 'b> {
             try_multi!(
                 tp.topic.encode(buffer),
                 codecs::encode_as_array(buffer, &tp.partitions, |buffer, p| {
-                    try!(p.partition.encode(buffer));
-                    try!(p.offset.encode(buffer));
+                    p.partition.encode(buffer)?;
+                    p.offset.encode(buffer)?;
                     if v == OffsetCommitVersion::V1 {
-                        try!((-1i64).encode(buffer));
+                        (-1i64).encode(buffer)?;
                     }
                     p.metadata.encode(buffer)
                 })
