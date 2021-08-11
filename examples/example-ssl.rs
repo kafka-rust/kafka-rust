@@ -153,7 +153,7 @@ mod example {
             }
 
             Ok(Config {
-                brokers: brokers,
+                brokers,
                 client_cert: m.opt_str("client-cert"),
                 client_key: m.opt_str("client-key"),
                 ca_cert: m.opt_str("ca-cert"),

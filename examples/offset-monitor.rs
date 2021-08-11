@@ -12,7 +12,7 @@ use std::io::{self, stderr, stdout, BufWriter, Write};
 use std::process;
 use std::thread;
 //use std::time as stdtime;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration};
 
 use kafka::client::{FetchOffset, GroupOffsetStorage, KafkaClient};
 
@@ -55,11 +55,11 @@ fn run(cfg: Config) -> Result<()> {
         }
         let mut names: Vec<&str> = Vec::with_capacity(ts.len());
         names.extend(ts.names());
-        names.sort();
+        names.sort_unstable();
 
         let mut buf = BufWriter::with_capacity(1024, stdout());
         for name in names {
-            let _ = write!(buf, "topic: {}\n", name);
+            let _ = writeln!(buf, "topic: {}", name);
         }
         bail!("choose a topic");
     }
@@ -181,7 +181,7 @@ struct Printer<W> {
 impl<W: Write> Printer<W> {
     fn new(out: W, cfg: &Config) -> Printer<W> {
         Printer {
-            out: out,
+            out,
             timefmt: "%H:%M:%S".into(),
             fmt_buf: String::with_capacity(30),
             out_buf: String::with_capacity(160),
@@ -359,10 +359,10 @@ impl Config {
                 .split(',')
                 .map(|s| s.trim().to_owned())
                 .collect(),
-            topic: m.opt_str("topic").unwrap_or_else(|| String::new()),
-            group: m.opt_str("group").unwrap_or_else(|| String::new()),
-            offset_storage: offset_storage,
-            period: period,
+            topic: m.opt_str("topic").unwrap_or_else(String::new),
+            group: m.opt_str("group").unwrap_or_else(String::new),
+            offset_storage,
+            period,
             commited_not_consumed: m.opt_present("committed-not-yet-consumed"),
             summary: !m.opt_present("partitions"),
             diff: !m.opt_present("no-growth"),

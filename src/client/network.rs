@@ -336,7 +336,7 @@ impl fmt::Debug for KafkaConnection {
 
 impl KafkaConnection {
     pub fn send(&mut self, msg: &[u8]) -> Result<usize> {
-        let r = self.stream.write(&msg[..]).map_err(From::from);
+        let r = self.stream.write(msg).map_err(From::from);
         trace!("Sent {} bytes to: {:?} => {:?}", msg.len(), self, r);
         r
     }

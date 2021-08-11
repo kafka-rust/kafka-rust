@@ -34,31 +34,28 @@ impl<'a, T: ToByte + 'a + ?Sized> ToByte for &'a T {
 
 impl ToByte for i8 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
-        buffer.write_i8(*self).or_else(|e| Err(From::from(e)))
+        buffer.write_i8(*self).map_err(From::from)
     }
 }
 
 impl ToByte for i16 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         buffer
-            .write_i16::<BigEndian>(*self)
-            .or_else(|e| Err(From::from(e)))
+            .write_i16::<BigEndian>(*self).map_err(From::from)
     }
 }
 
 impl ToByte for i32 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         buffer
-            .write_i32::<BigEndian>(*self)
-            .or_else(|e| Err(From::from(e)))
+            .write_i32::<BigEndian>(*self).map_err(From::from)
     }
 }
 
 impl ToByte for i64 {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         buffer
-            .write_i64::<BigEndian>(*self)
-            .or_else(|e| Err(From::from(e)))
+            .write_i64::<BigEndian>(*self).map_err(From::from)
     }
 }
 
@@ -67,8 +64,7 @@ impl ToByte for str {
         let l = try_usize_to_int!(self.len(), i16);
         buffer.write_i16::<BigEndian>(l)?;
         buffer
-            .write_all(self.as_bytes())
-            .or_else(|e| Err(From::from(e)))
+            .write_all(self.as_bytes()).map_err(From::from)
     }
 }
 
@@ -93,7 +89,7 @@ impl ToByte for [u8] {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let l = try_usize_to_int!(self.len(), i32);
         buffer.write_i32::<BigEndian>(l)?;
-        buffer.write_all(self).or_else(|e| Err(From::from(e)))
+        buffer.write_all(self).map_err(From::from)
     }
 }
 

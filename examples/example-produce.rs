@@ -50,7 +50,7 @@ fn produce_message<'a, 'b>(
     // partition - which causes the producer to find out one on its
     // own using its underlying partitioner.
     producer.send(&Record {
-        topic: topic,
+        topic,
         partition: -1,
         key: (),
         value: data,

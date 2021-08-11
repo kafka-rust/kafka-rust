@@ -84,11 +84,7 @@ fn test_kafka_code_from_protocol() {
         };
     };
 
-    assert!(if let None = KafkaCode::from_protocol(0) {
-        true
-    } else {
-        false
-    });
+    assert!(KafkaCode::from_protocol(0).is_none());
     assert_kafka_code!(KafkaCode::OffsetOutOfRange, KafkaCode::OffsetOutOfRange as i16);
     assert_kafka_code!(KafkaCode::IllegalGeneration, KafkaCode::IllegalGeneration as i16);
     assert_kafka_code!(KafkaCode::UnsupportedVersion, KafkaCode::UnsupportedVersion as i16);
@@ -125,10 +121,10 @@ impl<'a> HeaderRequest<'a> {
         client_id: &'a str,
     ) -> HeaderRequest {
         HeaderRequest {
-            api_key: api_key,
-            api_version: api_version,
-            correlation_id: correlation_id,
-            client_id: client_id,
+            api_key,
+            api_version,
+            correlation_id,
+            client_id,
         }
     }
 }
@@ -175,7 +171,7 @@ pub fn to_millis_i32(d: Duration) -> Result<i32> {
     let m = d
         .as_secs()
         .saturating_mul(1_000)
-        .saturating_add((d.subsec_nanos() / 1_000_000) as u64);
+        .saturating_add(d.subsec_millis() as u64);
     if m > i32::MAX as u64 {
         bail!(ErrorKind::InvalidDuration)
     } else {

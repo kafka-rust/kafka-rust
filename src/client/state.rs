@@ -413,8 +413,8 @@ mod tests {
     fn new_partition(id: i32, leader: i32) -> md::PartitionMetadata {
         md::PartitionMetadata {
             error: 0,
-            id: id,
-            leader: leader,
+            id,
+            leader,
             replicas: vec![],
             isr: vec![],
         }
@@ -485,13 +485,13 @@ mod tests {
     ) {
         let partitions = state.partitions_for(topic).unwrap();
         assert_eq!(expected.len(), partitions.len());
-        assert_eq!(expected.len() == 0, partitions.is_empty());
+        assert_eq!(expected.is_empty(), partitions.is_empty());
         assert_eq!(
             expected,
             &partitions
                 .iter()
                 .map(|(id, tp)| {
-                    let broker = tp.broker(&state).map(|b| (b.id(), b.host()));
+                    let broker = tp.broker(state).map(|b| (b.id(), b.host()));
                     // ~ verify that find_broker delivers the same information
                     assert_eq!(broker.map(|b| b.1), state.find_broker(topic, id));
                     (id, broker)
@@ -520,7 +520,7 @@ mod tests {
         assert!(state.partitions_for("foobar").is_none());
 
         assert_partitions(
-            &state,
+            state,
             "tee-one",
             &[
                 (0, Some((50, "gin2.dev:9876"))),
@@ -531,7 +531,7 @@ mod tests {
             ],
         );
         assert_partitions(
-            &state,
+            state,
             "tee-two",
             &[
                 (0, Some((30, "gin3.dev:9092"))),
@@ -540,7 +540,7 @@ mod tests {
                 (3, Some((10, "gin1.dev:1234"))),
             ],
         );
-        assert_partitions(&state, "tee-three", &[]);
+        assert_partitions(state, "tee-three", &[]);
     }
 
     fn metadata_response_update() -> protocol::MetadataResponse {
@@ -601,7 +601,7 @@ mod tests {
         assert!(state.partitions_for("foobar").is_none());
 
         assert_partitions(
-            &state,
+            state,
             "tee-one",
             &[
                 (0, Some((50, "aladin1.dev:9091"))),
@@ -612,7 +612,7 @@ mod tests {
             ],
         );
         assert_partitions(
-            &state,
+            state,
             "tee-two",
             &[
                 (0, Some((10, "gin1.dev:1234"))),
@@ -622,7 +622,7 @@ mod tests {
                 (4, Some((30, "gin3.dev:9092"))),
             ],
         );
-        assert_partitions(&state, "tee-three", &[]);
+        assert_partitions(state, "tee-three", &[]);
     }
 
     #[test]

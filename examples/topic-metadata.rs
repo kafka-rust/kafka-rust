@@ -100,7 +100,7 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
 
         for (topic, offsets) in offsets {
-            let mut offs = m.get_mut(&topic).expect("unknown topic");
+            let offs = m.get_mut(&topic).expect("unknown topic");
             for offset in offsets {
                 offs[offset.partition as usize].earliest = offset.offset;
             }
@@ -122,7 +122,7 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
         2 + topics
             .iter()
             .filter_map(|t| md.partitions(t))
-            .flat_map(|t| t)
+            .flatten()
             .map(|p| p.leader().map(|b| b.host().len()).unwrap_or(0))
             .fold(0, cmp::max)
     } else {
@@ -154,7 +154,7 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
                 if cfg.topic_separators && ti != 0 {
                     out_buf.push('\n');
                 }
-                let _ = write!(out_buf, "{1:0$} - not available!\n", topic_width, topic);
+                let _ = writeln!(out_buf, "{1:0$} - not available!", topic_width, topic);
                 {
                     use std::io::Write;
                     let _ = out.write_all(out_buf.as_bytes());

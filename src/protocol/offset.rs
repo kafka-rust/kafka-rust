@@ -52,7 +52,7 @@ impl<'a> OffsetRequest<'a> {
 impl<'a> TopicPartitionOffsetRequest<'a> {
     pub fn new(topic: &'a str) -> TopicPartitionOffsetRequest<'a> {
         TopicPartitionOffsetRequest {
-            topic: topic,
+            topic,
             partitions: vec![],
         }
     }
@@ -66,9 +66,9 @@ impl<'a> TopicPartitionOffsetRequest<'a> {
 impl PartitionOffsetRequest {
     pub fn new(partition: i32, time: i64) -> PartitionOffsetRequest {
         PartitionOffsetRequest {
-            partition: partition,
+            partition,
             max_offsets: 1,
-            time: time,
+            time,
         }
     }
 }
@@ -132,7 +132,7 @@ impl PartitionOffsetResponse {
 
                 Ok(PartitionOffset {
                     partition: self.partition,
-                    offset: offset,
+                    offset,
                 })
             }
         }

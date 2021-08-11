@@ -855,7 +855,7 @@ impl KafkaClient {
             if let Some(ps) = state.partitions_for(topic) {
                 for (id, host) in ps
                     .iter()
-                    .filter_map(|(id, p)| p.broker(&state).map(|b| (id, b.host())))
+                    .filter_map(|(id, p)| p.broker(state).map(|b| (id, b.host())))
                 {
                     let entry = reqs.entry(host).or_insert_with(|| {
                         protocol::OffsetRequest::new(correlation, &config.client_id)
@@ -871,7 +871,7 @@ impl KafkaClient {
         for (host, req) in reqs {
             let resp = __send_receive::<_, protocol::OffsetResponse>(
                 &mut self.conn_pool,
-                &host,
+                host,
                 now,
                 req,
             )?;
@@ -949,7 +949,7 @@ impl KafkaClient {
         let topic = topic.as_ref();
 
         let mut m = self.fetch_offsets(&[topic], offset)?;
-        let offs = m.remove(topic).unwrap_or_else(|| vec![]);
+        let offs = m.remove(topic).unwrap_or_else(std::vec::Vec::new);
         if offs.is_empty() {
             bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition))
         } else {
@@ -1398,7 +1398,7 @@ fn __commit_offsets(
                     }
                     Some(e @ KafkaCode::NotCoordinatorForGroup) => {
                         debug!("commit_offsets: resetting group coordinator for '{}'", req.group);
-                        state.remove_group_coordinator(&req.group);
+                        state.remove_group_coordinator(req.group);
                         retry_code = Some(e);
                         break 'rproc;
                     }
@@ -1465,7 +1465,7 @@ fn __fetch_group_offsets(
                             "fetch_group_offsets: resetting group coordinator for '{}'",
                             req.group
                         );
-                        state.remove_group_coordinator(&req.group);
+                        state.remove_group_coordinator(req.group);
                         retry_code = Some(e);
                         break 'rproc;
                     }
@@ -1534,7 +1534,7 @@ fn __produce_messages(
     } else {
         let mut res: Vec<ProduceConfirm> = vec![];
         for (host, req) in reqs {
-            let resp = __send_receive::<_, protocol::ProduceResponse>(conn_pool, &host, now, req)?;
+            let resp = __send_receive::<_, protocol::ProduceResponse>(conn_pool, host, now, req)?;
             for tpo in resp.get_response() {
                 res.push(tpo);
             }

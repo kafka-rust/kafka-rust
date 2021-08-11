@@ -28,7 +28,7 @@ impl<'a, 'b> GroupCoordinatorRequest<'a, 'b> {
                 correlation_id,
                 client_id,
             ),
-            group: group,
+            group,
         }
     }
 }
@@ -114,7 +114,7 @@ impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
                 correlation_id,
                 client_id,
             ),
-            group: group,
+            group,
             topic_partitions: vec![],
         }
     }
@@ -135,7 +135,7 @@ impl<'a, 'b, 'c> OffsetFetchRequest<'a, 'b, 'c> {
 impl<'a> TopicPartitionOffsetFetchRequest<'a> {
     pub fn new(topic: &'a str) -> TopicPartitionOffsetFetchRequest<'a> {
         TopicPartitionOffsetFetchRequest {
-            topic: topic,
+            topic,
             partitions: vec![],
         }
     }
@@ -149,7 +149,7 @@ impl<'a> TopicPartitionOffsetFetchRequest<'a> {
 impl PartitionOffsetFetchRequest {
     pub fn new(partition: i32) -> PartitionOffsetFetchRequest {
         PartitionOffsetFetchRequest {
-            partition: partition,
+            partition,
         }
     }
 }
@@ -307,7 +307,7 @@ impl<'a, 'b> OffsetCommitRequest<'a, 'b> {
                 correlation_id,
                 client_id,
             ),
-            group: group,
+            group,
             topic_partitions: vec![],
         }
     }
@@ -328,7 +328,7 @@ impl<'a, 'b> OffsetCommitRequest<'a, 'b> {
 impl<'a> TopicPartitionOffsetCommitRequest<'a> {
     pub fn new(topic: &'a str) -> TopicPartitionOffsetCommitRequest<'a> {
         TopicPartitionOffsetCommitRequest {
-            topic: topic,
+            topic,
             partitions: vec![],
         }
     }
@@ -342,9 +342,9 @@ impl<'a> TopicPartitionOffsetCommitRequest<'a> {
 impl<'a> PartitionOffsetCommitRequest<'a> {
     pub fn new(partition: i32, offset: i64, metadata: &'a str) -> PartitionOffsetCommitRequest<'a> {
         PartitionOffsetCommitRequest {
-            partition: partition,
-            offset: offset,
-            metadata: metadata,
+            partition,
+            offset,
+            metadata,
         }
     }
 }

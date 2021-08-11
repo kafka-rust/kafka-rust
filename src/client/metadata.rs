@@ -57,7 +57,7 @@ impl<'a> Topics<'a> {
     pub fn partitions(&'a self, topic: &str) -> Option<Partitions<'a>> {
         self.state.partitions_for(topic).map(|tp| Partitions {
             state: self.state,
-            tp: tp,
+            tp,
         })
     }
 }
@@ -103,7 +103,7 @@ pub struct TopicIter<'a> {
 impl<'a> TopicIter<'a> {
     fn new(state: &'a ClientState) -> TopicIter<'a> {
         TopicIter {
-            state: state,
+            state,
             iter: state.topic_partitions().iter(),
         }
     }
@@ -238,7 +238,7 @@ pub struct PartitionIter<'a> {
 impl<'a> PartitionIter<'a> {
     fn new(state: &'a ClientState, tp: &'a TopicPartitions) -> Self {
         PartitionIter {
-            state: state,
+            state,
             iter: tp.iter(),
         }
     }
@@ -273,9 +273,9 @@ pub struct Partition<'a> {
 impl<'a> Partition<'a> {
     fn new(state: &'a ClientState, partition: &'a TopicPartition, id: i32) -> Partition<'a> {
         Partition {
-            state: state,
-            partition: partition,
-            id: id,
+            state,
+            partition,
+            id,
         }
     }
 

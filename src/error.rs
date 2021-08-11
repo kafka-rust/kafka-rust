@@ -3,7 +3,7 @@
 use std::io;
 
 #[cfg(feature = "security")]
-use openssl::error::ErrorStack;
+
 #[cfg(feature = "security")]
 use openssl::ssl::{self, Error as SslError};
 

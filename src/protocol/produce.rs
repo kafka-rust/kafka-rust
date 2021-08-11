@@ -55,10 +55,10 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
     ) -> ProduceRequest<'a, 'b> {
         ProduceRequest {
             header: HeaderRequest::new(API_KEY_PRODUCE, API_VERSION, correlation_id, client_id),
-            required_acks: required_acks,
-            timeout: timeout,
+            required_acks,
+            timeout,
             topic_partitions: vec![],
-            compression: compression,
+            compression,
         }
     }
 
@@ -84,9 +84,9 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
 impl<'a> TopicPartitionProduceRequest<'a> {
     pub fn new(topic: &'a str, compression: Compression) -> TopicPartitionProduceRequest<'a> {
         TopicPartitionProduceRequest {
-            topic: topic,
+            topic,
             partitions: vec![],
-            compression: compression,
+            compression,
         }
     }
 
@@ -109,7 +109,7 @@ impl<'a> PartitionProduceRequest<'a> {
         value: Option<&'b [u8]>,
     ) -> PartitionProduceRequest<'b> {
         let mut r = PartitionProduceRequest {
-            partition: partition,
+            partition,
             messages: Vec::new(),
         };
         r.add(key, value);
@@ -188,8 +188,8 @@ fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) 
 impl<'a> MessageProduceRequest<'a> {
     fn new<'b>(key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> MessageProduceRequest<'b> {
         MessageProduceRequest {
-            key: key,
-            value: value,
+            key,
+            value,
         }
     }
 
@@ -276,7 +276,7 @@ impl TopicPartitionProduceResponse {
         let confirms = self
             .partitions
             .iter()
-            .map(|ref p| p.get_response())
+            .map(|p| p.get_response())
             .collect();
 
         ProduceConfirm {

@@ -39,8 +39,8 @@ pub struct Builder {
 // be published outside the crate itself
 pub fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
     let mut b = Builder {
-        client: client,
-        hosts: hosts,
+        client,
+        hosts,
         fetch_max_wait_time: Duration::from_millis(client::DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS),
         fetch_min_bytes: client::DEFAULT_FETCH_MIN_BYTES,
         fetch_max_bytes_per_partition: client::DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
@@ -252,9 +252,9 @@ impl Builder {
         let state = State::new(&mut client, &config, assignment::from_map(self.assignments))?;
         debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}", config, state);
         Ok(Consumer {
-            client: client,
-            state: state,
-            config: config,
+            client,
+            state,
+            config,
         })
     }
 }

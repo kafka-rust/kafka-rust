@@ -51,16 +51,16 @@ fn produce(cfg: &Config) -> Result<()> {
         None => {
             let stdin = stdin();
             let mut stdin = stdin.lock();
-            produce_impl(&mut stdin, client, &cfg)
+            produce_impl(&mut stdin, client, cfg)
         }
         Some(ref file) => {
             let mut r = BufReader::new(File::open(file)?);
-            produce_impl(&mut r, client, &cfg)
+            produce_impl(&mut r, client, cfg)
         }
     }
 }
 
-fn produce_impl(src: &mut BufRead, client: KafkaClient, cfg: &Config) -> Result<()> {
+fn produce_impl(src: &mut dyn BufRead, client: KafkaClient, cfg: &Config) -> Result<()> {
     let mut producer = Producer::from_client(client)
         .with_ack_timeout(cfg.ack_timeout)
         .with_required_acks(cfg.required_acks)
@@ -95,7 +95,7 @@ impl DerefMut for Trimmed {
     }
 }
 
-fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config) -> Result<()> {
+fn produce_impl_nobatch(producer: &mut Producer, src: &mut dyn BufRead, cfg: &Config) -> Result<()> {
     let mut stderr = stderr();
     let mut rec = Record::from_value(&cfg.topic, Trimmed(String::new()));
     loop {
@@ -116,7 +116,7 @@ fn produce_impl_nobatch(producer: &mut Producer, src: &mut BufRead, cfg: &Config
 // This implementation wants to be efficient.  It buffers N lines from
 // the source and sends these in batches to Kafka.  Line buffers
 // across batches are re-used for the sake of avoiding allocations.
-fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Config) -> Result<()> {
+fn produce_impl_inbatches(producer: &mut Producer, src: &mut dyn BufRead, cfg: &Config) -> Result<()> {
     assert!(cfg.batch_size > 1);
 
     // ~ a buffer of prepared records to be send in a batch to Kafka
@@ -134,7 +134,7 @@ fn produce_impl_inbatches(producer: &mut Producer, src: &mut BufRead, cfg: &Conf
             send_batch(producer, &rec_stash)?;
             next_rec = 0;
         }
-        let mut rec = &mut rec_stash[next_rec];
+        let rec = &mut rec_stash[next_rec];
         rec.value.clear();
         if src.read_line(&mut rec.value)? == 0 {
             break; // ~ EOF reached

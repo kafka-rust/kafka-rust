@@ -3,7 +3,7 @@ use std::str;
 use byteorder::{BigEndian, ByteOrder};
 use error::{ErrorKind, Result};
 
-static EMPTY_STR: &'static str = "";
+static EMPTY_STR: &str = "";
 
 pub struct ZReader<'a> {
     data: &'a [u8],
@@ -18,7 +18,7 @@ macro_rules! dec {
 
 impl<'a> ZReader<'a> {
     pub fn new(data: &[u8]) -> ZReader {
-        ZReader { data: data }
+        ZReader { data }
     }
 
     /// ~ Consumes `n_bytes` from the underlying slice while returning
