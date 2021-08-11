@@ -1,4 +1,4 @@
-use env_logger;
+
 
 use kafka::client::{FetchPartition, KafkaClient};
 

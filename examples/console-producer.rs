@@ -1,6 +1,6 @@
-use env_logger;
-use getopts;
-use kafka;
+
+
+
 #[macro_use]
 extern crate error_chain;
 

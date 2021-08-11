@@ -1,4 +1,4 @@
-use env_logger;
+
 
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 use kafka::error::Error as KafkaError;
