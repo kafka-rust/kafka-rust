@@ -1,5 +1,3 @@
-
-
 use std::io::{self, Write};
 use std::time::Duration;
 use std::{env, process};
