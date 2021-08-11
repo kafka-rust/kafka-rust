@@ -475,7 +475,7 @@ impl MessageSets {
 
     /// Iterates over the message sets delivering the fetched message
     /// data of consumed topic partitions.
-    pub fn iter(&self) -> MessageSetsIter {
+    pub fn iter(&self) -> MessageSetsIter<'_> {
         let mut responses = self.responses.iter();
         let mut topics = responses.next().map(|r| r.topics().iter());
         let (curr_topic, partitions) = topics

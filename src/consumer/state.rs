@@ -59,7 +59,7 @@ pub struct State {
 }
 
 impl<'a> fmt::Debug for State {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "State {{ assignments: {:?}, fetch_offsets: {:?}, retry_partitions: {:?}, \
@@ -142,7 +142,7 @@ struct Subscription<'a> {
 /// ordered list of the partition ids to consume.
 fn determine_partitions<'a>(
     assignment: &'a Assignment,
-    metadata: Topics,
+    metadata: Topics<'_>,
 ) -> Result<Subscription<'a>> {
     let topic = assignment.topic();
     let req_partitions = assignment.partitions();
@@ -192,7 +192,7 @@ fn load_consumed_offsets(
     client: &mut KafkaClient,
     group: &str,
     assignments: &Assignments,
-    subscriptions: &[Subscription],
+    subscriptions: &[Subscription<'_>],
     result_capacity: usize,
 ) -> Result<HashMap<TopicPartition, ConsumedOffset, PartitionHasher>> {
     assert!(!subscriptions.is_empty());
@@ -242,7 +242,7 @@ fn load_fetch_states(
     client: &mut KafkaClient,
     config: &Config,
     assignments: &Assignments,
-    subscriptions: &[Subscription],
+    subscriptions: &[Subscription<'_>],
     consumed_offsets: &HashMap<TopicPartition, ConsumedOffset, PartitionHasher>,
     result_capacity: usize,
 ) -> Result<HashMap<TopicPartition, FetchState, PartitionHasher>> {
@@ -353,13 +353,13 @@ fn load_fetch_states(
     Ok(fetch_offsets)
 }
 
-pub struct OffsetsMapDebug<'a, T: 'a> {
+pub struct OffsetsMapDebug<'a, T> {
     state: &'a State,
     offsets: &'a HashMap<TopicPartition, T, PartitionHasher>,
 }
 
 impl<'a, T: fmt::Debug + 'a> fmt::Debug for OffsetsMapDebug<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{")?;
         for (i, (tp, v)) in self.offsets.iter().enumerate() {
             if i != 0 {
@@ -378,7 +378,7 @@ struct TopicPartitionsDebug<'a> {
 }
 
 impl<'a> fmt::Debug for TopicPartitionsDebug<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
         for (i, tp) in self.tps.iter().enumerate() {
             if i != 0 {

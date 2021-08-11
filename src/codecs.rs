@@ -91,7 +91,7 @@ impl ToByte for [u8] {
 
 // ~ this allows to render a slice of various types (typically &str
 // and String) as strings
-pub struct AsStrings<'a, T: 'a>(pub &'a [T]);
+pub struct AsStrings<'a, T>(pub &'a [T]);
 
 impl<'a, T: AsRef<str> + 'a> ToByte for AsStrings<'a, T> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {

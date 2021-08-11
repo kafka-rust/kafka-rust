@@ -129,7 +129,7 @@ impl TopicPartitions {
         self.partitions.get(partition_id as usize)
     }
 
-    pub fn iter(&self) -> TopicPartitionIter {
+    pub fn iter(&self) -> TopicPartitionIter<'_> {
         self.into_iter()
     }
 }
@@ -224,7 +224,7 @@ impl ClientState {
             .is_some()
     }
 
-    pub fn topic_names(&self) -> TopicNames {
+    pub fn topic_names(&self) -> TopicNames<'_> {
         TopicNames {
             iter: self.topic_partitions.keys(),
         }

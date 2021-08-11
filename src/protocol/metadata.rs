@@ -7,7 +7,7 @@ use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_METADATA, API_VERSION};
 
 #[derive(Debug)]
-pub struct MetadataRequest<'a, T: 'a> {
+pub struct MetadataRequest<'a, T> {
     pub header: HeaderRequest<'a>,
     pub topics: &'a [T],
 }

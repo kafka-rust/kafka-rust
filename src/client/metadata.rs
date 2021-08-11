@@ -20,7 +20,7 @@ impl<'a> Topics<'a> {
     /// Constructs a view of the currently loaded topic metadata from
     /// the specified kafka client.
     #[inline]
-    pub fn new(client: &KafkaClient) -> Topics {
+    pub fn new(client: &KafkaClient) -> Topics<'_> {
         Topics {
             state: &client.state,
         }
@@ -63,7 +63,7 @@ impl<'a> Topics<'a> {
 }
 
 impl<'a> fmt::Debug for Topics<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Topics {{ topics: [")?;
         let mut ts = self.iter();
         if let Some(t) = ts.next() {
@@ -147,7 +147,7 @@ impl<'a> Topic<'a> {
 }
 
 impl<'a> fmt::Debug for Topic<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Topic {{ name: {}, partitions: {:?} }}", self.name, self.partitions())
     }
 }
@@ -198,7 +198,7 @@ impl<'a> Partitions<'a> {
 }
 
 impl<'a> fmt::Debug for Partitions<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Partitions {{ [")?;
         let mut ps = self.iter();
         if let Some(p) = ps.next() {
@@ -300,7 +300,7 @@ impl<'a> Partition<'a> {
 }
 
 impl<'a> fmt::Debug for Partition<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Partition {{ id: {}, leader: {:?} }}", self.id(), self.leader())
     }
 }

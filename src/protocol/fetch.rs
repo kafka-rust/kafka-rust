@@ -135,9 +135,6 @@ impl PartitionFetchRequest {
 // ~ response related -------------------------------------------------
 
 pub struct ResponseParser<'a, 'b, 'c>
-where
-    'a: 'c,
-    'b: 'c,
 {
     pub validate_crc: bool,
     pub requests: Option<&'c FetchRequest<'a, 'b>>,
@@ -187,7 +184,7 @@ impl Response {
     /// Kafka Protocol.
     fn from_vec(
         response: Vec<u8>,
-        reqs: Option<&FetchRequest>,
+        reqs: Option<&FetchRequest<'_, '_>>,
         validate_crc: bool,
     ) -> Result<Response> {
         let slice = unsafe { mem::transmute(&response[..]) };
@@ -229,7 +226,7 @@ pub struct Topic<'a> {
 impl<'a> Topic<'a> {
     fn read(
         r: &mut ZReader<'a>,
-        reqs: Option<&FetchRequest>,
+        reqs: Option<&FetchRequest<'_, '_>>,
         validate_crc: bool,
     ) -> Result<Topic<'a>> {
         let name = r.read_str()?;
@@ -539,7 +536,7 @@ mod tests {
     fn test_decode_new_fetch_response(
         msg_per_line: &str,
         response: Vec<u8>,
-        requests: Option<&FetchRequest>,
+        requests: Option<&FetchRequest<'_, '_>>,
         validate_crc: bool,
     ) {
         let resp = Response::from_vec(response, requests, validate_crc);

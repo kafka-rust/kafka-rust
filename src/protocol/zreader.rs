@@ -17,7 +17,7 @@ macro_rules! dec {
 }
 
 impl<'a> ZReader<'a> {
-    pub fn new(data: &[u8]) -> ZReader {
+    pub fn new(data: &[u8]) -> ZReader<'_> {
         ZReader { data }
     }
 

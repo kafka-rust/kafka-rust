@@ -1,6 +1,6 @@
-extern crate env_logger;
-extern crate getopts;
-extern crate kafka;
+use env_logger;
+use getopts;
+use kafka;
 #[macro_use]
 extern crate error_chain;
 
@@ -130,7 +130,7 @@ fn produce_impl_inbatches(
     // ~ a buffer of prepared records to be send in a batch to Kafka
     // ~ in the loop following, we'll only modify the 'value' of the
     // cached records
-    let mut rec_stash: Vec<Record<(), Trimmed>> = (0..cfg.batch_size)
+    let mut rec_stash: Vec<Record<'_, (), Trimmed>> = (0..cfg.batch_size)
         .map(|_| Record::from_value(&cfg.topic, Trimmed(String::new())))
         .collect();
     // ~ points to the next free slot in `rec_stash`.  if it reaches
@@ -160,7 +160,7 @@ fn produce_impl_inbatches(
     Ok(())
 }
 
-fn send_batch(producer: &mut Producer, batch: &[Record<(), Trimmed>]) -> Result<()> {
+fn send_batch(producer: &mut Producer, batch: &[Record<'_, (), Trimmed>]) -> Result<()> {
     let rs = producer.send_all(batch)?;
 
     for r in rs {

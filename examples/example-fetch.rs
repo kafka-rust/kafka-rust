@@ -1,5 +1,5 @@
-extern crate env_logger;
-extern crate kafka;
+use env_logger;
+
 
 use kafka::client::{FetchPartition, KafkaClient};
 

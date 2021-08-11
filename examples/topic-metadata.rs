@@ -1,6 +1,6 @@
-extern crate env_logger;
-extern crate getopts;
-extern crate kafka;
+use env_logger;
+use getopts;
+
 
 use std::cmp;
 use std::collections::HashMap;

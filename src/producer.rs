@@ -188,7 +188,7 @@ impl<'a, V> Record<'a, (), V> {
 }
 
 impl<'a, K: fmt::Debug, V: fmt::Debug> fmt::Debug for Record<'a, K, V> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
@@ -554,7 +554,7 @@ pub trait Partitioner {
     ///
     /// `msg` the message whose partition assignment potentially to
     /// change.
-    fn partition(&mut self, topics: Topics, msg: &mut client::ProduceMessage);
+    fn partition(&mut self, topics: Topics<'_>, msg: &mut client::ProduceMessage<'_, '_>);
 }
 
 /// The default hasher implementation used of `DefaultPartitioner`.
@@ -622,7 +622,7 @@ impl DefaultPartitioner {
 
 impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
     #[allow(unused_variables)]
-    fn partition(&mut self, topics: Topics, rec: &mut client::ProduceMessage) {
+    fn partition(&mut self, topics: Topics<'_>, rec: &mut client::ProduceMessage<'_, '_>) {
         if rec.partition >= 0 {
             // ~ partition explicitely defined, trust the user
             return;

@@ -7,8 +7,8 @@ fn main() {
 
 #[cfg(feature = "security")]
 mod example {
-    extern crate kafka;
-    extern crate openssl;
+    use kafka;
+    use openssl;
 
     use std::env;
     use std::process;
