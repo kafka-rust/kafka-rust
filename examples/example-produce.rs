@@ -32,13 +32,13 @@ fn produce_message<'a, 'b>(
     // ~ create a producer. this is a relatively costly operation, so
     // you'll do this typically once in your application and re-use
     // the instance many times.
-    let mut producer = try!(Producer::from_hosts(brokers)
+    let mut producer = Producer::from_hosts(brokers)
         // ~ give the brokers one second time to ack the message
         .with_ack_timeout(Duration::from_secs(1))
         // ~ require only one broker to ack the message
         .with_required_acks(RequiredAcks::One)
         // ~ build the producer with the above settings
-        .create());
+        .create()?;
 
     // ~ now send a single message.  this is a synchronous/blocking
     // operation.
