@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use client::{self, KafkaClient, FetchOffset, GroupOffsetStorage};
-use error::{ErrorKind, Result};
+use crate::client::{self, FetchOffset, GroupOffsetStorage, KafkaClient};
+use crate::error::{ErrorKind, Result};
 
-use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
+use super::assignment;
 use super::config::Config;
 use super::state::State;
-use super::assignment;
+use super::{Consumer, DEFAULT_FALLBACK_OFFSET, DEFAULT_RETRY_MAX_BYTES_LIMIT};
 
 #[cfg(feature = "security")]
-use client::SecurityConfig;
+use crate::client::SecurityConfig;
 
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
@@ -39,8 +39,8 @@ pub struct Builder {
 // be published outside the crate itself
 pub fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder {
     let mut b = Builder {
-        client: client,
-        hosts: hosts,
+        client,
+        hosts,
         fetch_max_wait_time: Duration::from_millis(client::DEFAULT_FETCH_MAX_WAIT_TIME_MILLIS),
         fetch_min_bytes: client::DEFAULT_FETCH_MIN_BYTES,
         fetch_max_bytes_per_partition: client::DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
@@ -231,7 +231,7 @@ impl Builder {
             None => (Self::new_kafka_client(self.hosts, self.security_config), true),
         };
         // ~ apply configuration settings
-        try!(client.set_fetch_max_wait_time(self.fetch_max_wait_time));
+        client.set_fetch_max_wait_time(self.fetch_max_wait_time)?;
         client.set_fetch_min_bytes(self.fetch_min_bytes);
         client.set_fetch_max_bytes_per_partition(self.fetch_max_bytes_per_partition);
         client.set_group_offset_storage(self.group_offset_storage);
@@ -241,7 +241,7 @@ impl Builder {
         }
         // ~ load metadata if necessary
         if need_metadata {
-            try!(client.load_metadata_all());
+            client.load_metadata_all()?;
         }
         // ~ load consumer state
         let config = Config {
@@ -249,12 +249,12 @@ impl Builder {
             fallback_offset: self.fallback_offset,
             retry_max_bytes_limit: self.retry_max_bytes_limit,
         };
-        let state = try!(State::new(&mut client, &config, assignment::from_map(self.assignments)));
+        let state = State::new(&mut client, &config, assignment::from_map(self.assignments))?;
         debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}", config, state);
         Ok(Consumer {
-            client: client,
-            state: state,
-            config: config,
+            client,
+            state,
+            config,
         })
     }
 }

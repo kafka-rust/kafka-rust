@@ -7,8 +7,8 @@ fn main() {
 
 #[cfg(feature = "security")]
 mod example {
-    extern crate kafka;
-    extern crate openssl;
+    use kafka;
+    use openssl;
 
     use std::env;
     use std::process;
@@ -118,20 +118,10 @@ mod example {
         fn from_cmdline() -> Result<Config, String> {
             let mut opts = getopts::Options::new();
             opts.optflag("h", "help", "Print this help screen");
-            opts.optopt(
-                "",
-                "brokers",
-                "Specify kafka brokers (comma separated)",
-                "HOSTS",
-            );
+            opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
             opts.optopt("", "ca-cert", "Specify the trusted CA certificates", "FILE");
             opts.optopt("", "client-cert", "Specify the client certificate", "FILE");
-            opts.optopt(
-                "",
-                "client-key",
-                "Specify key for the client certificate",
-                "FILE",
-            );
+            opts.optopt("", "client-key", "Specify key for the client certificate", "FILE");
             opts.optflag(
                 "",
                 "no-hostname-verification",
@@ -163,7 +153,7 @@ mod example {
             }
 
             Ok(Config {
-                brokers: brokers,
+                brokers,
                 client_cert: m.opt_str("client-cert"),
                 client_key: m.opt_str("client-key"),
                 ca_cert: m.opt_str("ca-cert"),
