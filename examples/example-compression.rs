@@ -25,7 +25,7 @@ use kafka::error::Error as KafkaError;
 fn main() {
     env_logger::init();
 
-    //check_basic_compression();
+    check_basic_compression();
 
     let broker = "localhost:9092";
     let topic = "kafka-rust-test3";
