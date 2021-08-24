@@ -13,7 +13,7 @@ edition = "2018"
 
 [dependencies]
 byteorder = "1.4.1"
-crc = "1.8.0"
+crc = "2"
 log ="0.4.14"
 ref_slice = "1.0"
 fnv = "1.0"

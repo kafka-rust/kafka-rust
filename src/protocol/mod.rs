@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::codecs::{FromByte, ToByte};
 use crate::error::{Error, ErrorKind, KafkaCode, Result};
-use crc::crc32;
+use crc::Crc;
 
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {
@@ -159,7 +159,7 @@ impl FromByte for HeaderResponse {
 // --------------------------------------------------------------------
 
 pub fn to_crc(data: &[u8]) -> u32 {
-    crc32::checksum_ieee(data)
+    Crc::<u32>::new(&crc::CRC_32_ISO_HDLC).checksum(data)
 }
 
 // --------------------------------------------------------------------
