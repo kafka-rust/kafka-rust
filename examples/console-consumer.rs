@@ -1,9 +1,6 @@
-extern crate kafka;
-extern crate env_logger;
-
-use std::{env, process};
-use std::time::Duration;
 use std::io::{self, Write};
+use std::time::Duration;
+use std::{env, process};
 //use std::ascii::AsciiExt;
 
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
@@ -54,7 +51,7 @@ fn process(cfg: Config) -> Result<(), &'static str> {
                 // ~ clear the output buffer
                 unsafe { buf.set_len(0) };
                 // ~ format the message for output
-                let _ = write!(buf, "{}:{}@{}:\n", ms.topic(), ms.partition(), m.offset);
+                let _ = writeln!(buf, "{}:{}@{}:", ms.topic(), ms.partition(), m.offset);
                 buf.extend_from_slice(m.value);
                 buf.push(b'\n');
                 // ~ write to output channel
@@ -89,7 +86,7 @@ struct Config {
 }
 
 impl Config {
-    fn from_cmdline() -> Result<Config,  &'static str> {
+    fn from_cmdline() -> Result<Config, &'static str> {
         let args: Vec<_> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
@@ -106,7 +103,7 @@ impl Config {
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => { panic!(e.to_string()) },
+            Err(e) => std::panic::panic_any(e.to_string()),
         };
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
@@ -118,13 +115,17 @@ impl Config {
                 let opt = $name;
                 let xs: Vec<_> = match m.opt_str(opt) {
                     None => Vec::new(),
-                    Some(s) => s.split(',').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect(),
+                    Some(s) => s
+                        .split(',')
+                        .map(|s| s.trim().to_owned())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
                 };
                 if xs.is_empty() {
                     format!("Invalid --{} specified!", opt);
                 }
                 xs
-            }}
+            }};
         };
 
         let brokers = required_list!("brokers");
@@ -137,16 +138,15 @@ impl Config {
             } else if s.eq_ignore_ascii_case("kafka") {
                 offset_storage = GroupOffsetStorage::Kafka;
             } else {
-               format!("unknown offset store: {}", s);
-               ()
+                format!("unknown offset store: {}", s);
             }
         }
         Ok(Config {
-            brokers: brokers,
-            group: m.opt_str("group").unwrap_or_else(|| String::new()),
-            topics: topics,
+            brokers,
+            group: m.opt_str("group").unwrap_or_else(String::new),
+            topics,
             no_commit: m.opt_present("no-commit"),
-            offset_storage: offset_storage,
+            offset_storage,
             fallback_offset: if m.opt_present("earliest") {
                 FetchOffset::Earliest
             } else {

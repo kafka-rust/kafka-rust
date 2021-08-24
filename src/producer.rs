@@ -59,25 +59,25 @@
 // XXX 1) rethink return values for the send_all() method
 // XXX 2) Handle recoverable errors behind the scenes through retry attempts
 
+use crate::client::{self, KafkaClient};
+use crate::error::{ErrorKind, Result};
+use ref_slice::ref_slice;
 use std::collections::HashMap;
 use std::fmt;
-use std::hash::{Hasher, BuildHasher, BuildHasherDefault};
+use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
 use std::time::Duration;
-use client::{self, KafkaClient};
-use error::{ErrorKind, Result};
-use ref_slice::ref_slice;
 use twox_hash::XxHash32;
 
 #[cfg(feature = "security")]
-use client::SecurityConfig;
+use crate::client::SecurityConfig;
 
 #[cfg(not(feature = "security"))]
 type SecurityConfig = ();
-use client_internals::KafkaClientInternals;
-use protocol;
+use crate::client_internals::KafkaClientInternals;
+use crate::protocol;
 
 // public re-exports
-pub use client::{Compression, RequiredAcks, ProduceConfirm, ProducePartitionConfirm};
+pub use crate::client::{Compression, ProduceConfirm, ProducePartitionConfirm, RequiredAcks};
 
 /// The default value for `Builder::with_ack_timeout`.
 pub const DEFAULT_ACK_TIMEOUT_MILLIS: u64 = 30 * 1000;
@@ -157,9 +157,9 @@ impl<'a, K, V> Record<'a, K, V> {
     #[inline]
     pub fn from_key_value(topic: &'a str, key: K, value: V) -> Record<'a, K, V> {
         Record {
-            key: key,
-            value: value,
-            topic: topic,
+            key,
+            value,
+            topic,
             partition: -1,
         }
     }
@@ -180,22 +180,19 @@ impl<'a, V> Record<'a, (), V> {
     pub fn from_value(topic: &'a str, value: V) -> Record<'a, (), V> {
         Record {
             key: (),
-            value: value,
-            topic: topic,
+            value,
+            topic,
             partition: -1,
         }
     }
 }
 
 impl<'a, K: fmt::Debug, V: fmt::Debug> fmt::Debug for Record<'a, K, V> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
-            self.topic,
-            self.partition,
-            self.key,
-            self.value
+            self.topic, self.partition, self.key, self.value
         )
     }
 }
@@ -255,7 +252,6 @@ impl Producer {
     }
 }
 
-
 impl<P: Partitioner> Producer<P> {
     /// Synchronously send the specified message to Kafka.
     pub fn send<'a, K, V>(&mut self, rec: &Record<'a, K, V>) -> Result<()>
@@ -263,7 +259,7 @@ impl<P: Partitioner> Producer<P> {
         K: AsBytes,
         V: AsBytes,
     {
-        let mut rs = try!(self.send_all(ref_slice(rec)));
+        let mut rs = self.send_all(ref_slice(rec))?;
 
         if self.config.required_acks == 0 {
             // ~ with no required_acks we get no response and
@@ -300,7 +296,7 @@ impl<P: Partitioner> Producer<P> {
         client.internal_produce_messages(
             config.required_acks,
             config.ack_timeout,
-            recs.into_iter().map(|r| {
+            recs.iter().map(|r| {
                 let mut m = client::ProduceMessage {
                     key: to_option(r.key.as_bytes()),
                     value: to_option(r.value.as_bytes()),
@@ -315,7 +311,11 @@ impl<P: Partitioner> Producer<P> {
 }
 
 fn to_option(data: &[u8]) -> Option<&[u8]> {
-    if data.is_empty() { None } else { Some(data) }
+    if data.is_empty() {
+        None
+    } else {
+        Some(data)
+    }
 }
 
 // --------------------------------------------------------------------
@@ -336,7 +336,7 @@ impl<P> State<P> {
         }
         Ok(State {
             partitions: ids,
-            partitioner: partitioner,
+            partitioner,
         })
     }
 }
@@ -360,8 +360,8 @@ pub struct Builder<P = DefaultPartitioner> {
 impl Builder {
     fn new(client: Option<KafkaClient>, hosts: Vec<String>) -> Builder<DefaultPartitioner> {
         let mut b = Builder {
-            client: client,
-            hosts: hosts,
+            client,
+            hosts,
             compression: client::DEFAULT_COMPRESSION,
             ack_timeout: Duration::from_millis(DEFAULT_ACK_TIMEOUT_MILLIS),
             conn_idle_timeout: Duration::from_millis(
@@ -439,7 +439,7 @@ impl<P> Builder<P> {
             ack_timeout: self.ack_timeout,
             conn_idle_timeout: self.conn_idle_timeout,
             required_acks: self.required_acks,
-            partitioner: partitioner,
+            partitioner,
             security_config: None,
             client_id: None,
         }
@@ -474,18 +474,18 @@ impl<P> Builder<P> {
             client.set_client_id(client_id);
         }
         let producer_config = Config {
-            ack_timeout: try!(protocol::to_millis_i32(self.ack_timeout)),
+            ack_timeout: protocol::to_millis_i32(self.ack_timeout)?,
             required_acks: self.required_acks as i16,
         };
         // ~ load metadata if necessary
         if need_metadata {
-            try!(client.load_metadata_all());
+            client.load_metadata_all()?;
         }
         // ~ create producer state
-        let state = try!(State::new(&mut client, self.partitioner));
+        let state = State::new(&mut client, self.partitioner)?;
         Ok(Producer {
-            client: client,
-            state: state,
+            client,
+            state,
             config: producer_config,
         })
     }
@@ -535,7 +535,7 @@ impl Partitions {
 
 impl<'a> Topics<'a> {
     fn new(partitions: &'a HashMap<String, Partitions>) -> Topics<'a> {
-        Topics { partitions: partitions }
+        Topics { partitions }
     }
 
     /// Retrieves informationa about a topic's partitions.
@@ -559,7 +559,7 @@ pub trait Partitioner {
     ///
     /// `msg` the message whose partition assignment potentially to
     /// change.
-    fn partition(&mut self, topics: Topics, msg: &mut client::ProduceMessage);
+    fn partition(&mut self, topics: Topics<'_>, msg: &mut client::ProduceMessage<'_, '_>);
 }
 
 /// The default hasher implementation used of `DefaultPartitioner`.
@@ -609,7 +609,7 @@ impl DefaultPartitioner {
     /// builder to hash message keys.
     pub fn with_hasher<B: BuildHasher>(hash_builder: B) -> DefaultPartitioner<B> {
         DefaultPartitioner {
-            hash_builder: hash_builder.into(),
+            hash_builder,
             cntr: 0,
         }
     }
@@ -627,7 +627,7 @@ impl DefaultPartitioner {
 
 impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
     #[allow(unused_variables)]
-    fn partition(&mut self, topics: Topics, rec: &mut client::ProduceMessage) {
+    fn partition(&mut self, topics: Topics<'_>, rec: &mut client::ProduceMessage<'_, '_>) {
         if rec.partition >= 0 {
             // ~ partition explicitely defined, trust the user
             return;
@@ -663,7 +663,7 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
                 // ~ no key available, determine a partition from the
                 // available ones.
                 let avail = partitions.available_ids();
-                if avail.len() > 0 {
+                if !avail.is_empty() {
                     rec.partition = avail[self.cntr as usize % avail.len()];
                     // ~ update internal state so that the next time we choose
                     // a different partition
@@ -678,11 +678,11 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
 
 #[cfg(test)]
 mod default_partitioner_tests {
-    use std::hash::{Hasher, BuildHasherDefault};
     use std::collections::HashMap;
+    use std::hash::{BuildHasherDefault, Hasher};
 
-    use client;
-    use super::{DefaultPartitioner, DefaultHasher, Partitioner, Partitions, Topics};
+    use super::{DefaultHasher, DefaultPartitioner, Partitioner, Partitions, Topics};
+    use crate::client;
 
     fn topics_map(topics: Vec<(&str, Partitions)>) -> HashMap<String, Partitions> {
         let mut h = HashMap::new();
@@ -701,7 +701,7 @@ mod default_partitioner_tests {
         let mut msg = client::ProduceMessage {
             key: Some(key.as_bytes()),
             value: None,
-            topic: topic,
+            topic,
             partition: -1,
         };
         p.partition(Topics::new(topics), &mut msg);
@@ -719,14 +719,14 @@ mod default_partitioner_tests {
                 Partitions {
                     available_ids: vec![0, 1, 4],
                     num_all_partitions: 5,
-                }
+                },
             ),
             (
                 "bar",
                 Partitions {
                     available_ids: vec![0, 1],
                     num_all_partitions: 2,
-                }
+                },
             ),
         ]);
 
@@ -771,14 +771,14 @@ mod default_partitioner_tests {
                 Partitions {
                     available_ids: vec![0, 1],
                     num_all_partitions: 2,
-                }
+                },
             ),
             (
                 "contents",
                 Partitions {
                     available_ids: vec![0, 1, 9],
                     num_all_partitions: 10,
-                }
+                },
             ),
         ]);
 

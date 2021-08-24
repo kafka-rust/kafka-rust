@@ -1,4 +1,4 @@
-use client::FetchOffset;
+use crate::client::FetchOffset;
 
 #[derive(Debug)]
 pub struct Config {

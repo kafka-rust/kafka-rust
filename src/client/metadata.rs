@@ -4,8 +4,8 @@
 use std::collections::hash_map;
 use std::fmt;
 
+use super::state::{ClientState, TopicPartition, TopicPartitionIter, TopicPartitions};
 use super::KafkaClient;
-use super::state::{ClientState, TopicPartitions, TopicPartitionIter, TopicPartition};
 
 // public re-export
 pub use super::state::Broker;
@@ -20,8 +20,10 @@ impl<'a> Topics<'a> {
     /// Constructs a view of the currently loaded topic metadata from
     /// the specified kafka client.
     #[inline]
-    pub fn new(client: &KafkaClient) -> Topics {
-        Topics { state: &client.state }
+    pub fn new(client: &KafkaClient) -> Topics<'_> {
+        Topics {
+            state: &client.state,
+        }
     }
 
     /// Retrieves the number of the underlying topics.
@@ -53,24 +55,22 @@ impl<'a> Topics<'a> {
     /// Retrieves the partitions of a specified topic.
     #[inline]
     pub fn partitions(&'a self, topic: &str) -> Option<Partitions<'a>> {
-        self.state.partitions_for(topic).map(|tp| {
-            Partitions {
-                state: self.state,
-                tp: tp,
-            }
+        self.state.partitions_for(topic).map(|tp| Partitions {
+            state: self.state,
+            tp,
         })
     }
 }
 
 impl<'a> fmt::Debug for Topics<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "Topics {{ topics: ["));
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Topics {{ topics: [")?;
         let mut ts = self.iter();
         if let Some(t) = ts.next() {
-            try!(write!(f, "{:?}", t));
+            write!(f, "{:?}", t)?;
         }
         for t in ts {
-            try!(write!(f, ", {:?}", t));
+            write!(f, ", {:?}", t)?;
         }
         write!(f, "] }}")
     }
@@ -103,7 +103,7 @@ pub struct TopicIter<'a> {
 impl<'a> TopicIter<'a> {
     fn new(state: &'a ClientState) -> TopicIter<'a> {
         TopicIter {
-            state: state,
+            state,
             iter: state.topic_partitions().iter(),
         }
     }
@@ -114,12 +114,10 @@ impl<'a> Iterator for TopicIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(name, tps)| {
-            Topic {
-                state: self.state,
-                name: &name[..],
-                tp: tps,
-            }
+        self.iter.next().map(|(name, tps)| Topic {
+            state: self.state,
+            name: &name[..],
+            tp: tps,
         })
     }
 }
@@ -149,7 +147,7 @@ impl<'a> Topic<'a> {
 }
 
 impl<'a> fmt::Debug for Topic<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Topic {{ name: {}, partitions: {:?} }}", self.name, self.partitions())
     }
 }
@@ -182,9 +180,9 @@ impl<'a> Partitions<'a> {
     /// Finds a specified partition identified by its id.
     #[inline]
     pub fn partition(&self, partition_id: i32) -> Option<Partition<'a>> {
-        self.tp.partition(partition_id).map(|p| {
-            Partition::new(self.state, p, partition_id)
-        })
+        self.tp
+            .partition(partition_id)
+            .map(|p| Partition::new(self.state, p, partition_id))
     }
 
     /// Convenience method to retrieve the identifiers of all
@@ -200,14 +198,14 @@ impl<'a> Partitions<'a> {
 }
 
 impl<'a> fmt::Debug for Partitions<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "Partitions {{ ["));
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Partitions {{ [")?;
         let mut ps = self.iter();
         if let Some(p) = ps.next() {
-            try!(write!(f, "{:?}", p));
+            write!(f, "{:?}", p)?;
         }
         for p in ps {
-            try!(write!(f, ", {:?}", p));
+            write!(f, ", {:?}", p)?;
         }
         write!(f, "] }}")
     }
@@ -240,7 +238,7 @@ pub struct PartitionIter<'a> {
 impl<'a> PartitionIter<'a> {
     fn new(state: &'a ClientState, tp: &'a TopicPartitions) -> Self {
         PartitionIter {
-            state: state,
+            state,
             iter: tp.iter(),
         }
     }
@@ -251,9 +249,9 @@ impl<'a> Iterator for PartitionIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(
-            |(id, p)| Partition::new(self.state, p, id),
-        )
+        self.iter
+            .next()
+            .map(|(id, p)| Partition::new(self.state, p, id))
     }
 }
 
@@ -275,9 +273,9 @@ pub struct Partition<'a> {
 impl<'a> Partition<'a> {
     fn new(state: &'a ClientState, partition: &'a TopicPartition, id: i32) -> Partition<'a> {
         Partition {
-            state: state,
-            partition: partition,
-            id: id,
+            state,
+            partition,
+            id,
         }
     }
 
@@ -302,7 +300,7 @@ impl<'a> Partition<'a> {
 }
 
 impl<'a> fmt::Debug for Partition<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Partition {{ id: {}, leader: {:?} }}", self.id(), self.leader())
     }
 }
