@@ -72,7 +72,7 @@ fn run(cfg: Config) -> Result<()> {
     // ~ initialize the state
     let mut first_time = true;
     loop {
-        let t = time::now();
+        let t = time::Time::now();
         state.update_partitions(&mut client, &cfg.topic, &cfg.group)?;
         if first_time {
             state.curr_to_prev();
@@ -227,15 +227,14 @@ impl<W: Write> Printer<W> {
         }
     }
 
-    fn print_offsets(&mut self, time: &time::Tm, partitions: &[Partition]) -> Result<()> {
+    fn print_offsets(&mut self, time: &time::Time, partitions: &[Partition]) -> Result<()> {
         self.out_buf.clear();
         {
             // ~ format
             use std::fmt::Write;
 
             self.fmt_buf.clear();
-            let _ =
-                write!(self.fmt_buf, "{}", time.strftime(&self.timefmt).expect("invalid timefmt"));
+            let _ = write!(self.fmt_buf, "{}", time.format(&self.timefmt));
             let _ = write!(self.out_buf, "{1:<0$}", self.time_width, self.fmt_buf);
             if self.print_summary {
                 let mut prev_latest = 0;

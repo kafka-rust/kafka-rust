@@ -6,9 +6,9 @@ use snap;
 use crate::error::{Error, ErrorKind, Result};
 
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
-    let mut buf = vec![0; snap::max_compress_len(src.len())];
+    let mut buf = vec![0; snap::raw::max_compress_len(src.len())];
 
-    snap::Encoder::new()
+    snap::raw::Encoder::new()
         .compress(src, &mut buf)
         .map(|len| {
             buf.truncate(len);
@@ -18,14 +18,14 @@ pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
 }
 
 fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
-    snap::decompress_len(src)
+    snap::raw::decompress_len(src)
         .and_then(|min_len| {
             if min_len > 0 {
                 let off = dst.len();
                 dst.resize(off + min_len, 0);
                 let uncompressed_len = {
                     let buf = &mut dst.as_mut_slice()[off..off + min_len];
-                    snap::Decoder::new().decompress(src, buf)?
+                    snap::raw::Decoder::new().decompress(src, buf)?
                 };
                 dst.truncate(off + uncompressed_len);
             }
