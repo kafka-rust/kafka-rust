@@ -9,7 +9,7 @@ use crc::Crc;
 /// Macro to return Result<()> from multiple statements
 macro_rules! try_multi {
     ($($input_expr:expr),*) => ({
-        $($input_expr;)*
+        $($input_expr?;)*
         Ok(())
     })
 }

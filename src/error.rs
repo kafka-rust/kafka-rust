@@ -5,7 +5,7 @@ use std::io;
 #[cfg(feature = "security")]
 use openssl::ssl::{self, Error as SslError};
 
-/// The various errors this library can produce.
+// The various errors this library can produce.
 error_chain! {
     foreign_links {
         Io(io::Error) #[doc="Input/Output error while communicating with Kafka"];
