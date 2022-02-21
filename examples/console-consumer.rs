@@ -126,7 +126,7 @@ impl Config {
                 }
                 xs
             }};
-        };
+        }
 
         let brokers = required_list!("brokers");
         let topics = required_list!("topics");

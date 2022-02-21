@@ -1,7 +1,5 @@
 #[macro_use]
 extern crate error_chain;
-
-use std::ascii::AsciiExt;
 use std::cmp;
 use std::env;
 use std::io::{self, stderr, stdout, BufWriter, Write};
@@ -25,7 +23,7 @@ fn main() {
             let _ = out.flush();
             process::exit(1);
         }};
-    };
+    }
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
@@ -251,7 +249,8 @@ impl<W: Write> Printer<W> {
                                 }
                             }
                         };
-                    };
+                    }
+
                     cond_add!(prev_latest);
                     cond_add!(curr_latest);
                     cond_add!(curr_lag);

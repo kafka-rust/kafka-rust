@@ -82,7 +82,7 @@ fn test_kafka_code_from_protocol() {
                 false
             })
         };
-    };
+    }
 
     assert!(KafkaCode::from_protocol(0).is_none());
     assert_kafka_code!(KafkaCode::OffsetOutOfRange, KafkaCode::OffsetOutOfRange as i16);

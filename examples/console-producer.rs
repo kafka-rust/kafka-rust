@@ -198,8 +198,6 @@ struct Config {
 
 impl Config {
     fn from_cmdline() -> Result<Config> {
-        use std::ascii::AsciiExt;
-
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
