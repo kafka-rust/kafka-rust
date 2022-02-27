@@ -14,7 +14,6 @@ edition = "2018"
 [dependencies]
 byteorder = "1.4.1"
 crc = "2"
-log ="0.4.14"
 ref_slice = "1.0"
 fnv = "1.0"
 twox-hash = "1.1"
@@ -24,6 +23,7 @@ snap = { version = "1", optional = true }
 openssl = { version = "0.10", optional = true }
 openssl-sys = { version = "0.9", optional = true }
 thiserror = "1.0.30"
+tracing = "0.1.31"
 
 [dev-dependencies]
 getopts = "0.2"

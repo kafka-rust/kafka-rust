@@ -264,8 +264,8 @@ pub struct Partition<'a> {
     /// The identifier of the represented partition.
     partition: i32,
 
-    /// Either an error or the partition data.
-    data: Result<Data<'a>>,
+    /// The partition data.
+    data: Data<'a>,
 }
 
 impl<'a> Partition<'a> {
@@ -279,21 +279,24 @@ impl<'a> Partition<'a> {
             .and_then(|preqs| preqs.get(partition))
             .map(|preq| preq.offset)
             .unwrap_or(0);
-        let error = Error::from_protocol(r.read_i16()?);
+
+        let err = Error::from_protocol(r.read_i16()?);
         // we need to parse the rest even if there was an error to
         // consume the input stream (zreader)
         let highwatermark = r.read_i64()?;
         let msgset = MessageSet::from_slice(r.read_bytes()?, proffs, validate_crc)?;
-        Ok(Partition {
-            partition,
-            data: match error {
-                Some(error) => Err(error),
-                None => Ok(Data {
+
+        if let Some(err) = err {
+            Err(err)
+        } else {
+            Ok(Partition {
+                partition,
+                data: Data {
                     highwatermark_offset: highwatermark,
                     message_set: msgset,
-                }),
-            },
-        })
+                },
+            })
+        }
     }
 
     /// Retrieves the identifier of the represented partition.
@@ -303,8 +306,8 @@ impl<'a> Partition<'a> {
     }
 
     /// Retrieves the data payload for this partition.
-    pub fn data(&self) -> Result<Data<'a>> {
-        Ok(self.data?)
+    pub fn data(&'a self) -> &'a Data<'a> {
+        &self.data
     }
 }
 
@@ -372,11 +375,7 @@ impl<'a> MessageSet<'a> {
         });
     }
 
-    fn from_slice<'b>(
-        raw_data: &'b [u8],
-        req_offset: i64,
-        validate_crc: bool,
-    ) -> Result<MessageSet<'b>> {
+    fn from_slice(raw_data: &[u8], req_offset: i64, validate_crc: bool) -> Result<MessageSet<'_>> {
         let mut r = ZReader::new(raw_data);
         let mut msgs = Vec::new();
         while !r.is_empty() {
@@ -449,7 +448,7 @@ struct ProtocolMessage<'a> {
 impl<'a> ProtocolMessage<'a> {
     /// Parses a raw message from the given byte slice.  Does _not_
     /// handle any compression.
-    fn from_slice<'b>(raw_data: &'b [u8], validate_crc: bool) -> Result<ProtocolMessage<'b>> {
+    fn from_slice(raw_data: &[u8], validate_crc: bool) -> Result<ProtocolMessage<'_>> {
         let mut r = ZReader::new(raw_data);
 
         // ~ optionally validate the crc checksum
@@ -516,18 +515,12 @@ mod tests {
     static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900: &[u8] =
         include_bytes!("../../test-data/fetch2.mytopic.nocompression.invalid_crc.kafka.0900");
 
-    fn into_messages<'a>(r: &'a Response) -> Vec<&'a Message<'a>> {
+    fn into_messages(r: &Response) -> Vec<&Message<'_>> {
         let mut all_msgs = Vec::new();
         for t in r.topics() {
             for p in t.partitions() {
-                match p.data() {
-                    &Err(_) => {
-                        println!("Skipping error partition: {}:{}", t.topic, p.partition);
-                    }
-                    &Ok(ref data) => {
-                        all_msgs.extend(data.messages());
-                    }
-                }
+                let data = p.data();
+                all_msgs.extend(data.messages());
             }
         }
         all_msgs
@@ -553,7 +546,7 @@ mod tests {
         // ~ the first partition
         assert_eq!(0, resp.topics[0].partitions[0].partition);
         // ~ no error
-        assert!(resp.topics[0].partitions[0].data.is_ok());
+        // assert!(resp.topics[0].partitions[0].data.is_ok());
 
         let msgs = into_messages(&resp);
         assert_eq!(original.len(), msgs.len());
@@ -604,7 +597,7 @@ mod tests {
         let r =
             Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
         assert!(match r {
-            bail!(Error::UnsupportedCompression) => true,
+            return Err(Error::UnsupportedCompression) => true,
             _ => false,
         });
     }

@@ -67,6 +67,12 @@ pub enum Error {
     InvalidDuration,
 }
 
+impl Clone for Error {
+    fn clone(&self) -> Self {
+        todo!()
+    }
+}
+
 /// Various errors reported by a remote Kafka server.
 /// See also [Kafka Errors](http://kafka.apache.org/protocol.html)
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

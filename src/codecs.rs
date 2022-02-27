@@ -1,7 +1,7 @@
 use std::default::Default;
 use std::io::{Read, Write};
 
-use crate::error::{ErrorKind, Result};
+use crate::error::{Error, Result};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 // Helper macro to safely convert an usize expression into a signed
@@ -17,7 +17,7 @@ macro_rules! try_usize_to_int {
         if (x as u64) <= (maxv as u64) {
             x as $ttype
         } else {
-            bail!(ErrorKind::CodecError)
+            return Err(Error::CodecError);
         }
     }};
 }
@@ -194,7 +194,7 @@ impl FromByte for String {
         self.reserve(length as usize);
         let _ = buffer.take(length as u64).read_to_string(self);
         if self.len() != length as usize {
-            bail!(ErrorKind::UnexpectedEOF);
+            return Err(Error::UnexpectedEOF);
         }
         Ok(())
     }
@@ -237,7 +237,7 @@ impl FromByte for Vec<u8> {
         match buffer.take(length as u64).read_to_end(self) {
             Ok(size) => {
                 if size < length as usize {
-                    bail!(ErrorKind::UnexpectedEOF);
+                    return Err(Error::UnexpectedEOF);
                 } else {
                     Ok(())
                 }

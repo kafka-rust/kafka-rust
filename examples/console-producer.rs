@@ -42,7 +42,7 @@ fn produce(cfg: &Config) -> Result<()> {
 
     // ~ verify that the remote brokers do know about the target topic
     if !client.topics().contains(&cfg.topic) {
-        bail!(format!("No such topic at {:?}: {}", cfg.brokers, cfg.topic));
+        return Err(format!("No such topic at {:?}: {}", cfg.brokers, cfg.topic));
     }
     match cfg.input_file {
         None => {
@@ -163,7 +163,7 @@ fn send_batch(producer: &mut Producer, batch: &[Record<'_, (), Trimmed>]) -> Res
     for r in rs {
         for tpc in r.partition_confirms {
             if let Err(code) = tpc.offset {
-                bail!(ErrorKind::Kafka(kafka::error::ErrorKind::Kafka(code)));
+                return Err(ErrorKind::Kafka(kafka::error::ErrorKind::Kafka(code)));
             }
         }
     }
@@ -217,11 +217,11 @@ impl Config {
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => bail!(e),
+            Err(e) => return Err(e),
         };
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
-            bail!(opts.usage(&brief));
+            return Err(opts.usage(&brief));
         }
         Ok(Config {
             brokers: m
@@ -239,14 +239,14 @@ impl Config {
                 Some(ref s) if s.eq_ignore_ascii_case("gzip") => Compression::GZIP,
                 #[cfg(feature = "snappy")]
                 Some(ref s) if s.eq_ignore_ascii_case("snappy") => Compression::SNAPPY,
-                Some(s) => bail!(format!("Unsupported compression type: {}", s)),
+                Some(s) => return Err(format!("Unsupported compression type: {}", s)),
             },
             required_acks: match m.opt_str("required-acks") {
                 None => RequiredAcks::One,
                 Some(ref s) if s.eq_ignore_ascii_case("none") => RequiredAcks::None,
                 Some(ref s) if s.eq_ignore_ascii_case("one") => RequiredAcks::One,
                 Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
-                Some(s) => bail!(format!("Unknown --required-acks argument: {}", s)),
+                Some(s) => return Err(format!("Unknown --required-acks argument: {}", s)),
             },
             batch_size: to_number(m.opt_str("batch-size"), 1)?,
             conn_idle_timeout: Duration::from_millis(to_number(
@@ -266,7 +266,7 @@ fn to_number<N: FromStr>(s: Option<String>, _default: N) -> Result<N> {
         None => Ok(_default),
         Some(s) => match s.parse::<N>() {
             Ok(n) => Ok(n),
-            Err(_) => bail!(format!("Not a number: {}", s)),
+            Err(_) => return Err(format!("Not a number: {}", s)),
         },
     }
 }
