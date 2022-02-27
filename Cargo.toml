@@ -18,12 +18,12 @@ log ="0.4.14"
 ref_slice = "1.0"
 fnv = "1.0"
 twox-hash = "1.1"
-error-chain = "0.12.3"
 
 flate2 = { version = "1.0.19", optional = true }
 snap = { version = "1", optional = true }
 openssl = { version = "0.10", optional = true }
 openssl-sys = { version = "0.9", optional = true }
+thiserror = "1.0.30"
 
 [dev-dependencies]
 getopts = "0.2"

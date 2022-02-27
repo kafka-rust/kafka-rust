@@ -14,7 +14,8 @@ use crate::compression::gzip;
 #[cfg(feature = "snappy")]
 use crate::compression::snappy::SnappyReader;
 use crate::compression::Compression;
-use crate::error::{Error, ErrorKind, KafkaCode, Result};
+use crate::error::KafkaCode;
+use crate::{Error, Result};
 
 use super::to_crc;
 use super::zreader::ZReader;
@@ -302,8 +303,8 @@ impl<'a> Partition<'a> {
     }
 
     /// Retrieves the data payload for this partition.
-    pub fn data(&'a self) -> &'a Result<Data<'a>> {
-        &self.data
+    pub fn data(&self) -> Result<Data<'a>> {
+        Ok(self.data?)
     }
 }
 
@@ -383,7 +384,7 @@ impl<'a> MessageSet<'a> {
                 // this is the last messages which might be
                 // incomplete; a valid case to be handled by
                 // consumers
-                Err(Error(ErrorKind::UnexpectedEOF, _)) => {
+                Err(Error::UnexpectedEOF) => {
                     break;
                 }
                 Err(e) => {
@@ -417,7 +418,7 @@ impl<'a> MessageSet<'a> {
                             SnappyReader::new(pmsg.value)?.read_to_end(&mut v)?;
                             return MessageSet::from_vec(v, req_offset, validate_crc);
                         }
-                        _ => bail!(ErrorKind::UnsupportedCompression),
+                        _ => return Err(Error::UnsupportedCompression),
                     }
                 }
             };
@@ -454,13 +455,13 @@ impl<'a> ProtocolMessage<'a> {
         // ~ optionally validate the crc checksum
         let msg_crc = r.read_i32()?;
         if validate_crc && to_crc(r.rest()) as i32 != msg_crc {
-            bail!(ErrorKind::Kafka(KafkaCode::CorruptMessage));
+            return Err(Error::Kafka(KafkaCode::CorruptMessage));
         }
         // ~ we support parsing only messages with the "zero"
         // magic_byte; this covers kafka 0.8 and 0.9.
         let msg_magic = r.read_i8()?;
         if msg_magic != 0 {
-            bail!(ErrorKind::UnsupportedProtocol);
+            return Err(Error::UnsupportedProtocol);
         }
         let msg_attr = r.read_i8()?;
         let msg_key = r.read_bytes()?;
@@ -483,7 +484,7 @@ mod tests {
     use std::str;
 
     use super::{FetchRequest, Message, Response};
-    use crate::error::{Error, ErrorKind, KafkaCode};
+    use crate::error::{Error, KafkaCode};
 
     static FETCH1_TXT: &str = include_str!("../../test-data/fetch1.txt");
 
@@ -603,7 +604,7 @@ mod tests {
         let r =
             Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
         assert!(match r {
-            bail!(ErrorKind::UnsupportedCompression) => true,
+            bail!(Error::UnsupportedCompression) => true,
             _ => false,
         });
     }
@@ -705,7 +706,7 @@ mod tests {
             true,
         ) {
             Ok(_) => panic!("Expected error, but got successful response!"),
-            Err(Error(ErrorKind::Kafka(KafkaCode::CorruptMessage), _)) => {}
+            Err(Error::Kafka(KafkaCode::CorruptMessage)) => {}
             Err(e) => panic!("Expected KafkaCode::CorruptMessage error, but got: {:?}", e),
         }
     }
