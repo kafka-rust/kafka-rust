@@ -1,6 +1,6 @@
 //! Error struct and methods
 
-use std::{io, result};
+use std::{io, rc::Rc, result};
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -65,6 +65,9 @@ pub enum Error {
     /// An invalid user-provided duration
     #[error("Invalid duration")]
     InvalidDuration,
+
+    #[error(transparent)]
+    RcSelf(#[from] Rc<Self>),
 }
 
 impl Clone for Error {

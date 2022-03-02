@@ -4,7 +4,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use std::io::Write;
-use std::mem;
+use std::rc::Rc;
+use std::{mem, result};
 
 use fnv::FnvHasher;
 
@@ -265,7 +266,7 @@ pub struct Partition<'a> {
     partition: i32,
 
     /// The partition data.
-    data: Data<'a>,
+    data: result::Result<Data<'a>, Rc<Error>>,
 }
 
 impl<'a> Partition<'a> {
@@ -286,17 +287,16 @@ impl<'a> Partition<'a> {
         let highwatermark = r.read_i64()?;
         let msgset = MessageSet::from_slice(r.read_bytes()?, proffs, validate_crc)?;
 
-        if let Some(err) = err {
-            Err(err)
-        } else {
-            Ok(Partition {
-                partition,
-                data: Data {
+        Ok(Partition {
+            partition,
+            data: match err {
+                Some(err) => Err(Rc::new(err)),
+                None => Ok(Data {
                     highwatermark_offset: highwatermark,
                     message_set: msgset,
-                },
-            })
-        }
+                }),
+            },
+        })
     }
 
     /// Retrieves the identifier of the represented partition.
@@ -306,8 +306,11 @@ impl<'a> Partition<'a> {
     }
 
     /// Retrieves the data payload for this partition.
-    pub fn data(&'a self) -> &'a Data<'a> {
-        &self.data
+    pub fn data(&'a self) -> result::Result<&'a Data<'a>, Rc<Error>> {
+        match self.data.as_ref() {
+            Ok(data) => Ok(data),
+            Err(err) => Err(err.clone()),
+        }
     }
 }
 
@@ -519,7 +522,7 @@ mod tests {
         let mut all_msgs = Vec::new();
         for t in r.topics() {
             for p in t.partitions() {
-                let data = p.data();
+                let data = p.data().unwrap();
                 all_msgs.extend(data.messages());
             }
         }

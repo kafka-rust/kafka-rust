@@ -244,7 +244,7 @@ impl Consumer {
                     // transparently for the caller.
 
                     // XXX need to prevent updating fetch_offsets in case we're gonna fail here
-                    let data = p.data();
+                    let data = p.data()?;
 
                     let mut fetch_state = self
                         .state
@@ -526,16 +526,22 @@ impl<'a> Iterator for MessageSetsIter<'a> {
             if let Some(p) = self.partitions.as_mut().and_then(|p| p.next()) {
                 // ~ skip errornous partitions
                 // ~ skip empty partitions
-                let pdata = p.data();
-                let msgs = pdata.messages();
-                if msgs.is_empty() {
-                    continue;
-                } else {
-                    return Some(MessageSet {
-                        topic: self.curr_topic,
-                        partition: p.partition(),
-                        messages: msgs,
-                    });
+                match p.data() {
+                    Err(_) => {
+                        continue;
+                    }
+                    Ok(pdata) => {
+                        let msgs = pdata.messages();
+                        if msgs.is_empty() {
+                            continue;
+                        } else {
+                            return Some(MessageSet {
+                                topic: self.curr_topic,
+                                partition: p.partition(),
+                                messages: msgs,
+                            });
+                        }
+                    }
                 }
             }
             // ~ then the next available topic
