@@ -237,7 +237,7 @@ impl FromByte for Vec<u8> {
         match buffer.take(length as u64).read_to_end(self) {
             Ok(size) => {
                 if size < length as usize {
-                    return Err(Error::UnexpectedEOF);
+                    Err(Error::UnexpectedEOF)
                 } else {
                     Ok(())
                 }

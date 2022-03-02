@@ -818,7 +818,7 @@ impl KafkaClient {
                 }
             }
         }
-        return Err(Error::NoHostReachable);
+        Err(Error::NoHostReachable)
     }
 
     /// Fetch offsets for a list of topics
@@ -949,9 +949,9 @@ impl KafkaClient {
         let topic = topic.as_ref();
 
         let mut m = self.fetch_offsets(&[topic], offset)?;
-        let offs = m.remove(topic).unwrap_or_else(std::vec::Vec::new);
+        let offs = m.remove(topic).unwrap_or_default();
         if offs.is_empty() {
-            return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+            Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition))
         } else {
             Ok(offs)
         }
@@ -1275,8 +1275,7 @@ impl KafkaClient {
         }
 
         Ok(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
-            .remove(topic)
-            .unwrap_or_else(Vec::new))
+            .remove(topic).unwrap_or_default())
     }
 }
 
@@ -1575,8 +1574,8 @@ where
     T: ToByte,
     V: FromByte,
 {
-    let mut conn = conn_pool.get_conn(host, now)?;
-    __send_request(&mut conn, req)
+    let conn = conn_pool.get_conn(host, now)?;
+    __send_request(conn, req)
 }
 
 fn __send_request<T: ToByte>(conn: &mut network::KafkaConnection, request: T) -> Result<usize> {
@@ -1628,9 +1627,9 @@ where
     R: ToByte,
     P: ResponseParser,
 {
-    let mut conn = conn_pool.get_conn(host, now)?;
-    __send_request(&mut conn, req)?;
-    __z_get_response(&mut conn, parser)
+    let conn = conn_pool.get_conn(host, now)?;
+    __send_request(conn, req)?;
+    __z_get_response(conn, parser)
 }
 
 fn __z_get_response<P>(conn: &mut network::KafkaConnection, parser: &P) -> Result<P::T>

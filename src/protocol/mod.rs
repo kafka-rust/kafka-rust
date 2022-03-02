@@ -173,7 +173,7 @@ pub fn to_millis_i32(d: Duration) -> Result<i32> {
         .saturating_mul(1_000)
         .saturating_add(d.subsec_millis() as u64);
     if m > i32::MAX as u64 {
-        return Err(Error::InvalidDuration);
+        Err(Error::InvalidDuration)
     } else {
         Ok(m as i32)
     }
