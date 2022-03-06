@@ -1,6 +1,6 @@
 //! Error struct and methods
 
-use std::{io, rc::Rc, result};
+use std::{io, result, sync::Arc};
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -67,13 +67,7 @@ pub enum Error {
     InvalidDuration,
 
     #[error(transparent)]
-    RcSelf(#[from] Rc<Self>),
-}
-
-impl Clone for Error {
-    fn clone(&self) -> Self {
-        todo!()
-    }
+    ArcSelf(#[from] Arc<Self>),
 }
 
 /// Various errors reported by a remote Kafka server.

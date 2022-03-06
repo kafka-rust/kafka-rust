@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use std::io::Write;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::{mem, result};
 
 use fnv::FnvHasher;
@@ -266,7 +266,7 @@ pub struct Partition<'a> {
     partition: i32,
 
     /// The partition data.
-    data: result::Result<Data<'a>, Rc<Error>>,
+    data: result::Result<Data<'a>, Arc<Error>>,
 }
 
 impl<'a> Partition<'a> {
@@ -290,7 +290,7 @@ impl<'a> Partition<'a> {
         Ok(Partition {
             partition,
             data: match err {
-                Some(err) => Err(Rc::new(err)),
+                Some(err) => Err(Arc::new(err)),
                 None => Ok(Data {
                     highwatermark_offset: highwatermark,
                     message_set: msgset,
@@ -306,7 +306,7 @@ impl<'a> Partition<'a> {
     }
 
     /// Retrieves the data payload for this partition.
-    pub fn data(&'a self) -> result::Result<&'a Data<'a>, Rc<Error>> {
+    pub fn data(&'a self) -> result::Result<&'a Data<'a>, Arc<Error>> {
         match self.data.as_ref() {
             Ok(data) => Ok(data),
             Err(err) => Err(err.clone()),
