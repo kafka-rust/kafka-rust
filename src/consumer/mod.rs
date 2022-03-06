@@ -394,7 +394,7 @@ impl Consumer {
     /// A convience method to mark the given message set consumed as a
     /// whole by the caller. This is equivalent to marking the last
     /// message of the given set as consumed.
-    pub fn consume_messageset<'a>(&mut self, msgs: MessageSet<'a>) -> Result<()> {
+    pub fn consume_messageset(&mut self, msgs: MessageSet<'_>) -> Result<()> {
         if !msgs.messages.is_empty() {
             self.consume_message(msgs.topic, msgs.partition, msgs.messages.last().unwrap().offset)
         } else {
@@ -435,7 +435,7 @@ impl Consumer {
                     CommitOffset::new(topic, tp.partition, o.offset + 1)
                 }),
         )?;
-        for (_, co) in &mut state.consumed_offsets {
+        for co in state.consumed_offsets.values_mut() {
             if co.dirty {
                 co.dirty = false;
             }

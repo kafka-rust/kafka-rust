@@ -9,7 +9,7 @@ use crate::error::Result;
 pub fn compress(src: &[u8]) -> Result<Vec<u8>> {
     let mut e = GzEncoder::new(Vec::new(), Compression::best());
 
-    e.write(src)?;
+    e.write_all(src)?;
     let compressed_bytes = e.finish()?;
     Ok(compressed_bytes)
 }

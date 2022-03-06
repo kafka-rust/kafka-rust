@@ -258,10 +258,7 @@ mod openssled {
 
     impl IsSecured for KafkaStream {
         fn is_secured(&self) -> bool {
-            match *self {
-                KafkaStream::Ssl(_) => true,
-                _ => false,
-            }
+            matches!(self, KafkaStream::Ssl(_))
         }
     }
 
@@ -348,13 +345,7 @@ impl KafkaConnection {
     }
 
     pub fn read_exact_alloc(&mut self, size: u64) -> Result<Vec<u8>> {
-        let size: usize = size as usize;
-        let mut buffer: Vec<u8> = Vec::with_capacity(size);
-        // this is safe actually: we are setting the len to the
-        // buffers capacity and either fully populate it in the
-        // following call to `read_exact` or discard the vector (in
-        // the error case)
-        unsafe { buffer.set_len(size) };
+        let mut buffer = vec![0; size as usize];
         self.read_exact(buffer.as_mut_slice())?;
         Ok(buffer)
     }

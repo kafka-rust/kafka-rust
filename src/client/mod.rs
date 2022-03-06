@@ -138,8 +138,8 @@ pub enum FetchOffset {
 }
 
 impl FetchOffset {
-    fn to_kafka_value(&self) -> i64 {
-        match *self {
+    fn to_kafka_value(self) -> i64 {
+        match self {
             FetchOffset::Earliest => -2,
             FetchOffset::Latest => -1,
             FetchOffset::ByTime(n) => n,
@@ -890,7 +890,7 @@ impl KafkaClient {
                         }
                     };
                     for p in tp.partitions {
-                        let partition_offset = match p.into_offset() {
+                        let partition_offset = match p.to_offset() {
                             Ok(po) => po,
                             Err(code) => {
                                 err = Some((p.partition, code));
@@ -1275,7 +1275,8 @@ impl KafkaClient {
         }
 
         Ok(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
-            .remove(topic).unwrap_or_default())
+            .remove(topic)
+            .unwrap_or_default())
     }
 }
 
@@ -1343,18 +1344,15 @@ fn __get_group_coordinator<'a>(
         let conn = conn_pool.get_conn_any(now).expect("available connection");
         debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
         let r = __send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req)?;
-        let retry_code;
-        match r.to_result() {
+        let retry_code = match r.into_result() {
             Ok(r) => {
                 return Ok(state.set_group_coordinator(group, &r));
             }
-            Err(Error::Kafka(e @ KafkaCode::GroupCoordinatorNotAvailable)) => {
-                retry_code = e;
-            }
+            Err(Error::Kafka(e @ KafkaCode::GroupCoordinatorNotAvailable)) => e,
             Err(e) => {
                 return Err(e);
             }
-        }
+        };
         if attempt < config.retry_max_attempts {
             debug!(
                 "get_group_coordinator: will retry request (c: {}) due to: {:?}",

@@ -1,6 +1,4 @@
-#[macro_use]
-extern crate error_chain;
-
+use anyhow::{ensure, Result};
 use std::fs::File;
 use std::io::{self, stderr, stdin, BufRead, BufReader, Write};
 use std::ops::{Deref, DerefMut};
@@ -41,9 +39,7 @@ fn produce(cfg: &Config) -> Result<()> {
     client.load_metadata_all()?;
 
     // ~ verify that the remote brokers do know about the target topic
-    if !client.topics().contains(&cfg.topic) {
-        return Err(format!("No such topic at {:?}: {}", cfg.brokers, cfg.topic));
-    }
+    ensure!(client.topics().contains(&cfg.topic));
     match cfg.input_file {
         None => {
             let stdin = stdin();
@@ -170,20 +166,6 @@ fn send_batch(producer: &mut Producer, batch: &[Record<'_, (), Trimmed>]) -> Res
 
     Ok(())
 }
-
-// --------------------------------------------------------------------
-
-error_chain! {
-    links {
-        Kafka(kafka::error::Error, kafka::error::ErrorKind);
-    }
-    foreign_links {
-        Io(io::Error);
-        Opt(getopts::Fail);
-    }
-}
-
-// --------------------------------------------------------------------
 
 struct Config {
     brokers: Vec<String>,

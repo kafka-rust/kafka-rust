@@ -110,8 +110,9 @@ impl<'a> SnappyReader<'a> {
 
     fn _read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if self.uncompressed_pos < self.uncompressed_chunk.len() {
-            self.read_uncompressed(buf)
-        } else if self.next_chunk()? {
+            return self.read_uncompressed(buf);
+        }
+        if self.next_chunk()? {
             self.read_uncompressed(buf)
         } else {
             Ok(0)

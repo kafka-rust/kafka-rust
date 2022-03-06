@@ -49,7 +49,7 @@ pub struct GroupCoordinatorResponse {
 }
 
 impl GroupCoordinatorResponse {
-    pub fn to_result(self) -> Result<Self> {
+    pub fn into_result(self) -> Result<Self> {
         match Error::from_protocol(self.error) {
             Some(e) => Err(e),
             None => Ok(self),
