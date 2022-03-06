@@ -3,9 +3,12 @@ name = "kafka"
 version = "0.8.0"
 authors = ["Yousuf Fauzan", "Petr Novotnik <pnovotnik@googlemail.com>"]
 description = "Rust client for Apache Kafka"
-homepage = "https://github.com/kafka-rust/kafka-rust"
-repository = "https://github.com/kafka-rust/kafka-rust"
+homepage = "https://github.com/spicavigo/kafka-rust"
+repository = "https://github.com/spicavigo/kafka-rust"
+documentation = "https://docs.rs/kafka/"
+readme = "README.md"
 keywords = ["kafka", "queue"]
+categories = ["api-bindings"]
 license = "MIT"
 edition = "2021"
 
