@@ -18,7 +18,7 @@ pub enum Compression {
     #[cfg(feature = "snappy")]
     SNAPPY = 2,
     #[cfg(feature = "zstandard")]
-    ZSTANDARD = 3,
+    ZSTANDARD = 4,
 }
 
 impl Default for Compression {

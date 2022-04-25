@@ -18,3 +18,6 @@ services:
     environment:
       KAFKA_CREATE_TOPICS: kafka-rust-test:2:1,kafka-rust-test2:2:1
       KAFKA_CLIENT_SECURE: ${KAFKA_CLIENT_SECURE}
+      KAFKA_VER: 2.1.0
+      SCALA_VER: 2.12
+

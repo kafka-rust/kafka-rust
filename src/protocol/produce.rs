@@ -128,12 +128,12 @@ impl<'a> PartitionProduceRequest<'a> {
 
 impl<'a, 'b> ToByte for ProduceRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.header.encode(buffer),
-            self.required_acks.encode(buffer),
-            self.timeout.encode(buffer),
+        //try_multi!(
+            self.header.encode(buffer)?;
+            self.required_acks.encode(buffer)?;
+            self.timeout.encode(buffer)?;
             self.topic_partitions.encode(buffer)
-        )
+        //)
     }
 }
 
@@ -178,7 +178,7 @@ impl<'a> PartitionProduceRequest<'a> {
             },
             #[cfg(feature="zstandard")]
             Compression::ZSTANDARD => {
-                let cdata = zstandard::compress(buf.as_slice(), 3)?;
+                let cdata = zstandard::compress(&buf, 3)?;
                 render_compressed(&mut buf, &cdata, compression)?;
             }
         }
