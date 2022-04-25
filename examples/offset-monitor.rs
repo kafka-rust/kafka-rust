@@ -1,20 +1,14 @@
-extern crate kafka;
-extern crate getopts;
-extern crate env_logger;
-extern crate time;
 #[macro_use]
 extern crate error_chain;
-
-use std::ascii::AsciiExt;
 use std::cmp;
 use std::env;
-use std::io::{self, stdout, stderr, BufWriter, Write};
+use std::io::{self, stderr, stdout, BufWriter, Write};
 use std::process;
 use std::thread;
 //use std::time as stdtime;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
-use kafka::client::{KafkaClient, FetchOffset, GroupOffsetStorage};
+use kafka::client::{FetchOffset, GroupOffsetStorage, KafkaClient};
 
 /// A very simple offset monitor for a particular topic able to show
 /// the lag for a particular consumer group. Dumps the offset/lag of
@@ -28,8 +22,8 @@ fn main() {
             let _ = write!(out, "error: {}\n", $e);
             let _ = out.flush();
             process::exit(1);
-        }}
-    };
+        }};
+    }
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
@@ -55,11 +49,11 @@ fn run(cfg: Config) -> Result<()> {
         }
         let mut names: Vec<&str> = Vec::with_capacity(ts.len());
         names.extend(ts.names());
-        names.sort();
+        names.sort_unstable();
 
         let mut buf = BufWriter::with_capacity(1024, stdout());
         for name in names {
-            let _ = write!(buf, "topic: {}\n", name);
+            let _ = writeln!(buf, "topic: {}", name);
         }
         bail!("choose a topic");
     }
@@ -76,7 +70,7 @@ fn run(cfg: Config) -> Result<()> {
     // ~ initialize the state
     let mut first_time = true;
     loop {
-        let t = time::now();
+        let t = time::Time::now();
         state.update_partitions(&mut client, &cfg.topic, &cfg.group)?;
         if first_time {
             state.curr_to_prev();
@@ -124,23 +118,25 @@ impl State {
         group: &str,
     ) -> Result<()> {
         // ~ get the latest topic offsets
-        let latests = try!(client.fetch_topic_offsets(topic, FetchOffset::Latest));
+        let latests = client.fetch_topic_offsets(topic, FetchOffset::Latest)?;
 
         for l in latests {
-            let off = self.offsets.get_mut(l.partition as usize).expect(
-                "[topic offset] non-existent partition",
-            );
+            let off = self
+                .offsets
+                .get_mut(l.partition as usize)
+                .expect("[topic offset] non-existent partition");
             off.prev_latest = off.curr_latest;
             off.curr_latest = l.offset;
         }
 
         if !group.is_empty() {
             // ~ get the current group offsets
-            let groups = try!(client.fetch_group_topic_offsets(group, topic));
+            let groups = client.fetch_group_topic_offsets(group, topic)?;
             for g in groups {
-                let off = self.offsets.get_mut(g.partition as usize).expect(
-                    "[group offset] non-existent partition",
-                );
+                let off = self
+                    .offsets
+                    .get_mut(g.partition as usize)
+                    .expect("[group offset] non-existent partition");
 
                 // ~ it's quite likely that we fetched group offsets
                 // which are a bit ahead of the topic's latest offset
@@ -179,7 +175,7 @@ struct Printer<W> {
 impl<W: Write> Printer<W> {
     fn new(out: W, cfg: &Config) -> Printer<W> {
         Printer {
-            out: out,
+            out,
             timefmt: "%H:%M:%S".into(),
             fmt_buf: String::with_capacity(30),
             out_buf: String::with_capacity(160),
@@ -224,20 +220,19 @@ impl<W: Write> Printer<W> {
         }
         {
             // ~ print
-            try!(self.out.write_all(self.out_buf.as_bytes()));
+            self.out.write_all(self.out_buf.as_bytes())?;
             Ok(())
         }
     }
 
-    fn print_offsets(&mut self, time: &time::Tm, partitions: &[Partition]) -> Result<()> {
+    fn print_offsets(&mut self, time: &time::Time, partitions: &[Partition]) -> Result<()> {
         self.out_buf.clear();
         {
             // ~ format
             use std::fmt::Write;
 
             self.fmt_buf.clear();
-            let _ =
-                write!(self.fmt_buf, "{}", time.strftime(&self.timefmt).expect("invalid timefmt"));
+            let _ = write!(self.fmt_buf, "{}", time.format(&self.timefmt));
             let _ = write!(self.out_buf, "{1:<0$}", self.time_width, self.fmt_buf);
             if self.print_summary {
                 let mut prev_latest = 0;
@@ -247,10 +242,15 @@ impl<W: Write> Printer<W> {
                     macro_rules! cond_add {
                         ($v:ident) => {
                             if $v != -1 {
-                                if p.$v < 0 { $v = -1; } else { $v += p.$v; }
+                                if p.$v < 0 {
+                                    $v = -1;
+                                } else {
+                                    $v += p.$v;
+                                }
                             }
-                        }
-                    };
+                        };
+                    }
+
                     cond_add!(prev_latest);
                     cond_add!(curr_latest);
                     cond_add!(curr_lag);
@@ -283,7 +283,7 @@ impl<W: Write> Printer<W> {
             }
         }
         self.out_buf.push('\n');
-        try!(self.out.write_all(self.out_buf.as_bytes()));
+        self.out.write_all(self.out_buf.as_bytes())?;
         Ok(())
     }
 }
@@ -347,15 +347,16 @@ impl Config {
             }
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
+            brokers: m
+                .opt_str("brokers")
                 .unwrap_or_else(|| "localhost:9092".to_owned())
                 .split(',')
                 .map(|s| s.trim().to_owned())
                 .collect(),
-            topic: m.opt_str("topic").unwrap_or_else(|| String::new()),
-            group: m.opt_str("group").unwrap_or_else(|| String::new()),
-            offset_storage: offset_storage,
-            period: period,
+            topic: m.opt_str("topic").unwrap_or_else(String::new),
+            group: m.opt_str("group").unwrap_or_else(String::new),
+            offset_storage,
+            period,
             commited_not_consumed: m.opt_present("committed-not-yet-consumed"),
             summary: !m.opt_present("partitions"),
             diff: !m.opt_present("no-growth"),

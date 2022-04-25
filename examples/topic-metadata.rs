@@ -1,14 +1,10 @@
-extern crate kafka;
-extern crate getopts;
-extern crate env_logger;
-
-use std::collections::HashMap;
 use std::cmp;
+use std::collections::HashMap;
 use std::env;
-use std::process;
 use std::io;
+use std::process;
 
-use kafka::client::{KafkaClient, FetchOffset};
+use kafka::client::{FetchOffset, KafkaClient};
 
 /// Dumps available topic metadata to stdout.
 fn main() {
@@ -44,7 +40,7 @@ impl Default for Offsets {
 fn dump_metadata(cfg: Config) -> Result<(), String> {
     // ~ establish connection to kafka
     let mut client = KafkaClient::new(cfg.brokers);
-    try!(client.load_metadata_all().map_err(|e| e.to_string()));
+    client.load_metadata_all().map_err(|e| e.to_string())?;
     // ~ determine the list of topics we're supposed to report about
     let topics = if cfg.topics.is_empty() {
         let topics = client.topics();
@@ -61,11 +57,9 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
     let (topic_width, offsets) = {
         let mut topic_width = 0;
         let mut m = HashMap::with_capacity(topics.len());
-        let mut offsets = try!(client.fetch_offsets(&topics, FetchOffset::Latest).map_err(
-            |e| {
-                e.to_string()
-            },
-        ));
+        let mut offsets = client
+            .fetch_offsets(&topics, FetchOffset::Latest)
+            .map_err(|e| e.to_string())?;
         for (topic, offsets) in offsets {
             topic_width = cmp::max(topic_width, topic.len());
             let mut offs = Vec::with_capacity(offsets.len());
@@ -97,14 +91,12 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
             m.insert(topic, offs);
         }
 
-        offsets = try!(
-            client
-                .fetch_offsets(&topics, FetchOffset::Earliest)
-                .map_err(|e| e.to_string())
-        );
+        offsets = client
+            .fetch_offsets(&topics, FetchOffset::Earliest)
+            .map_err(|e| e.to_string())?;
 
         for (topic, offsets) in offsets {
-            let mut offs = m.get_mut(&topic).expect("unknown topic");
+            let offs = m.get_mut(&topic).expect("unknown topic");
             for offset in offsets {
                 offs[offset.partition as usize].earliest = offset.offset;
             }
@@ -123,13 +115,12 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
     // ~ compute the width of the leader-hosts column
     let md = client.topics();
     let host_width = if cfg.host {
-        2 +
-            topics
-                .iter()
-                .filter_map(|t| md.partitions(t))
-                .flat_map(|t| t)
-                .map(|p| p.leader().map(|b| b.host().len()).unwrap_or(0))
-                .fold(0, cmp::max)
+        2 + topics
+            .iter()
+            .filter_map(|t| md.partitions(t))
+            .flatten()
+            .map(|p| p.leader().map(|b| b.host().len()).unwrap_or(0))
+            .fold(0, cmp::max)
     } else {
         0
     };
@@ -159,7 +150,7 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
                 if cfg.topic_separators && ti != 0 {
                     out_buf.push('\n');
                 }
-                let _ = write!(out_buf, "{1:0$} - not available!\n", topic_width, topic);
+                let _ = writeln!(out_buf, "{1:0$} - not available!", topic_width, topic);
                 {
                     use std::io::Write;
                     let _ = out.write_all(out_buf.as_bytes());
@@ -173,7 +164,8 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
                     if cfg.topic_separators && ti != 0 && pi == 0 {
                         out_buf.push('\n');
                     }
-                    let (leader_id, leader_host) = tmd.partition(pi as i32)
+                    let (leader_id, leader_host) = tmd
+                        .partition(pi as i32)
                         .expect("unknown topic partition metadata")
                         .leader()
                         .map(|b| (b.id(), b.host()))
@@ -234,7 +226,8 @@ impl Config {
             return Err(opts.usage(&brief));
         }
         Ok(Config {
-            brokers: m.opt_str("brokers")
+            brokers: m
+                .opt_str("brokers")
                 .unwrap_or_else(|| "localhost:9092".to_owned())
                 .split(',')
                 .map(|s| s.trim().to_owned())

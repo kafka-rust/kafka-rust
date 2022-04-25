@@ -9,7 +9,7 @@ documentation = "https://docs.rs/kafka/"
 readme = "README.md"
 keywords = ["kafka", "queue"]
 license = "MIT"
-
+edition = "2018"
 
 [dependencies]
 byteorder = "1.4.1"
@@ -21,14 +21,14 @@ twox-hash = "1.1"
 error-chain = "0.12.3"
 
 flate2 = { version = "1.0.19", optional = true }
-snap = { version = "0.2.0", optional = true }
+snap = { version = "1", optional = true }
 openssl = { version = "0.10", optional = true }
 zstd = { version="0.9.0", optional = true }
 
 [dev-dependencies]
 getopts = "0.2"
-env_logger = "0.8.1"
-time = "0.1.38"
+env_logger = "0.9"
+time = "0.2"
 rand = "0.8.2"
 lazy_static = "1.3.0"
 

@@ -1,6 +1,3 @@
-extern crate kafka;
-extern crate env_logger;
-
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 use kafka::error::Error as KafkaError;
 
@@ -21,17 +18,15 @@ fn main() {
 }
 
 fn consume_messages(group: String, topic: String, brokers: Vec<String>) -> Result<(), KafkaError> {
-    let mut con = try!(
-        Consumer::from_hosts(brokers)
-            .with_topic(topic)
-            .with_group(group)
-            .with_fallback_offset(FetchOffset::Earliest)
-            .with_offset_storage(GroupOffsetStorage::Kafka)
-            .create()
-    );
+    let mut con = Consumer::from_hosts(brokers)
+        .with_topic(topic)
+        .with_group(group)
+        .with_fallback_offset(FetchOffset::Earliest)
+        .with_offset_storage(GroupOffsetStorage::Kafka)
+        .create()?;
 
     loop {
-        let mss = try!(con.poll());
+        let mss = con.poll()?;
         if mss.is_empty() {
             println!("No messages available right now.");
             return Ok(());
@@ -43,6 +38,6 @@ fn consume_messages(group: String, topic: String, brokers: Vec<String>) -> Resul
             }
             let _ = con.consume_messageset(ms);
         }
-        try!(con.commit_consumed());
+        con.commit_consumed()?;
     }
 }

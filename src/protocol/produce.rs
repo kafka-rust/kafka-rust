@@ -1,20 +1,21 @@
 use std::io::{Read, Write};
 
-use codecs::{ToByte, FromByte};
-use compression::Compression;
+use crate::codecs::{FromByte, ToByte};
 #[cfg(feature = "gzip")]
-use compression::gzip;
+use crate::compression::gzip;
 #[cfg(feature = "snappy")]
-use compression::snappy;
+use crate::compression::snappy;
 #[cfg(feature = "zstandard")]
-use compression::zstandard;
+use crate::compression::zstandard;
 
-use error::{KafkaCode, Result};
+use crate::compression::Compression;
 
-use producer::{ProduceConfirm, ProducePartitionConfirm};
+use crate::error::{KafkaCode, Result};
+
+use super::to_crc;
 use super::{HeaderRequest, HeaderResponse};
 use super::{API_KEY_PRODUCE, API_VERSION};
-use super::to_crc;
+use crate::producer::{ProduceConfirm, ProducePartitionConfirm};
 
 /// The magic byte (a.k.a version) we use for sent messages.
 const MESSAGE_MAGIC_BYTE: i8 = 0;
@@ -57,10 +58,10 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
     ) -> ProduceRequest<'a, 'b> {
         ProduceRequest {
             header: HeaderRequest::new(API_KEY_PRODUCE, API_VERSION, correlation_id, client_id),
-            required_acks: required_acks,
-            timeout: timeout,
+            required_acks,
+            timeout,
             topic_partitions: vec![],
-            compression: compression,
+            compression,
         }
     }
 
@@ -86,9 +87,9 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
 impl<'a> TopicPartitionProduceRequest<'a> {
     pub fn new(topic: &'a str, compression: Compression) -> TopicPartitionProduceRequest<'a> {
         TopicPartitionProduceRequest {
-            topic: topic,
+            topic,
             partitions: vec![],
-            compression: compression,
+            compression,
         }
     }
 
@@ -99,11 +100,8 @@ impl<'a> TopicPartitionProduceRequest<'a> {
                 return;
             }
         }
-        self.partitions.push(PartitionProduceRequest::new(
-            partition,
-            key,
-            value,
-        ));
+        self.partitions
+            .push(PartitionProduceRequest::new(partition, key, value));
     }
 }
 
@@ -114,7 +112,7 @@ impl<'a> PartitionProduceRequest<'a> {
         value: Option<&'b [u8]>,
     ) -> PartitionProduceRequest<'b> {
         let mut r = PartitionProduceRequest {
-            partition: partition,
+            partition,
             messages: Vec::new(),
         };
         r.add(key, value);
@@ -129,10 +127,10 @@ impl<'a> PartitionProduceRequest<'a> {
 impl<'a, 'b> ToByte for ProduceRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
         //try_multi!(
-            self.header.encode(buffer)?;
-            self.required_acks.encode(buffer)?;
-            self.timeout.encode(buffer)?;
-            self.topic_partitions.encode(buffer)
+        self.header.encode(buffer)?;
+        self.required_acks.encode(buffer)?;
+        self.timeout.encode(buffer)?;
+        self.topic_partitions.encode(buffer)
         //)
     }
 }
@@ -140,10 +138,10 @@ impl<'a, 'b> ToByte for ProduceRequest<'a, 'b> {
 impl<'a> ToByte for TopicPartitionProduceRequest<'a> {
     // render: TopicName [Partition MessageSetSize MessageSet]
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try!(self.topic.encode(buffer));
-        try!((self.partitions.len() as i32).encode(buffer));
+        self.topic.encode(buffer)?;
+        (self.partitions.len() as i32).encode(buffer)?;
         for e in &self.partitions {
-            try!(e._encode(buffer, self.compression))
+            e._encode(buffer, self.compression)?
         }
         Ok(())
     }
@@ -160,7 +158,7 @@ impl<'a> PartitionProduceRequest<'a> {
         // ~ render the whole MessageSet first to a temporary buffer
         let mut buf = Vec::new();
         for msg in &self.messages {
-            try!(msg._encode_to_buf(&mut buf, MESSAGE_MAGIC_BYTE, 0));
+            msg._encode_to_buf(&mut buf, MESSAGE_MAGIC_BYTE, 0)?;
         }
         match compression {
             Compression::NONE => {
@@ -168,15 +166,15 @@ impl<'a> PartitionProduceRequest<'a> {
             }
             #[cfg(feature = "gzip")]
             Compression::GZIP => {
-                let cdata = try!(gzip::compress(&buf));
-                try!(render_compressed(&mut buf, &cdata, compression));
+                let cdata = gzip::compress(&buf)?;
+                render_compressed(&mut buf, &cdata, compression)?;
             }
             #[cfg(feature = "snappy")]
             Compression::SNAPPY => {
-                let cdata = try!(snappy::compress(&buf));
-                try!(render_compressed(&mut buf, &cdata, compression));
-            },
-            #[cfg(feature="zstandard")]
+                let cdata = snappy::compress(&buf)?;
+                render_compressed(&mut buf, &cdata, compression)?;
+            }
+            #[cfg(feature = "zstandard")]
             Compression::ZSTANDARD => {
                 let cdata = zstandard::compress(&buf, 3)?;
                 render_compressed(&mut buf, &cdata, compression)?;
@@ -197,10 +195,7 @@ fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) 
 
 impl<'a> MessageProduceRequest<'a> {
     fn new<'b>(key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> MessageProduceRequest<'b> {
-        MessageProduceRequest {
-            key: key,
-            value: value,
-        }
+        MessageProduceRequest { key, value }
     }
 
     // render a single message as: Offset MessageSize Message
@@ -216,28 +211,27 @@ impl<'a> MessageProduceRequest<'a> {
     //
     // note: the rendered data corresponds to a single MessageSet in the kafka protocol
     fn _encode_to_buf(&self, buffer: &mut Vec<u8>, magic: i8, attributes: i8) -> Result<()> {
-
-        try!((0i64).encode(buffer)); // offset in the response request can be anything
+        (0i64).encode(buffer)?; // offset in the response request can be anything
 
         let size_pos = buffer.len();
         let mut size: i32 = 0;
-        try!(size.encode(buffer)); // reserve space for the size to be computed later
+        size.encode(buffer)?; // reserve space for the size to be computed later
 
         let crc_pos = buffer.len(); // remember the position where to update the crc later
         let mut crc: i32 = 0;
-        try!(crc.encode(buffer)); // reserve space for the crc to be computed later
-        try!(magic.encode(buffer));
-        try!(attributes.encode(buffer));
-        try!(self.key.encode(buffer));
-        try!(self.value.encode(buffer));
+        crc.encode(buffer)?; // reserve space for the crc to be computed later
+        magic.encode(buffer)?;
+        attributes.encode(buffer)?;
+        self.key.encode(buffer)?;
+        self.value.encode(buffer)?;
 
         // compute the crc and store it back in the reserved space
         crc = to_crc(&buffer[(crc_pos + 4)..]) as i32;
-        try!(crc.encode(&mut &mut buffer[crc_pos..crc_pos + 4]));
+        crc.encode(&mut &mut buffer[crc_pos..crc_pos + 4])?;
 
         // compute the size and store it back in the reserved space
         size = (buffer.len() - crc_pos) as i32;
-        try!(size.encode(&mut &mut buffer[size_pos..size_pos + 4]));
+        size.encode(&mut &mut buffer[size_pos..size_pos + 4])?;
 
         Ok(())
     }
@@ -284,10 +278,7 @@ impl ProduceResponse {
 
 impl TopicPartitionProduceResponse {
     pub fn get_response(self) -> ProduceConfirm {
-        let confirms = self.partitions
-            .iter()
-            .map(|ref p| p.get_response())
-            .collect();
+        let confirms = self.partitions.iter().map(|p| p.get_response()).collect();
 
         ProduceConfirm {
             topic: self.topic,
