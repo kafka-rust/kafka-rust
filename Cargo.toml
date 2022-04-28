@@ -32,7 +32,8 @@ time = "0.3.7"
 rand = "0.8.5"
 lazy_static = "1.4.0"
 anyhow = "1.0.55"
-
+log = "0.4.16"
+error-chain = "0.12.4"
 
 [features]
 default = ["snappy", "gzip", "security"]

@@ -1006,10 +1006,10 @@ impl KafkaClient {
     ///   for t in resp.topics() {
     ///     for p in t.partitions() {
     ///       match p.data() {
-    ///         &Err(ref e) => {
+    ///         Err(ref e) => {
     ///           println!("partition error: {}:{}: {}", t.topic(), p.partition(), e)
     ///         }
-    ///         &Ok(ref data) => {
+    ///         Ok(ref data) => {
     ///           println!("topic: {} / partition: {} / latest available message offset: {}",
     ///                    t.topic(), p.partition(), data.highwatermark_offset());
     ///           for msg in data.messages() {

@@ -6,6 +6,9 @@ use std::str::FromStr;
 use std::time::Duration;
 use std::{env, process};
 
+use anyhow::anyhow;
+use kafka::Error;
+
 use kafka::client::{
     Compression, KafkaClient, RequiredAcks, DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
 };
@@ -159,7 +162,8 @@ fn send_batch(producer: &mut Producer, batch: &[Record<'_, (), Trimmed>]) -> Res
     for r in rs {
         for tpc in r.partition_confirms {
             if let Err(code) = tpc.offset {
-                return Err(ErrorKind::Kafka(kafka::error::ErrorKind::Kafka(code)));
+                //return Err(Error::Kafka(kafka::error::Error::Kafka(code)));
+                return Err(anyhow!("{:?}", code));
             }
         }
     }
@@ -199,11 +203,11 @@ impl Config {
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => return Err(e),
+            Err(e) => return Err(anyhow!("Error {:?}", e)),
         };
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
-            return Err(opts.usage(&brief));
+            return Err(anyhow!("opts usage: {:?}", opts.usage(&brief)));
         }
         Ok(Config {
             brokers: m
@@ -221,14 +225,21 @@ impl Config {
                 Some(ref s) if s.eq_ignore_ascii_case("gzip") => Compression::GZIP,
                 #[cfg(feature = "snappy")]
                 Some(ref s) if s.eq_ignore_ascii_case("snappy") => Compression::SNAPPY,
-                Some(s) => return Err(format!("Unsupported compression type: {}", s)),
+                Some(s) => {
+                    return Err(anyhow!(
+                        "Error {:?}",
+                        format!("Unsupported compression type: {}", s)
+                    ))
+                }
             },
             required_acks: match m.opt_str("required-acks") {
                 None => RequiredAcks::One,
                 Some(ref s) if s.eq_ignore_ascii_case("none") => RequiredAcks::None,
                 Some(ref s) if s.eq_ignore_ascii_case("one") => RequiredAcks::One,
                 Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
-                Some(s) => return Err(format!("Unknown --required-acks argument: {}", s)),
+                Some(s) => {
+                    return Err(anyhow!("{:?}", format!("Unknown --required-acks argument: {}", s)))
+                }
             },
             batch_size: to_number(m.opt_str("batch-size"), 1)?,
             conn_idle_timeout: Duration::from_millis(to_number(
@@ -248,7 +259,7 @@ fn to_number<N: FromStr>(s: Option<String>, _default: N) -> Result<N> {
         None => Ok(_default),
         Some(s) => match s.parse::<N>() {
             Ok(n) => Ok(n),
-            Err(_) => return Err(format!("Not a number: {}", s)),
+            Err(_) => return Err(anyhow!("{:?}", format!("Not a number: {}", s))),
         },
     }
 }

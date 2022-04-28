@@ -1,10 +1,11 @@
 //! Error struct and methods
 
 use std::{io, result, sync::Arc};
+use thiserror::Error;
 
 pub type Result<T> = result::Result<T, Error>;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
     Io(#[from] io::Error),

@@ -23,7 +23,7 @@ fn test_producer_send_non_existent_topic() {
         .send(&Record::from_value("non-topic", "foo".as_bytes()))
         .unwrap_err()
     {
-        error::Error(error::ErrorKind::Kafka(code), _) => code,
+        error::Error::Kafka(code) => code,
         _ => panic!("Should have received Kafka error"),
     };
 
@@ -45,10 +45,7 @@ fn test_producer_send_all() {
         assert_eq!(TEST_TOPIC_NAME.to_owned(), confirm.topic);
 
         for partition_confirm in confirm.partition_confirms {
-            assert!(
-                partition_confirm.offset.is_ok(),
-                format!("should have sent successfully. Got: {:?}", partition_confirm.offset)
-            );
+            assert!(partition_confirm.offset.is_ok(), "should have sent successfully.");
         }
     }
 }
@@ -63,7 +60,7 @@ fn test_producer_send_all_non_existent_topic() {
     ];
 
     let error_code = match producer.send_all(records).unwrap_err() {
-        error::Error(error::ErrorKind::Kafka(code), _) => code,
+        error::Error::Kafka(code) => code,
         _ => panic!("Should have received Kafka error"),
     };
 
