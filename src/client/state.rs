@@ -199,6 +199,12 @@ impl<'a> Iterator for TopicNames<'a> {
     }
 }
 
+impl Default for ClientState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClientState {
     pub fn new() -> Self {
         ClientState {

@@ -11,10 +11,7 @@
 #![cfg_attr(feature = "nightly", feature(test))]
 
 #[macro_use]
-extern crate error_chain;
-
-#[macro_use]
-extern crate log;
+extern crate tracing;
 
 #[cfg(feature = "snappy")]
 extern crate snap;

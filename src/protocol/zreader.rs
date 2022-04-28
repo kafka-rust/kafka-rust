@@ -1,6 +1,6 @@
 use std::str;
 
-use crate::error::{ErrorKind, Result};
+use crate::{error::Result, Error};
 use byteorder::{BigEndian, ByteOrder};
 
 static EMPTY_STR: &str = "";
@@ -27,7 +27,7 @@ impl<'a> ZReader<'a> {
     /// whole. Upon failure the reader will _not_ advance.
     pub fn read<'b>(&'b mut self, n_bytes: usize) -> Result<&'a [u8]> {
         if n_bytes > self.data.len() {
-            bail!(ErrorKind::UnexpectedEOF)
+            Err(Error::UnexpectedEOF)
         } else {
             let (x, rest) = self.data.split_at(n_bytes);
             self.data = rest;
@@ -73,7 +73,7 @@ impl<'a> ZReader<'a> {
             // alternatively: str::from_utf8_unchecked(..)
             match str::from_utf8(self.read(len as usize)?) {
                 Ok(s) => Ok(s),
-                Err(_) => bail!(ErrorKind::StringDecodeError),
+                Err(_) => Err(Error::StringDecodeError),
             }
         }
     }

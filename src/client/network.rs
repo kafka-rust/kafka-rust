@@ -258,10 +258,7 @@ mod openssled {
 
     impl IsSecured for KafkaStream {
         fn is_secured(&self) -> bool {
-            match *self {
-                KafkaStream::Ssl(_) => true,
-                _ => false,
-            }
+            matches!(self, KafkaStream::Ssl(_))
         }
     }
 
@@ -348,13 +345,7 @@ impl KafkaConnection {
     }
 
     pub fn read_exact_alloc(&mut self, size: u64) -> Result<Vec<u8>> {
-        let size: usize = size as usize;
-        let mut buffer: Vec<u8> = Vec::with_capacity(size);
-        // this is safe actually: we are setting the len to the
-        // buffers capacity and either fully populate it in the
-        // following call to `read_exact` or discard the vector (in
-        // the error case)
-        unsafe { buffer.set_len(size) };
+        let mut buffer = vec![0; size as usize];
         self.read_exact(buffer.as_mut_slice())?;
         Ok(buffer)
     }
@@ -392,24 +383,28 @@ impl KafkaConnection {
         rw_timeout: Option<Duration>,
         security: Option<(SslConnector, bool)>,
     ) -> Result<KafkaConnection> {
+        use crate::Error;
+
         let stream = TcpStream::connect(host)?;
         let stream = match security {
             Some((connector, verify_hostname)) => {
                 if !verify_hostname {
                     connector
                         .configure()
-                        .map_err(|err| {
-                            let err: crate::error::Error =
-                                crate::error::ErrorKind::Ssl(From::from(err)).into();
-                            err
-                        })?
+                        .map_err(openssl::ssl::Error::from)?
                         .set_verify_hostname(false);
                 }
                 let domain = match host.rfind(':') {
                     None => host,
                     Some(i) => &host[..i],
                 };
-                let connection = connector.connect(domain, stream)?;
+                let connection = connector.connect(domain, stream).map_err(|err| match err {
+                    openssl::ssl::HandshakeError::SetupFailure(err) => {
+                        Error::from(openssl::ssl::Error::from(err))
+                    }
+                    openssl::ssl::HandshakeError::Failure(err) => Error::from(err.into_error()),
+                    openssl::ssl::HandshakeError::WouldBlock(err) => Error::from(err.into_error()),
+                })?;
                 KafkaStream::Ssl(connection)
             }
             None => KafkaStream::Plain(stream),

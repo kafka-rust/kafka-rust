@@ -21,7 +21,7 @@ pub use crate::utils::PartitionOffset;
 pub use self::network::SecurityConfig;
 
 use crate::codecs::{FromByte, ToByte};
-use crate::error::{Error, ErrorKind, KafkaCode, Result};
+use crate::error::{Error, KafkaCode, Result};
 use crate::protocol::{self, ResponseParser};
 
 use crate::client_internals::KafkaClientInternals;
@@ -138,8 +138,8 @@ pub enum FetchOffset {
 }
 
 impl FetchOffset {
-    fn to_kafka_value(&self) -> i64 {
-        match *self {
+    fn to_kafka_value(self) -> i64 {
+        match self {
             FetchOffset::Earliest => -2,
             FetchOffset::Latest => -1,
             FetchOffset::ByTime(n) => n,
@@ -818,7 +818,7 @@ impl KafkaClient {
                 }
             }
         }
-        bail!(ErrorKind::NoHostReachable)
+        Err(Error::NoHostReachable)
     }
 
     /// Fetch offsets for a list of topics
@@ -890,7 +890,7 @@ impl KafkaClient {
                         }
                     };
                     for p in tp.partitions {
-                        let partition_offset = match p.into_offset() {
+                        let partition_offset = match p.to_offset() {
                             Ok(po) => po,
                             Err(code) => {
                                 err = Some((p.partition, code));
@@ -902,7 +902,11 @@ impl KafkaClient {
                 }
                 if let Some((partition, code)) = err {
                     let topic = KafkaClient::get_key_from_entry(entry);
-                    bail!(ErrorKind::TopicPartitionError(topic, partition, code));
+                    return Err(Error::TopicPartitionError {
+                        topic_name: topic,
+                        partition_id: partition,
+                        error_code: code,
+                    });
                 }
                 if let hash_map::Entry::Vacant(e) = entry {
                     // unwrap is ok because if it is Vacant, it would have
@@ -945,9 +949,9 @@ impl KafkaClient {
         let topic = topic.as_ref();
 
         let mut m = self.fetch_offsets(&[topic], offset)?;
-        let offs = m.remove(topic).unwrap_or_else(std::vec::Vec::new);
+        let offs = m.remove(topic).unwrap_or_default();
         if offs.is_empty() {
-            bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition))
+            Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition))
         } else {
             Ok(offs)
         }
@@ -1002,10 +1006,10 @@ impl KafkaClient {
     ///   for t in resp.topics() {
     ///     for p in t.partitions() {
     ///       match p.data() {
-    ///         &Err(ref e) => {
+    ///         Err(ref e) => {
     ///           println!("partition error: {}:{}: {}", t.topic(), p.partition(), e)
     ///         }
-    ///         &Ok(ref data) => {
+    ///         Ok(ref data) => {
     ///           println!("topic: {} / partition: {} / latest available message offset: {}",
     ///                    t.topic(), p.partition(), data.highwatermark_offset());
     ///           for msg in data.messages() {
@@ -1159,7 +1163,7 @@ impl KafkaClient {
             if self.state.contains_topic_partition(o.topic, o.partition) {
                 req.add(o.topic, o.partition, o.offset, "");
             } else {
-                bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
+                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
         if req.topic_partitions.is_empty() {
@@ -1232,7 +1236,7 @@ impl KafkaClient {
             if self.state.contains_topic_partition(p.topic, p.partition) {
                 req.add(p.topic, p.partition);
             } else {
-                bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
+                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
             }
         }
         __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
@@ -1262,7 +1266,7 @@ impl KafkaClient {
         );
 
         match self.state.partitions_for(topic) {
-            None => bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition)),
+            None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
             Some(tp) => {
                 for (id, _) in tp {
                     req.add(topic, id);
@@ -1272,7 +1276,7 @@ impl KafkaClient {
 
         Ok(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
             .remove(topic)
-            .unwrap_or_else(Vec::new))
+            .unwrap_or_default())
     }
 }
 
@@ -1296,7 +1300,7 @@ impl KafkaClientInternals for KafkaClient {
         for msg in messages {
             let msg = msg.as_ref();
             match state.find_broker(msg.topic, msg.partition) {
-                None => bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition)),
+                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
                 Some(broker) => reqs
                     .entry(broker)
                     .or_insert_with(|| {
@@ -1340,18 +1344,15 @@ fn __get_group_coordinator<'a>(
         let conn = conn_pool.get_conn_any(now).expect("available connection");
         debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
         let r = __send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req)?;
-        let retry_code;
-        match r.to_result() {
+        let retry_code = match r.into_result() {
             Ok(r) => {
                 return Ok(state.set_group_coordinator(group, &r));
             }
-            Err(Error(ErrorKind::Kafka(e @ KafkaCode::GroupCoordinatorNotAvailable), _)) => {
-                retry_code = e;
-            }
+            Err(Error::Kafka(e @ KafkaCode::GroupCoordinatorNotAvailable)) => e,
             Err(e) => {
                 return Err(e);
             }
-        }
+        };
         if attempt < config.retry_max_attempts {
             debug!(
                 "get_group_coordinator: will retry request (c: {}) due to: {:?}",
@@ -1360,7 +1361,7 @@ fn __get_group_coordinator<'a>(
             attempt += 1;
             __retry_sleep(config);
         } else {
-            bail!(ErrorKind::Kafka(retry_code));
+            return Err(Error::Kafka(retry_code));
         }
     }
 }
@@ -1400,7 +1401,7 @@ fn __commit_offsets(
                     }
                     Some(code) => {
                         // ~ immediately abort with the error
-                        bail!(ErrorKind::Kafka(code));
+                        return Err(Error::Kafka(code));
                     }
                 }
             }
@@ -1452,11 +1453,11 @@ fn __fetch_group_offsets(
                     Ok(o) => {
                         partition_offsets.push(o);
                     }
-                    Err(Error(ErrorKind::Kafka(e @ KafkaCode::GroupLoadInProgress), _)) => {
+                    Err(Error::Kafka(e @ KafkaCode::GroupLoadInProgress)) => {
                         retry_code = Some(e);
                         break 'rproc;
                     }
-                    Err(Error(ErrorKind::Kafka(e @ KafkaCode::NotCoordinatorForGroup), _)) => {
+                    Err(Error::Kafka(e @ KafkaCode::NotCoordinatorForGroup)) => {
                         debug!(
                             "fetch_group_offsets: resetting group coordinator for '{}'",
                             req.group
@@ -1487,7 +1488,7 @@ fn __fetch_group_offsets(
                     attempt += 1;
                     __retry_sleep(config)
                 } else {
-                    bail!(ErrorKind::Kafka(e));
+                    return Err(Error::Kafka(e));
                 }
             }
             None => {
@@ -1571,8 +1572,8 @@ where
     T: ToByte,
     V: FromByte,
 {
-    let mut conn = conn_pool.get_conn(host, now)?;
-    __send_request(&mut conn, req)
+    let conn = conn_pool.get_conn(host, now)?;
+    __send_request(conn, req)
 }
 
 fn __send_request<T: ToByte>(conn: &mut network::KafkaConnection, request: T) -> Result<usize> {
@@ -1624,9 +1625,9 @@ where
     R: ToByte,
     P: ResponseParser,
 {
-    let mut conn = conn_pool.get_conn(host, now)?;
-    __send_request(&mut conn, req)?;
-    __z_get_response(&mut conn, parser)
+    let conn = conn_pool.get_conn(host, now)?;
+    __send_request(conn, req)?;
+    __z_get_response(conn, parser)
 }
 
 fn __z_get_response<P>(conn: &mut network::KafkaConnection, parser: &P) -> Result<P::T>

@@ -1,78 +1,74 @@
 //! Error struct and methods
 
-use std::io;
+use std::{io, result, sync::Arc};
+use thiserror::Error;
 
-#[cfg(feature = "security")]
-use openssl::ssl::{self, Error as SslError};
+pub type Result<T> = result::Result<T, Error>;
 
-// The various errors this library can produce.
-error_chain! {
-    foreign_links {
-        Io(io::Error) #[doc="Input/Output error while communicating with Kafka"];
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] io::Error),
 
-        Ssl(SslError) #[cfg(feature = "security")] #[doc="An error as reported by OpenSsl"];
+    #[cfg(feature = "security")]
+    #[error(transparent)]
+    Ssl(#[from] openssl::ssl::Error),
 
-        InvalidSnappy(::snap::Error) #[cfg(feature = "snappy")] #[doc="Failure to encode/decode a snappy compressed response from Kafka"];
-    }
+    #[cfg(feature = "snappy")]
+    #[error(transparent)]
+    InvalidSnappy(#[from] ::snap::Error),
 
-    errors {
-        /// An error as reported by a remote Kafka server
-        Kafka(error_code: KafkaCode) {
-            description("Kafka Error")
-            display("Kafka Error ({:?})", error_code)
-        }
+    /// An error as reported by a remote Kafka server
+    #[error("Kafka Error ({0:?})")]
+    Kafka(KafkaCode),
 
-        /// An error when transmitting a request for a particular topic and partition.
-        /// Contains the topic and partition of the request that failed,
-        /// and the error code as reported by the Kafka server, respectively.
-        TopicPartitionError(topic_name: String, partition_id: i32, error_code: KafkaCode) {
-            description("Error in request for topic and partition")
-            display("Topic Partition Error ({:?}, {:?}, {:?})", topic_name, partition_id, error_code)
-        }
+    /// An error when transmitting a request for a particular topic and partition.
+    /// Contains the topic and partition of the request that failed,
+    /// and the error code as reported by the Kafka server, respectively.
+    #[error("Topic Partition Error ({topic_name:?}, {partition_id:?}, {error_code:?})")]
+    TopicPartitionError {
+        topic_name: String,
+        partition_id: i32,
+        error_code: KafkaCode,
+    },
 
-        /// Failure to correctly parse the server response due to the
-        /// server speaking a newer protocol version (than the one this
-        /// library supports)
-        UnsupportedProtocol {
-            description("Unsupported protocol version")
-        }
+    /// Failure to correctly parse the server response due to the
+    /// server speaking a newer protocol version (than the one this
+    /// library supports)
+    #[error("Unsupported protocol version")]
+    UnsupportedProtocol,
 
-        /// Failure to correctly parse the server response by this library
-        /// due to an unsupported compression format of the data
-        UnsupportedCompression {
-            description("Unsupported compression format")
-        }
+    /// Failure to correctly parse the server response by this library
+    /// due to an unsupported compression format of the data
+    #[error("Unsupported compression format")]
+    UnsupportedCompression,
 
-        /// Failure to decode a response due to an insufficient number of bytes available
-        UnexpectedEOF {
-            description("Unexpected EOF")
-        }
+    /// Failure to decode a response due to an insufficient number of bytes available
+    #[error("Unexpected EOF")]
+    UnexpectedEOF,
 
-        /// Failure to decode or encode a response or request respectively
-        CodecError {
-            description("Encoding/Decoding Error")
-        }
+    /// Failure to decode or encode a response or request respectively
+    #[error("Encoding/Decoding Error")]
+    CodecError,
 
-        /// Failure to decode a string into a valid utf8 byte sequence
-        StringDecodeError {
-            description("String decoding error")
-        }
+    /// Failure to decode a string into a valid utf8 byte sequence
+    #[error("String decoding error")]
+    StringDecodeError,
 
-        /// Unable to reach any host
-        NoHostReachable {
-            description("No host reachable")
-        }
+    /// Unable to reach any host
+    #[error("No host reachable")]
+    NoHostReachable,
 
-        /// Unable to set up `Consumer` due to missing topic assignments
-        NoTopicsAssigned {
-            description("No topic assigned")
-        }
+    /// Unable to set up `Consumer` due to missing topic assignments
+    #[error("No topic assigned")]
+    NoTopicsAssigned,
 
-        /// An invalid user-provided duration
-        InvalidDuration {
-            description("Invalid duration")
-        }
-    }
+    /// An invalid user-provided duration
+    #[error("Invalid duration")]
+    InvalidDuration,
+
+    #[error(transparent)]
+    ArcSelf(#[from] Arc<Self>),
 }
 
 /// Various errors reported by a remote Kafka server.
@@ -191,121 +187,4 @@ pub enum KafkaCode {
     IllegalSaslState = 34,
     /// The version of API is not supported.
     UnsupportedVersion = 35,
-}
-
-#[cfg(feature = "security")]
-impl<S> From<ssl::HandshakeError<S>> for Error {
-    fn from(err: ssl::HandshakeError<S>) -> Error {
-        match err {
-            ssl::HandshakeError::SetupFailure(e) => from_sslerror_ref(&From::from(e)).into(),
-            ssl::HandshakeError::Failure(s) | ssl::HandshakeError::WouldBlock(s) => {
-                from_sslerror_ref(s.error()).into()
-            }
-        }
-    }
-}
-
-impl Clone for Error {
-    fn clone(&self) -> Error {
-        match self {
-            &Error(ErrorKind::Io(ref err), _) => ErrorKind::Io(clone_ioe(err)).into(),
-            &Error(ErrorKind::Kafka(x), _) => ErrorKind::Kafka(x).into(),
-            &Error(ErrorKind::TopicPartitionError(ref topic, partition, error_code), _) => {
-                ErrorKind::TopicPartitionError(topic.clone(), partition, error_code).into()
-            }
-            #[cfg(feature = "security")]
-            &Error(ErrorKind::Ssl(ref x), _) => from_sslerror_ref(x).into(),
-            &Error(ErrorKind::UnsupportedProtocol, _) => ErrorKind::UnsupportedProtocol.into(),
-            &Error(ErrorKind::UnsupportedCompression, _) => {
-                ErrorKind::UnsupportedCompression.into()
-            }
-            #[cfg(feature = "snappy")]
-            &Error(ErrorKind::InvalidSnappy(ref err), _) => from_snap_error_ref(err).into(),
-            &Error(ErrorKind::UnexpectedEOF, _) => ErrorKind::UnexpectedEOF.into(),
-            &Error(ErrorKind::CodecError, _) => ErrorKind::CodecError.into(),
-            &Error(ErrorKind::StringDecodeError, _) => ErrorKind::StringDecodeError.into(),
-            &Error(ErrorKind::NoHostReachable, _) => ErrorKind::NoHostReachable.into(),
-            &Error(ErrorKind::NoTopicsAssigned, _) => ErrorKind::NoTopicsAssigned.into(),
-            &Error(ErrorKind::InvalidDuration, _) => ErrorKind::InvalidDuration.into(),
-            &Error(ErrorKind::Msg(ref msg), _) => ErrorKind::Msg(msg.clone()).into(),
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[cfg(feature = "security")]
-fn from_sslerror_ref(err: &ssl::Error) -> ErrorKind {
-    if let Some(io_err) = err.io_error() {
-        return ErrorKind::Io(clone_ioe(io_err));
-    }
-    if let Some(ssl_err) = err.ssl_error() {
-        return ErrorKind::Ssl(From::from(ssl_err.to_owned()));
-    }
-
-    // xxx: return something as default?
-    unreachable!()
-}
-
-#[cfg(feature = "snappy")]
-fn from_snap_error_ref(err: &::snap::Error) -> ErrorKind {
-    match err {
-        &::snap::Error::TooBig { given, max } => {
-            ErrorKind::InvalidSnappy(::snap::Error::TooBig { given, max })
-        }
-        &::snap::Error::BufferTooSmall { given, min } => {
-            ErrorKind::InvalidSnappy(::snap::Error::BufferTooSmall { given, min })
-        }
-        &::snap::Error::Empty => ErrorKind::InvalidSnappy(::snap::Error::Empty),
-        &::snap::Error::Header => ErrorKind::InvalidSnappy(::snap::Error::Header),
-        &::snap::Error::HeaderMismatch {
-            expected_len,
-            got_len,
-        } => ErrorKind::InvalidSnappy(::snap::Error::HeaderMismatch {
-            expected_len,
-            got_len,
-        }),
-        &::snap::Error::Literal {
-            len,
-            src_len,
-            dst_len,
-        } => ErrorKind::InvalidSnappy(::snap::Error::Literal {
-            len,
-            src_len,
-            dst_len,
-        }),
-        &::snap::Error::CopyRead { len, src_len } => {
-            ErrorKind::InvalidSnappy(::snap::Error::CopyRead { len, src_len })
-        }
-        &::snap::Error::CopyWrite { len, dst_len } => {
-            ErrorKind::InvalidSnappy(::snap::Error::CopyWrite { len, dst_len })
-        }
-        &::snap::Error::Offset { offset, dst_pos } => {
-            ErrorKind::InvalidSnappy(::snap::Error::Offset { offset, dst_pos })
-        }
-        &::snap::Error::StreamHeader { byte } => {
-            ErrorKind::InvalidSnappy(::snap::Error::StreamHeader { byte })
-        }
-        &::snap::Error::StreamHeaderMismatch { ref bytes } => {
-            ErrorKind::InvalidSnappy(::snap::Error::StreamHeaderMismatch {
-                bytes: bytes.clone(),
-            })
-        }
-        &::snap::Error::UnsupportedChunkType { byte } => {
-            ErrorKind::InvalidSnappy(::snap::Error::UnsupportedChunkType { byte })
-        }
-        &::snap::Error::UnsupportedChunkLength { len, header } => {
-            ErrorKind::InvalidSnappy(::snap::Error::UnsupportedChunkLength { len, header })
-        }
-        &::snap::Error::Checksum { expected, got } => {
-            ErrorKind::InvalidSnappy(::snap::Error::Checksum { expected, got })
-        }
-    }
-}
-
-/// Attempt to clone `io::Error`.
-fn clone_ioe(e: &io::Error) -> io::Error {
-    match e.raw_os_error() {
-        Some(code) => io::Error::from_raw_os_error(code),
-        None => io::Error::new(e.kind(), format!("Io error: {}", e)),
-    }
 }

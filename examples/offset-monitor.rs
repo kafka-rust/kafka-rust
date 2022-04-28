@@ -7,6 +7,7 @@ use std::process;
 use std::thread;
 //use std::time as stdtime;
 use std::time::Duration;
+use std::time::SystemTime;
 
 use kafka::client::{FetchOffset, GroupOffsetStorage, KafkaClient};
 
@@ -45,7 +46,7 @@ fn run(cfg: Config) -> Result<()> {
         let ts = client.topics();
         let num_topics = ts.len();
         if num_topics == 0 {
-            bail!("no topics available");
+            return Err(Error::from("no topics available"));
         }
         let mut names: Vec<&str> = Vec::with_capacity(ts.len());
         names.extend(ts.names());
@@ -55,12 +56,12 @@ fn run(cfg: Config) -> Result<()> {
         for name in names {
             let _ = writeln!(buf, "topic: {}", name);
         }
-        bail!("choose a topic");
+        return Err(Error::from("choose a topic"));
     }
 
     // ~ otherwise let's loop over the topic partition offsets
     let num_partitions = match client.topics().partitions(&cfg.topic) {
-        None => bail!(format!("no such topic: {}", &cfg.topic)),
+        None => return Err(Error::from(format!("no such topic: {}", &cfg.topic))),
         Some(partitions) => partitions.len(),
     };
     let mut state = State::new(num_partitions, cfg.commited_not_consumed);
@@ -70,7 +71,7 @@ fn run(cfg: Config) -> Result<()> {
     // ~ initialize the state
     let mut first_time = true;
     loop {
-        let t = time::Time::now();
+        let t = SystemTime::now();
         state.update_partitions(&mut client, &cfg.topic, &cfg.group)?;
         if first_time {
             state.curr_to_prev();
@@ -225,14 +226,14 @@ impl<W: Write> Printer<W> {
         }
     }
 
-    fn print_offsets(&mut self, time: &time::Time, partitions: &[Partition]) -> Result<()> {
+    fn print_offsets(&mut self, time: &SystemTime, partitions: &[Partition]) -> Result<()> {
         self.out_buf.clear();
         {
             // ~ format
             use std::fmt::Write;
 
             self.fmt_buf.clear();
-            let _ = write!(self.fmt_buf, "{}", time.format(&self.timefmt));
+            let _ = write!(self.fmt_buf, "{}", time.elapsed().unwrap().as_secs());
             let _ = write!(self.out_buf, "{1:<0$}", self.time_width, self.fmt_buf);
             if self.print_summary {
                 let mut prev_latest = 0;
@@ -323,11 +324,11 @@ impl Config {
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => bail!(e),
+            Err(e) => return Err(Error::from(e)),
         };
         if m.opt_present("help") {
             let brief = format!("{} [options]", args[0]);
-            bail!(opts.usage(&brief));
+            return Err(Error::from(opts.usage(&brief)));
         }
         let mut offset_storage = GroupOffsetStorage::Zookeeper;
         if let Some(s) = m.opt_str("storage") {
@@ -336,14 +337,14 @@ impl Config {
             } else if s.eq_ignore_ascii_case("kafka") {
                 offset_storage = GroupOffsetStorage::Kafka;
             } else {
-                bail!(format!("unknown offset store: {}", s));
+                return Err(Error::from(format!("unknown offset store: {}", s)));
             }
         }
         let mut period = Duration::from_secs(5);
         if let Some(s) = m.opt_str("sleep") {
             match s.parse::<u64>() {
                 Ok(n) if n != 0 => period = Duration::from_secs(n),
-                _ => bail!(format!("not a number greater than zero: {}", s)),
+                _ => return Err(Error::from(format!("not a number greater than zero: {}", s))),
             }
         }
         Ok(Config {

@@ -32,6 +32,10 @@ impl<'a> Topics<'a> {
         self.state.num_topics()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Provides an iterator over the underlying topics.
     #[inline]
     pub fn iter(&'a self) -> TopicIter<'a> {

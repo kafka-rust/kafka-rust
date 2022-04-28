@@ -181,10 +181,7 @@ fn test_commit_offset() {
             .into_iter()
             .collect();
 
-        let correct_partition_offset = PartitionOffset {
-            partition: partition,
-            offset: offset,
-        };
+        let correct_partition_offset = PartitionOffset { partition, offset };
 
         assert!(partition_offsets.contains(&correct_partition_offset));
     }

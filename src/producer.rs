@@ -60,7 +60,7 @@
 // XXX 2) Handle recoverable errors behind the scenes through retry attempts
 
 use crate::client::{self, KafkaClient};
-use crate::error::{ErrorKind, Result};
+use crate::error::{Error, Result};
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
@@ -275,8 +275,8 @@ impl<P: Partitioner> Producer<P> {
                 .pop()
                 .unwrap()
                 .offset
-                .map(|_| ())
-                .map_err(|err| ErrorKind::Kafka(err).into())
+                .map_err(Error::Kafka)?;
+            Ok(())
         }
     }
 
