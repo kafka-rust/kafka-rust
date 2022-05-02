@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [0.9.0] 2022-04-29
 
 - Updated to support Rust 2021
-- Brought all of the dependancies up to date
+- Brought all of the dependancies up to date, so this could cause **breaking changes**
 - Removed the try! methods
 - Updated the error mechanism to use thiserror and anyhow.
 - Removed error-chain, as it is deprecated
