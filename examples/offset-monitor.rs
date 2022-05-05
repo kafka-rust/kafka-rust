@@ -1,7 +1,6 @@
-#[macro_use]
 use std::cmp;
 use std::env;
-use std::io::{self, stderr, stdout, BufWriter, Write};
+use std::io::{stderr, stdout, BufWriter, Write};
 use std::process;
 use std::thread;
 //use std::time as stdtime;
@@ -15,7 +14,7 @@ use kafka::client::{FetchOffset, GroupOffsetStorage, KafkaClient};
 /// the lag for a particular consumer group. Dumps the offset/lag of
 /// the monitored topic/group to stdout every few seconds.
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     macro_rules! abort {
         ($e:expr) => {{
@@ -38,7 +37,7 @@ fn main() {
 
 fn run(cfg: Config) -> Result<()> {
     let mut client = KafkaClient::new(cfg.brokers.clone());
-    client.set_group_offset_storage(cfg.offset_storage);
+    client.set_group_offset_storage(Some(cfg.offset_storage));
     client.load_metadata_all()?;
 
     // ~ if no topic specified, print all available and be done.

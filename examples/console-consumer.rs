@@ -3,27 +3,33 @@ use std::time::Duration;
 use std::{env, process};
 //use std::ascii::AsciiExt;
 
+use anyhow::{bail, Result};
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
+
+use tracing::{error, info};
+use tracing_subscriber;
 
 /// This is a very simple command line application reading from a
 /// specific kafka topic and dumping the messages to standard output.
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("{}", e);
+            error!("{}", e);
             process::exit(1);
         }
     };
+    info!("Starting consumer with the following configuration: {:?}", cfg);
+
     if let Err(e) = process(cfg) {
-        println!("{}", e);
+        error!("{}", e);
         process::exit(1);
     }
 }
 
-fn process(cfg: Config) -> Result<(), &'static str> {
+fn process(cfg: Config) -> Result<()> {
     let mut c = {
         let mut cb = Consumer::from_hosts(cfg.brokers)
             .with_group(cfg.group)
@@ -44,7 +50,6 @@ fn process(cfg: Config) -> Result<(), &'static str> {
     let mut stdout = stdout.lock();
     let mut buf = Vec::with_capacity(1024);
 
-    let do_commit = !cfg.no_commit;
     loop {
         for ms in c.poll().unwrap().iter() {
             for m in ms.messages() {
@@ -55,59 +60,66 @@ fn process(cfg: Config) -> Result<(), &'static str> {
                 buf.extend_from_slice(m.value);
                 buf.push(b'\n');
                 // ~ write to output channel
-                stdout.write_all(&buf);
+                stdout.write_all(&buf)?;
             }
             let _ = c.consume_messageset(ms);
         }
-        if do_commit {
-            c.commit_consumed();
+        if cfg.commit {
+            c.commit_consumed()?;
+        }
+        if !cfg.follow {
+            return Ok(());
         }
     }
 }
 
-// --------------------------------------------------------------------
-// error_chain! {
-//     foreign_links {
-//         Kafka(kafka::error::Error);
-//         Io(io::Error);
-//         Opt(getopts::Fail);
-//     }
-// }
-
-// --------------------------------------------------------------------
-
+#[derive(Debug)]
 struct Config {
     brokers: Vec<String>,
     group: String,
     topics: Vec<String>,
-    no_commit: bool,
-    offset_storage: GroupOffsetStorage,
+    commit: bool,
+    offset_storage: Option<GroupOffsetStorage>,
     fallback_offset: FetchOffset,
+    follow: bool,
 }
 
 impl Config {
-    fn from_cmdline() -> Result<Config, &'static str> {
+    fn from_cmdline() -> Result<Config> {
         let args: Vec<_> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
         opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
         opts.optopt("", "topics", "Specify topics (comma separated)", "NAMES");
         opts.optopt("", "group", "Specify the consumer group", "NAME");
-        opts.optflag("", "no-commit", "Do not commit group offsets");
+        opts.optflag("", "commit", "Commit group offsets");
         opts.optopt("", "storage", "Specify the offset store [zookeeper, kafka]", "STORE");
         opts.optflag(
             "",
             "earliest",
             "Fall back to the earliest offset (when no group offset available)",
         );
+        opts.optflag("", "follow", "Continue reading from the topic indefinitely");
+
+        macro_rules! on_error {
+            ($name:expr) => {{
+                let brief = format!("{} [options]", args[0]);
+                println!("{}", opts.usage(&brief));
+                bail!($name);
+            }};
+        }
+        if args.len() == 1 {
+            on_error!("no arguments provided");
+        }
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => std::panic::panic_any(e.to_string()),
+            Err(e) => {
+                on_error!(format!("argument parsing encountered an error: {}", e.to_string()))
+            }
         };
         if m.opt_present("help") {
-            let brief = format!("{} [options]", args[0]);
-            opts.usage(&brief);
+            on_error!("help requested");
         }
 
         macro_rules! required_list {
@@ -122,7 +134,7 @@ impl Config {
                         .collect(),
                 };
                 if xs.is_empty() {
-                    format!("Invalid --{} specified!", opt);
+                    on_error!(format!("missing argument --{}", opt));
                 }
                 xs
             }};
@@ -131,27 +143,29 @@ impl Config {
         let brokers = required_list!("brokers");
         let topics = required_list!("topics");
 
-        let mut offset_storage = GroupOffsetStorage::Zookeeper;
-        if let Some(s) = m.opt_str("storage") {
+        let offset_storage = if let Some(s) = m.opt_str("storage") {
             if s.eq_ignore_ascii_case("zookeeper") {
-                offset_storage = GroupOffsetStorage::Zookeeper;
+                Some(GroupOffsetStorage::Zookeeper)
             } else if s.eq_ignore_ascii_case("kafka") {
-                offset_storage = GroupOffsetStorage::Kafka;
+                Some(GroupOffsetStorage::Kafka)
             } else {
-                format!("unknown offset store: {}", s);
+                on_error!(format!("unknown offset store: {}", s));
             }
-        }
+        } else {
+            None
+        };
         Ok(Config {
             brokers,
             group: m.opt_str("group").unwrap_or_default(),
             topics,
-            no_commit: m.opt_present("no-commit"),
+            commit: m.opt_present("commit"),
             offset_storage,
             fallback_offset: if m.opt_present("earliest") {
                 FetchOffset::Earliest
             } else {
                 FetchOffset::Latest
             },
+            follow: m.opt_present("follow"),
         })
     }
 }

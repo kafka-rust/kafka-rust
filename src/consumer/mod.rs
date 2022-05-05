@@ -16,7 +16,7 @@
 //!       .with_topic_partitions("my-topic".to_owned(), &[0, 1])
 //!       .with_fallback_offset(FetchOffset::Earliest)
 //!       .with_group("my-group".to_owned())
-//!       .with_offset_storage(GroupOffsetStorage::Kafka)
+//!       .with_offset_storage(Some(GroupOffsetStorage::Kafka))
 //!       .create()
 //!       .unwrap();
 //! loop {
@@ -409,8 +409,7 @@ impl Consumer {
     /// `Consumer::consume_messageset`.
     pub fn commit_consumed(&mut self) -> Result<()> {
         if self.config.group.is_empty() {
-            debug!("commit_consumed: ignoring commit request since no group defined");
-            return Ok(());
+            return Err(Error::UnsetGroupId);
         }
         debug!(
             "commit_consumed: commiting dirty-only consumer offsets (group: {} / offsets: {:?}",

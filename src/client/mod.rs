@@ -63,7 +63,7 @@ pub const DEFAULT_FETCH_MAX_BYTES_PER_PARTITION: i32 = 32 * 1024;
 pub const DEFAULT_FETCH_CRC_VALIDATION: bool = true;
 
 /// The default value for `KafkaClient::set_group_offset_storage(..)`
-pub const DEFAULT_GROUP_OFFSET_STORAGE: GroupOffsetStorage = GroupOffsetStorage::Zookeeper;
+pub const DEFAULT_GROUP_OFFSET_STORAGE: Option<GroupOffsetStorage> = None;
 
 /// The default value for `KafkaClient::set_retry_backoff_time(..)`
 pub const DEFAULT_RETRY_BACKOFF_TIME_MILLIS: u64 = 100;
@@ -110,8 +110,9 @@ struct ClientConfig {
     // kafka will then use (zookeeper or __consumer_offsets).  it is
     // important to use version for both of them which target the same
     // storage type.
-    offset_fetch_version: protocol::OffsetFetchVersion,
-    offset_commit_version: protocol::OffsetCommitVersion,
+    // offset_fetch_version: protocol::OffsetFetchVersion,
+    // offset_commit_version: protocol::OffsetCommitVersion,
+    offset_storage: Option<GroupOffsetStorage>,
     // ~ the duration to wait before retrying a failed
     // operation like refreshing group coordinators; this avoids
     // operation retries in a tight loop.
@@ -396,8 +397,7 @@ impl KafkaClient {
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
-                offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
-                offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
+                offset_storage: DEFAULT_GROUP_OFFSET_STORAGE,
                 retry_backoff_time: Duration::from_millis(DEFAULT_RETRY_BACKOFF_TIME_MILLIS),
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
@@ -465,8 +465,7 @@ impl KafkaClient {
                 fetch_min_bytes: DEFAULT_FETCH_MIN_BYTES,
                 fetch_max_bytes_per_partition: DEFAULT_FETCH_MAX_BYTES_PER_PARTITION,
                 fetch_crc_validation: DEFAULT_FETCH_CRC_VALIDATION,
-                offset_fetch_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_fetch_version(),
-                offset_commit_version: DEFAULT_GROUP_OFFSET_STORAGE.offset_commit_version(),
+                offset_storage: DEFAULT_GROUP_OFFSET_STORAGE,
                 retry_backoff_time: Duration::from_millis(DEFAULT_RETRY_BACKOFF_TIME_MILLIS),
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             },
@@ -646,21 +645,14 @@ impl KafkaClient {
     /// See also `KafkaClient::fetch_group_offsets` and
     /// `KafkaClient::commit_offsets`.
     #[inline]
-    pub fn set_group_offset_storage(&mut self, storage: GroupOffsetStorage) {
-        self.config.offset_fetch_version = storage.offset_fetch_version();
-        self.config.offset_commit_version = storage.offset_commit_version();
+    pub fn set_group_offset_storage(&mut self, storage: Option<GroupOffsetStorage>) {
+        self.config.offset_storage = storage;
     }
 
     /// Retrieves the current `KafkaClient::set_group_offset_storage`
     /// settings.
-    pub fn group_offset_storage(&self) -> GroupOffsetStorage {
-        // ~ only protocol V0 is zookeeper
-        let zkv = GroupOffsetStorage::Zookeeper.offset_fetch_version();
-        if zkv == self.config.offset_fetch_version {
-            GroupOffsetStorage::Zookeeper
-        } else {
-            GroupOffsetStorage::Kafka
-        }
+    pub fn group_offset_storage(&self) -> Option<GroupOffsetStorage> {
+        self.config.offset_storage
     }
 
     /// Specifies the time to wait before retrying a failed,
@@ -1152,25 +1144,30 @@ impl KafkaClient {
         J: AsRef<CommitOffset<'a>>,
         I: IntoIterator<Item = J>,
     {
-        let mut req = protocol::OffsetCommitRequest::new(
-            group,
-            self.config.offset_commit_version,
-            self.state.next_correlation_id(),
-            &self.config.client_id,
-        );
-        for o in offsets {
-            let o = o.as_ref();
-            if self.state.contains_topic_partition(o.topic, o.partition) {
-                req.add(o.topic, o.partition, o.offset, "");
-            } else {
-                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+        match self.config.offset_storage {
+            Some(offset_storage) => {
+                let mut req = protocol::OffsetCommitRequest::new(
+                    group,
+                    offset_storage.offset_commit_version(),
+                    self.state.next_correlation_id(),
+                    &self.config.client_id,
+                );
+                for o in offsets {
+                    let o = o.as_ref();
+                    if self.state.contains_topic_partition(o.topic, o.partition) {
+                        req.add(o.topic, o.partition, o.offset, "");
+                    } else {
+                        return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+                    }
+                }
+                if req.topic_partitions.is_empty() {
+                    debug!("commit_offsets: no offsets provided");
+                    Ok(())
+                } else {
+                    __commit_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
+                }
             }
-        }
-        if req.topic_partitions.is_empty() {
-            debug!("commit_offsets: no offsets provided");
-            Ok(())
-        } else {
-            __commit_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
+            None => Err(Error::UnsetOffsetStorage),
         }
     }
 
@@ -1225,21 +1222,26 @@ impl KafkaClient {
         J: AsRef<FetchGroupOffset<'a>>,
         I: IntoIterator<Item = J>,
     {
-        let mut req = protocol::OffsetFetchRequest::new(
-            group,
-            self.config.offset_fetch_version,
-            self.state.next_correlation_id(),
-            &self.config.client_id,
-        );
-        for p in partitions {
-            let p = p.as_ref();
-            if self.state.contains_topic_partition(p.topic, p.partition) {
-                req.add(p.topic, p.partition);
-            } else {
-                return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+        match self.config.offset_storage {
+            Some(offset_storage) => {
+                let mut req = protocol::OffsetFetchRequest::new(
+                    group,
+                    offset_storage.offset_fetch_version(),
+                    self.state.next_correlation_id(),
+                    &self.config.client_id,
+                );
+                for p in partitions {
+                    let p = p.as_ref();
+                    if self.state.contains_topic_partition(p.topic, p.partition) {
+                        req.add(p.topic, p.partition);
+                    } else {
+                        return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
+                    }
+                }
+                __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
             }
+            None => Err(Error::UnsetOffsetStorage),
         }
-        __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
     }
 
     /// Fetch offset for all partitions of a particular topic of a consumer group
@@ -1258,25 +1260,30 @@ impl KafkaClient {
         group: &str,
         topic: &str,
     ) -> Result<Vec<PartitionOffset>> {
-        let mut req = protocol::OffsetFetchRequest::new(
-            group,
-            self.config.offset_fetch_version,
-            self.state.next_correlation_id(),
-            &self.config.client_id,
-        );
+        match self.config.offset_storage {
+            Some(offset_storage) => {
+                let mut req = protocol::OffsetFetchRequest::new(
+                    group,
+                    offset_storage.offset_fetch_version(),
+                    self.state.next_correlation_id(),
+                    &self.config.client_id,
+                );
 
-        match self.state.partitions_for(topic) {
-            None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
-            Some(tp) => {
-                for (id, _) in tp {
-                    req.add(topic, id);
+                match self.state.partitions_for(topic) {
+                    None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+                    Some(tp) => {
+                        for (id, _) in tp {
+                            req.add(topic, id);
+                        }
+                    }
                 }
-            }
-        }
 
-        Ok(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
-            .remove(topic)
-            .unwrap_or_default())
+                Ok(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
+                    .remove(topic)
+                    .unwrap_or_default())
+            }
+            None => Err(Error::UnsetOffsetStorage),
+        }
     }
 }
 
@@ -1610,6 +1617,8 @@ fn __get_response<T: FromByte>(conn: &mut network::KafkaConnection) -> Result<T:
     //         .unwrap();
     //     f.write_all(&resp[..]).unwrap();
     // }
+    // ::super::protocol::
+    // let thing = ::super::error::KafkaCode::from_protocol(self.error); // KafkaCode::decode_new::<T>(&mut Cursor::new(resp));
 
     T::decode_new(&mut Cursor::new(resp))
 }

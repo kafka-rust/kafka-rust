@@ -8,7 +8,7 @@ use kafka::client::{FetchOffset, KafkaClient};
 
 /// Dumps available topic metadata to stdout.
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
