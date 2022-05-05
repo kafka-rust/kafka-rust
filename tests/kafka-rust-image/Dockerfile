@@ -1,20 +1,16 @@
 FROM ubuntu:xenial
 
-RUN apt-get update && apt-get install -y curl jq coreutils net-tools openjdk-8-jre
+RUN apt-get update && apt-get install -y wget jq coreutils net-tools openjdk-8-jre
 
-ARG kafka_version=1.0.0
-ARG scala_version=2.12
+ARG kafka_version
+ARG scala_version
 
 ENV KAFKA_VERSION=$kafka_version SCALA_VERSION=$scala_version
 #ENV KAFKA_ZOOKEEPER_CONNECT zookeeper
 
-COPY download-kafka.sh /tmp/download-kafka.sh
-
-RUN /tmp/download-kafka.sh && \
-    tar xfz /tmp/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz -C /opt && \
-    rm /tmp/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
-    ln -s /opt/kafka_${SCALA_VERSION}-${KAFKA_VERSION} /opt/kafka && \
-    rm /tmp/download-kafka.sh
+RUN export KAFKA_TGZ="https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz" \
+    && wget -q ${KAFKA_TGZ} -O - | tar xz -C /opt \
+    && ln -s /opt/kafka_${SCALA_VERSION}-${KAFKA_VERSION} /opt/kafka
 
 RUN mkdir -p /kafka/logs
 

@@ -34,7 +34,7 @@ macro_rules! test_consumer_config {
         $x.with_topic_partitions(TEST_TOPIC_NAME.to_owned(), &TEST_TOPIC_PARTITIONS)
             .with_group(TEST_GROUP_NAME.to_owned())
             .with_fallback_offset(kafka::consumer::FetchOffset::Latest)
-            .with_offset_storage(kafka::consumer::GroupOffsetStorage::Kafka)
+            .with_offset_storage(Some(kafka::consumer::GroupOffsetStorage::Kafka))
     };
 }
 

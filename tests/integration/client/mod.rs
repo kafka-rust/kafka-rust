@@ -7,8 +7,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::Duration;
 
-use env_logger;
-
 use kafka::client::fetch::Response;
 use kafka::client::{
     CommitOffset, FetchOffset, FetchPartition, PartitionOffset, ProduceMessage, RequiredAcks,
@@ -76,7 +74,7 @@ fn test_kafka_client_load_metadata() {
 /// * KafkaClient::fetch_offsets
 #[test]
 fn test_produce_fetch_messages() {
-    let _ = env_logger::try_init();
+    tracing_subscriber::fmt::try_init();
     let mut client = new_ready_kafka_client();
     let topics = [TEST_TOPIC_NAME, TEST_TOPIC_NAME_2];
     let init_latest_offsets = client.fetch_offsets(&topics, FetchOffset::Latest).unwrap();
@@ -162,7 +160,7 @@ fn test_produce_fetch_messages() {
 
 #[test]
 fn test_commit_offset() {
-    let _ = env_logger::try_init();
+    tracing_subscriber::fmt::try_init();
     let mut client = new_ready_kafka_client();
 
     for &(partition, offset) in &[

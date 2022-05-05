@@ -18,6 +18,8 @@
 # `wurstmeister/kafka` repo. If there are no versions specified, it runs the tests
 # on a set of default versions.
 
+set -e
+
 stop_docker() {
   docker-compose down
 }
