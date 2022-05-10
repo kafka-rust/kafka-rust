@@ -123,6 +123,31 @@ kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181 --partition
 See also [Kafka's quickstart guide](https://kafka.apache.org/documentation.html#quickstart)
 for more information.
 
+## Sponsors
+Thank you to our sponsers, this helps me to spend more time on this project and also helps with infrastructure
+
+<table>
+<tr>
+<td>
+  <img width="1000" height="0">
+    <a href="https://upstash.com/?utm_source=kafka-rust" >
+  <img src="https://raw.githubusercontent.com/upstash/sponsorship/master/kafka.png" alt="Upstash" width="260" align="right">
+  </a>
+
+<h3>Upstash: Serverless Kafka</h3>
+
+  <ul>
+    <li>True Serverless Kafka with per-request-pricing</li>
+    <li>Managed Apache Kafka, works with all Kafka clients</li>
+    <li>Built-in REST API designed for serverless and edge functions</li>
+  </ul>
+
+[Start for free in 30 seconds!](https://upstash.com/?utm_source=AKHQ)
+</td>
+</tr>
+</table>
+
+
 ## Alternative/Related projects
 
 * [rust-rdkafka](https://github.com/fede1024/rust-rdkafka) is an emerging alternative Kafka client library for Rust based on
