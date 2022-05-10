@@ -143,7 +143,7 @@ impl Config {
         }
         Ok(Config {
             brokers,
-            group: m.opt_str("group").unwrap_or_else(String::new),
+            group: m.opt_str("group").unwrap_or_default(),
             topics,
             no_commit: m.opt_present("no-commit"),
             offset_storage,

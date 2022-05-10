@@ -7,7 +7,7 @@ use fnv::FnvHasher;
 
 use crate::client::metadata::Topics;
 use crate::client::{FetchGroupOffset, FetchOffset, KafkaClient};
-use crate::error::{ErrorKind, KafkaCode, Result};
+use crate::error::{Error, KafkaCode, Result};
 
 use super::assignment::{Assignment, AssignmentRef, Assignments};
 use super::config::Config;
@@ -116,14 +116,14 @@ impl State {
 
     /// Returns a wrapper around `self.fetch_offsets` for nice dumping
     /// in debug messages
-    pub fn fetch_offsets_debug<'a>(&'a self) -> OffsetsMapDebug<'a, FetchState> {
+    pub fn fetch_offsets_debug(&self) -> OffsetsMapDebug<'_, FetchState> {
         OffsetsMapDebug {
             state: self,
             offsets: &self.fetch_offsets,
         }
     }
 
-    pub fn consumed_offsets_debug<'a>(&'a self) -> OffsetsMapDebug<'a, ConsumedOffset> {
+    pub fn consumed_offsets_debug(&self) -> OffsetsMapDebug<'_, ConsumedOffset> {
         OffsetsMapDebug {
             state: self,
             offsets: &self.consumed_offsets,
@@ -150,7 +150,7 @@ fn determine_partitions<'a>(
         // ~ fail if the underlying topic is unkonwn to the given client
         None => {
             debug!("determine_partitions: no such topic: {} (all metadata: {:?})", topic, metadata);
-            bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
+            return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
         }
         Some(tp) => tp,
     };
@@ -173,7 +173,7 @@ fn determine_partitions<'a>(
                             (all metadata: {:?})",
                         topic, p, metadata
                     );
-                    bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
+                    return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(_) => ps.push(p),
             };
@@ -284,7 +284,7 @@ fn load_fetch_states(
                         "load_fetch_states: failed to load fallback offsets for: {}",
                         s.assignment.topic()
                     );
-                    bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition));
+                    return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
                 }
                 Some(offsets) => {
                     for p in &s.partitions {
@@ -342,7 +342,7 @@ fn load_fetch_states(
                                 s.assignment.topic(),
                                 p
                             );
-                            bail!(ErrorKind::Kafka(KafkaCode::Unknown));
+                            return Err(Error::Kafka(KafkaCode::Unknown));
                         }
                     },
                 };

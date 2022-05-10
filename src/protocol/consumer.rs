@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 
 use crate::codecs::{self, FromByte, ToByte};
-use crate::error::{self, Error, ErrorKind, KafkaCode, Result};
+use crate::error::{self, Error, KafkaCode, Result};
 use crate::utils::PartitionOffset;
 
 use super::{HeaderRequest, HeaderResponse};
@@ -49,7 +49,7 @@ pub struct GroupCoordinatorResponse {
 }
 
 impl GroupCoordinatorResponse {
-    pub fn to_result(self) -> Result<Self> {
+    pub fn into_result(self) -> Result<Self> {
         match Error::from_protocol(self.error) {
             Some(e) => Err(e),
             None => Ok(self),
@@ -199,7 +199,7 @@ pub struct PartitionOffsetFetchResponse {
 impl PartitionOffsetFetchResponse {
     pub fn get_offsets(&self) -> Result<PartitionOffset> {
         match Error::from_protocol(self.error) {
-            Some(Error(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition), _)) => {
+            Some(Error::Kafka(KafkaCode::UnknownTopicOrPartition)) => {
                 // ~ occurs only on protocol v0 when no offset available
                 // for the group in question; we'll align the behavior
                 // with protocol v1.

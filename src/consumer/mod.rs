@@ -66,7 +66,7 @@ use std::slice;
 
 use crate::client::fetch;
 use crate::client::{CommitOffset, FetchPartition, KafkaClient};
-use crate::error::{ErrorKind, KafkaCode, Result};
+use crate::error::{Error, KafkaCode, Result};
 
 // public re-exports
 pub use self::builder::Builder;
@@ -179,12 +179,7 @@ impl Consumer {
             Some(tp) => {
                 let s = match self.state.fetch_offsets.get(&tp) {
                     Some(fstate) => fstate,
-                    None => {
-                        return (
-                            1,
-                            Err(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition).into()),
-                        )
-                    }
+                    None => return (1, Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition))),
                 };
                 let topic = self.state.topic_name(tp.topic_ref);
                 debug!(
@@ -247,11 +242,9 @@ impl Consumer {
                     // fail immediately, we can try to recover from
                     // certain errors and retry the fetch operation
                     // transparently for the caller.
-                    let data = match p.data() {
-                        // XXX need to prevent updating fetch_offsets in case we're gonna fail here
-                        &Err(ref e) => return Err(e.clone()),
-                        &Ok(ref data) => data,
-                    };
+
+                    // XXX need to prevent updating fetch_offsets in case we're gonna fail here
+                    let data = p.data()?;
 
                     let mut fetch_state = self
                         .state
@@ -317,7 +310,7 @@ impl Consumer {
                                 // fetch size ... this is will fail
                                 // forever ... signal the problem to
                                 // the user
-                                bail!(ErrorKind::Kafka(KafkaCode::MessageSizeTooLarge));
+                                return Err(Error::Kafka(KafkaCode::MessageSizeTooLarge));
                             }
                             // ~ if this consumer is subscribed to one
                             // partition only, there's no need to push
@@ -373,7 +366,7 @@ impl Consumer {
     /// being consumed by this consumer.
     pub fn consume_message(&mut self, topic: &str, partition: i32, offset: i64) -> Result<()> {
         let topic_ref = match self.state.topic_ref(topic) {
-            None => bail!(ErrorKind::Kafka(KafkaCode::UnknownTopicOrPartition)),
+            None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
             Some(topic_ref) => topic_ref,
         };
         let tp = state::TopicPartition {
@@ -401,7 +394,7 @@ impl Consumer {
     /// A convience method to mark the given message set consumed as a
     /// whole by the caller. This is equivalent to marking the last
     /// message of the given set as consumed.
-    pub fn consume_messageset<'a>(&mut self, msgs: MessageSet<'a>) -> Result<()> {
+    pub fn consume_messageset(&mut self, msgs: MessageSet<'_>) -> Result<()> {
         if !msgs.messages.is_empty() {
             self.consume_message(msgs.topic, msgs.partition, msgs.messages.last().unwrap().offset)
         } else {
@@ -442,7 +435,7 @@ impl Consumer {
                     CommitOffset::new(topic, tp.partition, o.offset + 1)
                 }),
         )?;
-        for (_, co) in &mut state.consumed_offsets {
+        for co in state.consumed_offsets.values_mut() {
             if co.dirty {
                 co.dirty = false;
             }
@@ -534,10 +527,10 @@ impl<'a> Iterator for MessageSetsIter<'a> {
                 // ~ skip errornous partitions
                 // ~ skip empty partitions
                 match p.data() {
-                    &Err(_) => {
+                    Err(_) => {
                         continue;
                     }
-                    &Ok(ref pdata) => {
+                    Ok(pdata) => {
                         let msgs = pdata.messages();
                         if msgs.is_empty() {
                             continue;

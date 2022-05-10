@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::client::{self, FetchOffset, GroupOffsetStorage, KafkaClient};
-use crate::error::{ErrorKind, Result};
+use crate::error::{Error, Result};
 
 use super::assignment;
 use super::config::Config;
@@ -223,7 +223,7 @@ impl Builder {
     pub fn create(self) -> Result<Consumer> {
         // ~ fail immediately if there's no topic to be consumed
         if self.assignments.is_empty() {
-            bail!(ErrorKind::NoTopicsAssigned);
+            return Err(Error::NoTopicsAssigned);
         }
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {

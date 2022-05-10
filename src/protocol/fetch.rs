@@ -4,7 +4,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use std::io::Write;
-use std::mem;
+use std::sync::Arc;
+use std::{mem, result};
 
 use fnv::FnvHasher;
 
@@ -14,7 +15,8 @@ use crate::compression::gzip;
 #[cfg(feature = "snappy")]
 use crate::compression::snappy::SnappyReader;
 use crate::compression::Compression;
-use crate::error::{Error, ErrorKind, KafkaCode, Result};
+use crate::error::KafkaCode;
+use crate::{Error, Result};
 
 use super::to_crc;
 use super::zreader::ZReader;
@@ -263,8 +265,8 @@ pub struct Partition<'a> {
     /// The identifier of the represented partition.
     partition: i32,
 
-    /// Either an error or the partition data.
-    data: Result<Data<'a>>,
+    /// The partition data.
+    data: result::Result<Data<'a>, Arc<Error>>,
 }
 
 impl<'a> Partition<'a> {
@@ -278,15 +280,17 @@ impl<'a> Partition<'a> {
             .and_then(|preqs| preqs.get(partition))
             .map(|preq| preq.offset)
             .unwrap_or(0);
-        let error = Error::from_protocol(r.read_i16()?);
+
+        let err = Error::from_protocol(r.read_i16()?);
         // we need to parse the rest even if there was an error to
         // consume the input stream (zreader)
         let highwatermark = r.read_i64()?;
         let msgset = MessageSet::from_slice(r.read_bytes()?, proffs, validate_crc)?;
+
         Ok(Partition {
             partition,
-            data: match error {
-                Some(error) => Err(error),
+            data: match err {
+                Some(err) => Err(Arc::new(err)),
                 None => Ok(Data {
                     highwatermark_offset: highwatermark,
                     message_set: msgset,
@@ -302,8 +306,11 @@ impl<'a> Partition<'a> {
     }
 
     /// Retrieves the data payload for this partition.
-    pub fn data(&'a self) -> &'a Result<Data<'a>> {
-        &self.data
+    pub fn data(&'a self) -> result::Result<&'a Data<'a>, Arc<Error>> {
+        match self.data.as_ref() {
+            Ok(data) => Ok(data),
+            Err(err) => Err(err.clone()),
+        }
     }
 }
 
@@ -371,11 +378,7 @@ impl<'a> MessageSet<'a> {
         });
     }
 
-    fn from_slice<'b>(
-        raw_data: &'b [u8],
-        req_offset: i64,
-        validate_crc: bool,
-    ) -> Result<MessageSet<'b>> {
+    fn from_slice(raw_data: &[u8], req_offset: i64, validate_crc: bool) -> Result<MessageSet<'_>> {
         let mut r = ZReader::new(raw_data);
         let mut msgs = Vec::new();
         while !r.is_empty() {
@@ -383,7 +386,7 @@ impl<'a> MessageSet<'a> {
                 // this is the last messages which might be
                 // incomplete; a valid case to be handled by
                 // consumers
-                Err(Error(ErrorKind::UnexpectedEOF, _)) => {
+                Err(Error::UnexpectedEOF) => {
                     break;
                 }
                 Err(e) => {
@@ -417,7 +420,7 @@ impl<'a> MessageSet<'a> {
                             SnappyReader::new(pmsg.value)?.read_to_end(&mut v)?;
                             return MessageSet::from_vec(v, req_offset, validate_crc);
                         }
-                        _ => bail!(ErrorKind::UnsupportedCompression),
+                        _ => return Err(Error::UnsupportedCompression),
                     }
                 }
             };
@@ -448,19 +451,19 @@ struct ProtocolMessage<'a> {
 impl<'a> ProtocolMessage<'a> {
     /// Parses a raw message from the given byte slice.  Does _not_
     /// handle any compression.
-    fn from_slice<'b>(raw_data: &'b [u8], validate_crc: bool) -> Result<ProtocolMessage<'b>> {
+    fn from_slice(raw_data: &[u8], validate_crc: bool) -> Result<ProtocolMessage<'_>> {
         let mut r = ZReader::new(raw_data);
 
         // ~ optionally validate the crc checksum
         let msg_crc = r.read_i32()?;
         if validate_crc && to_crc(r.rest()) as i32 != msg_crc {
-            bail!(ErrorKind::Kafka(KafkaCode::CorruptMessage));
+            return Err(Error::Kafka(KafkaCode::CorruptMessage));
         }
         // ~ we support parsing only messages with the "zero"
         // magic_byte; this covers kafka 0.8 and 0.9.
         let msg_magic = r.read_i8()?;
         if msg_magic != 0 {
-            bail!(ErrorKind::UnsupportedProtocol);
+            return Err(Error::UnsupportedProtocol);
         }
         let msg_attr = r.read_i8()?;
         let msg_key = r.read_bytes()?;
@@ -483,7 +486,7 @@ mod tests {
     use std::str;
 
     use super::{FetchRequest, Message, Response};
-    use crate::error::{Error, ErrorKind, KafkaCode};
+    use crate::error::{Error, KafkaCode};
 
     static FETCH1_TXT: &str = include_str!("../../test-data/fetch1.txt");
 
@@ -515,18 +518,12 @@ mod tests {
     static FETCH2_FETCH_RESPONSE_NOCOMPRESSION_INVALID_CRC_K0900: &[u8] =
         include_bytes!("../../test-data/fetch2.mytopic.nocompression.invalid_crc.kafka.0900");
 
-    fn into_messages<'a>(r: &'a Response) -> Vec<&'a Message<'a>> {
+    fn into_messages(r: &Response) -> Vec<&Message<'_>> {
         let mut all_msgs = Vec::new();
         for t in r.topics() {
             for p in t.partitions() {
-                match p.data() {
-                    &Err(_) => {
-                        println!("Skipping error partition: {}:{}", t.topic, p.partition);
-                    }
-                    &Ok(ref data) => {
-                        all_msgs.extend(data.messages());
-                    }
-                }
+                let data = p.data().unwrap();
+                all_msgs.extend(data.messages());
             }
         }
         all_msgs
@@ -552,7 +549,7 @@ mod tests {
         // ~ the first partition
         assert_eq!(0, resp.topics[0].partitions[0].partition);
         // ~ no error
-        assert!(resp.topics[0].partitions[0].data.is_ok());
+        // assert!(resp.topics[0].partitions[0].data.is_ok());
 
         let msgs = into_messages(&resp);
         assert_eq!(original.len(), msgs.len());
@@ -603,7 +600,7 @@ mod tests {
         let r =
             Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
         assert!(match r {
-            bail!(ErrorKind::UnsupportedCompression) => true,
+            return Err(Error::UnsupportedCompression) => true,
             _ => false,
         });
     }
@@ -705,7 +702,7 @@ mod tests {
             true,
         ) {
             Ok(_) => panic!("Expected error, but got successful response!"),
-            Err(Error(ErrorKind::Kafka(KafkaCode::CorruptMessage), _)) => {}
+            Err(Error::Kafka(KafkaCode::CorruptMessage)) => {}
             Err(e) => panic!("Expected KafkaCode::CorruptMessage error, but got: {:?}", e),
         }
     }
