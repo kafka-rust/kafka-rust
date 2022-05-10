@@ -36,7 +36,7 @@ Thank you to our sponsers, this helps me to spend more time on this project and 
     <li>Built-in REST API designed for serverless and edge functions</li>
   </ul>
 
-[Start for free in 30 seconds!](https://upstash.com/?utm_source=AKHQ)
+[Start for free in 30 seconds!](https://upstash.com/?utm_source=kafka-rust")
 </td>
 </tr>
 </table>
