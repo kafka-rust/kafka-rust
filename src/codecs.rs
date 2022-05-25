@@ -378,7 +378,10 @@ fn codec_as_strings() {
             // Encode into buffer
             let mut buf = Vec::new();
             AsStrings(&orig).encode(&mut buf).unwrap();
-            assert_eq!(buf, [0, 0, 0, 2, 0, 3, b'a', b'b', b'c', 0, 4, b'd', b'e', b'f', b'g']);
+            assert_eq!(
+                buf,
+                [0, 0, 0, 2, 0, 3, b'a', b'b', b'c', 0, 4, b'd', b'e', b'f', b'g']
+            );
 
             // Decode from buffer into existing value
             {

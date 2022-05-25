@@ -28,7 +28,10 @@ fn test_producer_send_non_existent_topic() {
     };
 
     let correct_error_code = error::KafkaCode::UnknownTopicOrPartition;
-    assert_eq!(correct_error_code, error_code, "should have errored on non-existent topic");
+    assert_eq!(
+        correct_error_code, error_code,
+        "should have errored on non-existent topic"
+    );
 }
 
 /// Simple test for send_all
@@ -45,7 +48,10 @@ fn test_producer_send_all() {
         assert_eq!(TEST_TOPIC_NAME.to_owned(), confirm.topic);
 
         for partition_confirm in confirm.partition_confirms {
-            assert!(partition_confirm.offset.is_ok(), "should have sent successfully.");
+            assert!(
+                partition_confirm.offset.is_ok(),
+                "should have sent successfully."
+            );
         }
     }
 }
@@ -65,5 +71,8 @@ fn test_producer_send_all_non_existent_topic() {
     };
 
     let correct_error_code = error::KafkaCode::UnknownTopicOrPartition;
-    assert_eq!(correct_error_code, error_code, "should have errored on non-existent topic");
+    assert_eq!(
+        correct_error_code, error_code,
+        "should have errored on non-existent topic"
+    );
 }

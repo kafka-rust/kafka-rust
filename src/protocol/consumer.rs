@@ -221,7 +221,10 @@ impl FromByte for OffsetFetchResponse {
     type R = OffsetFetchResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.header.decode(buffer), self.topic_partitions.decode(buffer))
+        try_multi!(
+            self.header.decode(buffer),
+            self.topic_partitions.decode(buffer)
+        )
     }
 }
 
@@ -332,8 +335,9 @@ impl<'a> TopicPartitionOffsetCommitRequest<'a> {
     }
 
     pub fn add(&mut self, partition: i32, offset: i64, metadata: &'a str) {
-        self.partitions
-            .push(PartitionOffsetCommitRequest::new(partition, offset, metadata))
+        self.partitions.push(PartitionOffsetCommitRequest::new(
+            partition, offset, metadata,
+        ))
     }
 }
 
@@ -394,7 +398,10 @@ impl FromByte for OffsetCommitResponse {
     type R = OffsetCommitResponse;
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
-        try_multi!(self.header.decode(buffer), self.topic_partitions.decode(buffer))
+        try_multi!(
+            self.header.decode(buffer),
+            self.topic_partitions.decode(buffer)
+        )
     }
 }
 

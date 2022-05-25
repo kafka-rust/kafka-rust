@@ -1274,9 +1274,11 @@ impl KafkaClient {
             }
         }
 
-        Ok(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
-            .remove(topic)
-            .unwrap_or_default())
+        Ok(
+            __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
+                .remove(topic)
+                .unwrap_or_default(),
+        )
     }
 }
 
@@ -1342,7 +1344,10 @@ fn __get_group_coordinator<'a>(
         // try connecting to the user specified bootstrap server similar
         // to the way `load_metadata` works.
         let conn = conn_pool.get_conn_any(now).expect("available connection");
-        debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
+        debug!(
+            "get_group_coordinator: asking for coordinator of '{}' on: {:?}",
+            group, conn
+        );
         let r = __send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req)?;
         let retry_code = match r.into_result() {
             Ok(r) => {
@@ -1378,7 +1383,10 @@ fn __commit_offsets(
 
         let tps = {
             let host = __get_group_coordinator(req.group, state, conn_pool, config, now)?;
-            debug!("__commit_offsets: sending offset commit request '{:?}' to: {}", req, host);
+            debug!(
+                "__commit_offsets: sending offset commit request '{:?}' to: {}",
+                req, host
+            );
             __send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, now, &req)?
                 .topic_partitions
         };
@@ -1394,7 +1402,10 @@ fn __commit_offsets(
                         break 'rproc;
                     }
                     Some(e @ KafkaCode::NotCoordinatorForGroup) => {
-                        debug!("commit_offsets: resetting group coordinator for '{}'", req.group);
+                        debug!(
+                            "commit_offsets: resetting group coordinator for '{}'",
+                            req.group
+                        );
                         state.remove_group_coordinator(req.group);
                         retry_code = Some(e);
                         break 'rproc;
@@ -1436,7 +1447,10 @@ fn __fetch_group_offsets(
 
         let r = {
             let host = __get_group_coordinator(req.group, state, conn_pool, config, now)?;
-            debug!("fetch_group_offsets: sending request {:?} to: {}", req, host);
+            debug!(
+                "fetch_group_offsets: sending request {:?} to: {}",
+                req, host
+            );
             __send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, now, &req)?
         };
 

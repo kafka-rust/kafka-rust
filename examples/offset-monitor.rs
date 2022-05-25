@@ -307,12 +307,26 @@ impl Config {
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
-        opts.optopt("", "brokers", "Specify kafka bootstrap brokers (comma separated)", "HOSTS");
+        opts.optopt(
+            "",
+            "brokers",
+            "Specify kafka bootstrap brokers (comma separated)",
+            "HOSTS",
+        );
         opts.optopt("", "topic", "Specify the topic to monitor", "TOPIC");
         opts.optopt("", "group", "Specify the group to monitor", "GROUP");
-        opts.optopt("", "storage", "Specify offset store [zookeeper, kafka]", "STORE");
+        opts.optopt(
+            "",
+            "storage",
+            "Specify offset store [zookeeper, kafka]",
+            "STORE",
+        );
         opts.optopt("", "sleep", "Specify the sleep time", "SECS");
-        opts.optflag("", "partitions", "Print each partition instead of the summary");
+        opts.optflag(
+            "",
+            "partitions",
+            "Print each partition instead of the summary",
+        );
         opts.optflag("", "no-growth", "Don't print offset growth");
         opts.optflag(
             "",
@@ -344,7 +358,12 @@ impl Config {
         if let Some(s) = m.opt_str("sleep") {
             match s.parse::<u64>() {
                 Ok(n) if n != 0 => period = Duration::from_secs(n),
-                _ => return Err(Error::from(anyhow!("not a number greater than zero: {}", s))),
+                _ => {
+                    return Err(Error::from(anyhow!(
+                        "not a number greater than zero: {}",
+                        s
+                    )))
+                }
             }
         }
         Ok(Config {

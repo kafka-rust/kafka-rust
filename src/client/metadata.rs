@@ -152,7 +152,12 @@ impl<'a> Topic<'a> {
 
 impl<'a> fmt::Debug for Topic<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Topic {{ name: {}, partitions: {:?} }}", self.name, self.partitions())
+        write!(
+            f,
+            "Topic {{ name: {}, partitions: {:?} }}",
+            self.name,
+            self.partitions()
+        )
     }
 }
 
@@ -305,6 +310,11 @@ impl<'a> Partition<'a> {
 
 impl<'a> fmt::Debug for Partition<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Partition {{ id: {}, leader: {:?} }}", self.id(), self.leader())
+        write!(
+            f,
+            "Partition {{ id: {}, leader: {:?} }}",
+            self.id(),
+            self.leader()
+        )
     }
 }

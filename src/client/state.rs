@@ -374,7 +374,10 @@ impl ClientState {
         group: &str,
         gc: &protocol::GroupCoordinatorResponse,
     ) -> &'a str {
-        debug!("set_group_coordinator: registering coordinator for '{}': {:?}", group, gc);
+        debug!(
+            "set_group_coordinator: registering coordinator for '{}': {:?}",
+            group, gc
+        );
 
         let group_host = format!("{}:{}", gc.host, gc.port);
         // ~ try to find an already existing broker

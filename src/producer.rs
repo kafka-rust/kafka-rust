@@ -465,7 +465,10 @@ impl<P> Builder<P> {
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {
             Some(client) => (client, false),
-            None => (Self::new_kafka_client(self.hosts, self.security_config), true),
+            None => (
+                Self::new_kafka_client(self.hosts, self.security_config),
+                true,
+            ),
         };
         // ~ apply configuration settings
         client.set_compression(self.compression);

@@ -139,7 +139,10 @@ impl<'a> SnappyReader<'a> {
         }
         let chunk_size = chunk_size as usize;
         self.uncompressed_chunk.clear();
-        uncompress_to(&self.compressed_data[..chunk_size], &mut self.uncompressed_chunk)?;
+        uncompress_to(
+            &self.compressed_data[..chunk_size],
+            &mut self.uncompressed_chunk,
+        )?;
         self.compressed_data = &self.compressed_data[chunk_size..];
         Ok(true)
     }
