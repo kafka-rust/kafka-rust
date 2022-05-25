@@ -4,17 +4,9 @@ use std::time::Duration;
 
 use crate::codecs::{FromByte, ToByte};
 use crate::error::{Error, KafkaCode, Result};
-use crc::Crc;
-
-/// Macro to return Result<()> from multiple statements
-macro_rules! try_multi {
-    ($($input_expr:expr),*) => ({
-        $($input_expr?;)*
-        Ok(())
-    })
-}
 
 pub mod consumer;
+pub mod decoder;
 pub mod metadata;
 pub mod offset;
 pub mod produce;
@@ -140,12 +132,11 @@ impl<'a> HeaderRequest<'a> {
 
 impl<'a> ToByte for HeaderRequest<'a> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(
-            self.api_key.encode(buffer),
-            self.api_version.encode(buffer),
-            self.correlation_id.encode(buffer),
-            self.client_id.encode(buffer)
-        )
+        self.api_key.encode(buffer)?;
+        self.api_version.encode(buffer)?;
+        self.correlation_id.encode(buffer)?;
+        self.client_id.encode(buffer)?;
+        Ok(())
     }
 }
 
@@ -168,7 +159,7 @@ impl FromByte for HeaderResponse {
 // --------------------------------------------------------------------
 
 pub fn to_crc(data: &[u8]) -> u32 {
-    Crc::<u32>::new(&crc::CRC_32_ISO_HDLC).checksum(data)
+    crc32c::crc32c(data)
 }
 
 // --------------------------------------------------------------------
