@@ -21,13 +21,13 @@ extern crate snap;
 #[cfg(all(test, feature = "nightly"))]
 extern crate test;
 
-pub mod client;
-mod client_internals;
-mod compression;
-pub mod consumer;
-pub mod error;
-pub mod producer;
+// pub mod client;
+// mod client_internals;
+// mod compression;
+// pub mod consumer;
+// pub mod error;
+// pub mod producer;
 mod protocol;
-mod utils;
+// mod utils;
 
-pub use self::error::{Error, Result};
+// pub use self::error::{Error, Result};
