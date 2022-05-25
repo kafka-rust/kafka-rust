@@ -4,11 +4,13 @@
 //! - `kafka::producer::Producer` - for sending message to Kafka
 //! - `kafka::consumer::Consumer` - for retrieving/consuming messages from Kafka
 //! - `kafka::client::KafkaClient` - a lower-level, general purpose client leaving
-//!   you with more power but also more resposibility
+//!   you with more power but also more responsibility
 //!
 //! See module level documentation corresponding to each client individually.
 #![recursion_limit = "128"]
 #![cfg_attr(feature = "nightly", feature(test))]
+#![deny(clippy::all)]
+#![warn(clippy::pedantic)]
 
 #[macro_use]
 extern crate tracing;
