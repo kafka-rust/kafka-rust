@@ -147,7 +147,7 @@ fn determine_partitions<'a>(
     let topic = assignment.topic();
     let req_partitions = assignment.partitions();
     let avail_partitions = match metadata.partitions(topic) {
-        // ~ fail if the underlying topic is unkonwn to the given client
+        // ~ fail if the underlying topic is unknown to the given client
         None => {
             debug!(
                 "determine_partitions: no such topic: {} (all metadata: {:?})",

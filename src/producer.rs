@@ -44,7 +44,7 @@
 //! an unspecified partition.  The `Record` struct, however, is
 //! intended to provide full control over its lifecycle to client
 //! code, and, hence, is fully open.  Its current constructor methods
-//! are provided for convience only.
+//! are provided for convenience only.
 //!
 //! Beside the target topic, key, and the value of a `Record`, client
 //! code is allowed to specify the topic partition the message is
@@ -397,7 +397,7 @@ impl Builder {
 
     /// Sets the maximum time the kafka brokers can await the receipt
     /// of required acknowledgements (which is specified through
-    /// `Builder::with_required_acks`.)  Note that Kafka explicitely
+    /// `Builder::with_required_acks`.)  Note that Kafka explicitly
     /// documents this not to be a hard limit.
     pub fn with_ack_timeout(mut self, timeout: Duration) -> Self {
         self.ack_timeout = timeout;
@@ -571,7 +571,7 @@ pub type DefaultHasher = XxHash32;
 /// As its name implies `DefaultPartitioner` is the default
 /// partitioner for `Producer`.
 ///
-/// For every message it proceedes as follows:
+/// For every message it proceeds as follows:
 ///
 /// - If the messages contains a non-negative partition value it
 /// leaves the message untouched.  This will cause `Producer` to try
@@ -588,7 +588,7 @@ pub type DefaultHasher = XxHash32;
 /// key - `DefaultPartitioner` will "randomly" pick one from the
 /// "available" partitions trying to distribute the messages across
 /// the multiple partitions.  In particular, it tries to distribute
-/// such messsages across the "available" partitions in a round robin
+/// such messages across the "available" partitions in a round robin
 /// fashion.  "Available" it this context means partitions with a
 /// known leader.
 ///
@@ -632,7 +632,7 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
     #[allow(unused_variables)]
     fn partition(&mut self, topics: Topics<'_>, rec: &mut client::ProduceMessage<'_, '_>) {
         if rec.partition >= 0 {
-            // ~ partition explicitely defined, trust the user
+            // ~ partition explicitly defined, trust the user
             return;
         }
         let partitions = match topics.partitions(rec.topic) {

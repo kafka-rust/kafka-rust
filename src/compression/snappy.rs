@@ -178,7 +178,7 @@ macro_rules! to_io_error {
             Ok(n) => Ok(n),
             // ~ pass io errors through directly
             Err(Error::Io(io_error)) => Err(io_error),
-            // ~ wrapp our other errors
+            // ~ wrap our other errors
             Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.to_string())),
         }
     };

@@ -194,7 +194,7 @@ impl Connections {
             conn.last_checkout = now;
             let kconn: &mut KafkaConnection = &mut conn.item;
             // ~ decouple the lifetimes to make the borrowck happy;
-            // this is safe since we're immediatelly returning the
+            // this is safe since we're immediately returning the
             // reference and the rest of the code in this method is
             // not affected
             return Ok(unsafe { mem::transmute(kconn) });

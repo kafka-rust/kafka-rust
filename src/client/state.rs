@@ -44,7 +44,7 @@ pub struct Broker {
 }
 
 impl Broker {
-    /// Retrives the node_id of this broker as identified with the
+    /// Retrieves the node_id of this broker as identified with the
     /// remote Kafka cluster.
     #[inline]
     pub fn id(&self) -> i32 {

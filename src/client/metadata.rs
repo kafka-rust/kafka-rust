@@ -42,7 +42,7 @@ impl<'a> Topics<'a> {
         TopicIter::new(self.state)
     }
 
-    /// A conveniece method to return an iterator over the topics'
+    /// A convenience method to return an iterator over the topics'
     /// names.
     #[inline]
     pub fn names(&'a self) -> TopicNames<'a> {
@@ -98,7 +98,7 @@ impl<'a> IntoIterator for Topics<'a> {
     }
 }
 
-/// An interator over topics.
+/// An iterator over topics.
 pub struct TopicIter<'a> {
     state: &'a ClientState,
     iter: hash_map::Iter<'a, String, TopicPartitions>,
@@ -238,7 +238,7 @@ impl<'a> IntoIterator for Partitions<'a> {
     }
 }
 
-/// An interator over a topic's partitions.
+/// An iterator over a topic's partitions.
 pub struct PartitionIter<'a> {
     state: &'a ClientState,
     iter: TopicPartitionIter<'a>,

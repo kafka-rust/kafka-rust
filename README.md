@@ -17,7 +17,7 @@ Welcome to kafka-rust's new home: https://github.com/kafka-rust
 
 ## Sponsors
 
-Thank you to our sponsers, this helps me to spend more time on this project and also helps with infrastructure
+Thank you to our sponsors, this helps me to spend more time on this project and also helps with infrastructure
 
 <table>
 <tr>
@@ -81,7 +81,7 @@ Kafka.
 This is a higher-level producer API for Kafka and is provided by the
 module `kafka::producer`. It provides convenient automatic partition
 assignment capabilities through partitioners. This is the API a
-client application of this library wants to use for sending messsages
+client application of this library wants to use for sending messages
 to Kafka.
 
 ## KafkaClient

@@ -39,11 +39,11 @@
 //! returned data are `MessageSet`s - at most one for each partition
 //! of the consumed topics. Individual messages are embedded in the
 //! retrieved messagesets and can be processed using the `messages()`
-//! iterator.  Due to this embedding, individual messsages's lifetime
+//! iterator.  Due to this embedding, individual messages's lifetime
 //! is bound to the `MessageSet` they are part of. Typically, client
 //! code access the raw data/bytes, parses it into custom data types
 //! and passes that for further processing within the application.
-//! Altough unconvenient, this helps in reducing the number of
+//! Although inconvenient, this helps in reducing the number of
 //! allocations within the pipeline of processing incoming messages.
 //!
 //! If the consumer is configured for a non-empty group, it helps in
@@ -59,7 +59,7 @@
 //!
 //! The configuration of a group is optional.  If the consumer has no
 //! group configured, it will behave as if it had one, only that
-//! commiting consumed message offsets resolves into a void operation.
+//! committing consumed message offsets resolves into a void operation.
 
 use std::collections::hash_map::{Entry, HashMap};
 use std::slice;
@@ -363,9 +363,9 @@ impl Consumer {
     /// topic partition as consumed by the caller.
     ///
     /// Note: a message with a "later/higher" offset automatically
-    /// marks all preceeding messages as "consumed", this is messages
+    /// marks all preceding messages as "consumed", this is messages
     /// with "earlier/lower" offsets in the same partition.
-    /// Therefore, it is not neccessary to invoke this method for
+    /// Therefore, it is not necessary to invoke this method for
     /// every consumed message.
     ///
     /// Results in an error if the specified topic partition is not
@@ -397,7 +397,7 @@ impl Consumer {
         Ok(())
     }
 
-    /// A convience method to mark the given message set consumed as a
+    /// A convenience method to mark the given message set consumed as a
     /// whole by the caller. This is equivalent to marking the last
     /// message of the given set as consumed.
     pub fn consume_messageset(&mut self, msgs: MessageSet<'_>) -> Result<()> {
@@ -423,7 +423,7 @@ impl Consumer {
             return Ok(());
         }
         debug!(
-            "commit_consumed: commiting dirty-only consumer offsets (group: {} / offsets: {:?}",
+            "commit_consumed: committing dirty-only consumer offsets (group: {} / offsets: {:?}",
             self.config.group,
             self.state.consumed_offsets_debug()
         );
@@ -496,7 +496,7 @@ impl MessageSets {
     }
 }
 
-/// A set of messages succesfully retrieved from a specific topic
+/// A set of messages successfully retrieved from a specific topic
 /// partition.
 pub struct MessageSet<'a> {
     topic: &'a str,
@@ -536,7 +536,7 @@ impl<'a> Iterator for MessageSetsIter<'a> {
         loop {
             // ~ then the next available partition
             if let Some(p) = self.partitions.as_mut().and_then(|p| p.next()) {
-                // ~ skip errornous partitions
+                // ~ skip erroneous partitions
                 // ~ skip empty partitions
                 match p.data() {
                     Err(_) => {

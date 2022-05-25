@@ -77,7 +77,7 @@ impl Builder {
     }
 
     /// Specifies a topic to consume. All of the available partitions
-    /// of the identified topic will be consumed unless overriden
+    /// of the identified topic will be consumed unless overridden
     /// later using `with_topic_partitions`.
     ///
     /// This method may be called multiple times to assign the
@@ -92,7 +92,7 @@ impl Builder {
 
     /// Explicitly specifies topic partitions to consume. Only the
     /// specified partitions for the identified topic will be consumed
-    /// unless overriden later using `with_topic`.
+    /// unless overridden later using `with_topic`.
     ///
     /// This method may be called multiple times to subscribe to
     /// multiple topics.
