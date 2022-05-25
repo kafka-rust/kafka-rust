@@ -26,8 +26,8 @@ pub enum Error {
 type Result<T> = result::Result<T, Error>;
 
 macro_rules! decode_num {
-    ($dec:ident,$t:ty) => {
-        $dec.take_bytes_const().map(<$t>::from_be_bytes)
+    ($decoder:ident,$t:ty) => {
+        $decoder.take_bytes_const().map(<$t>::from_be_bytes)
     };
 }
 
@@ -58,6 +58,10 @@ impl<'storage> Decoder<'storage> {
         } else {
             Err(Error::UnexpectedEof)
         }
+    }
+
+    pub fn decode_boolean(&mut self) -> Result<bool> {
+        Ok(self.take_bytes_const::<1>()? != 0)
     }
     pub fn decode_int8(&mut self) -> Result<i8> {
         decode_num!(self, i8)
