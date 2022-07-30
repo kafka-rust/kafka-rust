@@ -187,10 +187,20 @@ impl Config {
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
-        opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+        opts.optopt(
+            "",
+            "brokers",
+            "Specify kafka brokers (comma separated)",
+            "HOSTS",
+        );
         opts.optopt("", "topic", "Specify target topic", "NAME");
         opts.optopt("", "input", "Specify input file", "FILE");
-        opts.optopt("", "compression", "Compress messages [NONE, GZIP, SNAPPY]", "TYPE");
+        opts.optopt(
+            "",
+            "compression",
+            "Compress messages [NONE, GZIP, SNAPPY]",
+            "TYPE",
+        );
         opts.optopt(
             "",
             "required-acks",
@@ -199,7 +209,12 @@ impl Config {
         );
         opts.optopt("", "ack-timeout", "Specify time to wait for acks", "MILLIS");
         opts.optopt("", "batch-size", "Send N message in one batch.", "N");
-        opts.optopt("", "idle-timeout", "Specify timeout for idle connections", "MILLIS");
+        opts.optopt(
+            "",
+            "idle-timeout",
+            "Specify timeout for idle connections",
+            "MILLIS",
+        );
 
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -238,7 +253,10 @@ impl Config {
                 Some(ref s) if s.eq_ignore_ascii_case("one") => RequiredAcks::One,
                 Some(ref s) if s.eq_ignore_ascii_case("all") => RequiredAcks::All,
                 Some(s) => {
-                    return Err(anyhow!("{:?}", format!("Unknown --required-acks argument: {}", s)))
+                    return Err(anyhow!(
+                        "{:?}",
+                        format!("Unknown --required-acks argument: {}", s)
+                    ))
                 }
             },
             batch_size: to_number(m.opt_str("batch-size"), 1)?,

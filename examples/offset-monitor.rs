@@ -64,7 +64,7 @@ fn run(cfg: Config) -> Result<()> {
         None => return Err(Error::from(anyhow!("no such topic: {}", &cfg.topic))),
         Some(partitions) => partitions.len(),
     };
-    let mut state = State::new(num_partitions, cfg.commited_not_consumed);
+    let mut state = State::new(num_partitions, cfg.committed_not_consumed);
     let mut printer = Printer::new(stdout(), &cfg);
     printer.print_head(num_partitions)?;
 
@@ -105,10 +105,10 @@ struct State {
 }
 
 impl State {
-    fn new(num_partitions: usize, commited_not_consumed: bool) -> State {
+    fn new(num_partitions: usize, committed_not_consumed: bool) -> State {
         State {
             offsets: vec![Default::default(); num_partitions],
-            lag_decr: if commited_not_consumed { 0 } else { 1 },
+            lag_decr: if committed_not_consumed { 0 } else { 1 },
         }
     }
 
@@ -297,7 +297,7 @@ struct Config {
     group: String,
     offset_storage: GroupOffsetStorage,
     period: Duration,
-    commited_not_consumed: bool,
+    committed_not_consumed: bool,
     summary: bool,
     diff: bool,
 }
@@ -307,17 +307,31 @@ impl Config {
         let args: Vec<String> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
-        opts.optopt("", "brokers", "Specify kafka bootstrap brokers (comma separated)", "HOSTS");
+        opts.optopt(
+            "",
+            "brokers",
+            "Specify kafka bootstrap brokers (comma separated)",
+            "HOSTS",
+        );
         opts.optopt("", "topic", "Specify the topic to monitor", "TOPIC");
         opts.optopt("", "group", "Specify the group to monitor", "GROUP");
-        opts.optopt("", "storage", "Specify offset store [zookeeper, kafka]", "STORE");
+        opts.optopt(
+            "",
+            "storage",
+            "Specify offset store [zookeeper, kafka]",
+            "STORE",
+        );
         opts.optopt("", "sleep", "Specify the sleep time", "SECS");
-        opts.optflag("", "partitions", "Print each partition instead of the summary");
+        opts.optflag(
+            "",
+            "partitions",
+            "Print each partition instead of the summary",
+        );
         opts.optflag("", "no-growth", "Don't print offset growth");
         opts.optflag(
             "",
             "committed-not-yet-consumed",
-            "Assume commited group offsets specify \
+            "Assume committed group offsets specify \
                       messages the group will start consuming \
                       (including those at these offsets)",
         );
@@ -344,7 +358,12 @@ impl Config {
         if let Some(s) = m.opt_str("sleep") {
             match s.parse::<u64>() {
                 Ok(n) if n != 0 => period = Duration::from_secs(n),
-                _ => return Err(Error::from(anyhow!("not a number greater than zero: {}", s))),
+                _ => {
+                    return Err(Error::from(anyhow!(
+                        "not a number greater than zero: {}",
+                        s
+                    )))
+                }
             }
         }
         Ok(Config {
@@ -358,7 +377,7 @@ impl Config {
             group: m.opt_str("group").unwrap_or_else(String::new),
             offset_storage,
             period,
-            commited_not_consumed: m.opt_present("committed-not-yet-consumed"),
+            committed_not_consumed: m.opt_present("committed-not-yet-consumed"),
             summary: !m.opt_present("partitions"),
             diff: !m.opt_present("no-growth"),
         })

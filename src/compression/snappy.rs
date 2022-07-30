@@ -139,7 +139,10 @@ impl<'a> SnappyReader<'a> {
         }
         let chunk_size = chunk_size as usize;
         self.uncompressed_chunk.clear();
-        uncompress_to(&self.compressed_data[..chunk_size], &mut self.uncompressed_chunk)?;
+        uncompress_to(
+            &self.compressed_data[..chunk_size],
+            &mut self.uncompressed_chunk,
+        )?;
         self.compressed_data = &self.compressed_data[chunk_size..];
         Ok(true)
     }
@@ -175,7 +178,7 @@ macro_rules! to_io_error {
             Ok(n) => Ok(n),
             // ~ pass io errors through directly
             Err(Error::Io(io_error)) => Err(io_error),
-            // ~ wrapp our other errors
+            // ~ wrap our other errors
             Err(e) => Err(io::Error::new(io::ErrorKind::Other, e.to_string())),
         }
     };

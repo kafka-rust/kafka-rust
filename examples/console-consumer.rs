@@ -90,11 +90,21 @@ impl Config {
         let args: Vec<_> = env::args().collect();
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
-        opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+        opts.optopt(
+            "",
+            "brokers",
+            "Specify kafka brokers (comma separated)",
+            "HOSTS",
+        );
         opts.optopt("", "topics", "Specify topics (comma separated)", "NAMES");
         opts.optopt("", "group", "Specify the consumer group", "NAME");
         opts.optflag("", "no-commit", "Do not commit group offsets");
-        opts.optopt("", "storage", "Specify the offset store [zookeeper, kafka]", "STORE");
+        opts.optopt(
+            "",
+            "storage",
+            "Specify the offset store [zookeeper, kafka]",
+            "STORE",
+        );
         opts.optflag(
             "",
             "earliest",
