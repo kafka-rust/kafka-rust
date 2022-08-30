@@ -20,7 +20,7 @@ use crate::{Error, Result};
 
 use super::to_crc;
 use super::zreader::ZReader;
-use super::{HeaderRequest, API_KEY_FETCH, API_VERSION};
+use super::{HeaderRequest, API_KEY_FETCH, API_VERSION_FETCH};
 
 pub type PartitionHasher = BuildHasherDefault<FnvHasher>;
 
@@ -54,7 +54,7 @@ impl<'a, 'b> FetchRequest<'a, 'b> {
         min_bytes: i32,
     ) -> FetchRequest<'a, 'b> {
         FetchRequest {
-            header: HeaderRequest::new(API_KEY_FETCH, API_VERSION, correlation_id, client_id),
+            header: HeaderRequest::new(API_KEY_FETCH, API_VERSION_FETCH, correlation_id, client_id),
             replica: -1,
             max_wait_time,
             min_bytes,
@@ -172,6 +172,7 @@ pub struct Response {
     raw_data: Vec<u8>,
 
     correlation_id: i32,
+    throttle_time_ms: i32,
 
     // ~ Static is used here to get around the fact that we don't want
     // Response have to a lifetime parameter as well.  The field is
@@ -191,10 +192,12 @@ impl Response {
         let slice = unsafe { mem::transmute(&response[..]) };
         let mut r = ZReader::new(slice);
         let correlation_id = r.read_i32()?;
+        let throttle_time_ms = r.read_i32()?;
         let topics = array_of!(r, Topic::read(&mut r, reqs, validate_crc));
         Ok(Response {
             raw_data: response,
             correlation_id,
+            throttle_time_ms,
             topics,
         })
     }
@@ -204,6 +207,13 @@ impl Response {
     #[inline]
     pub fn correlation_id(&self) -> i32 {
         self.correlation_id
+    }
+
+    /// Duration in milliseconds for which the request was throttled due
+    /// to quota violation (Zero if the request did not violate any quota)
+    #[inline]
+    pub fn throttle_time_ms(&self) -> i32 {
+        self.throttle_time_ms
     }
 
     /// Provides an iterator over all the topics and the fetched data
@@ -360,6 +370,15 @@ pub struct Message<'a> {
     /// The value data of this message.  Empty if there is no such
     /// data for this message.
     pub value: &'a [u8],
+
+    /// Timestamp, if present
+    pub timestamp: Option<KafkaTimestamp>,
+}
+
+#[derive(Debug)]
+pub enum KafkaTimestamp {
+    Create(i64),
+    LogAppend(i64),
 }
 
 impl<'a> MessageSet<'a> {
@@ -403,10 +422,18 @@ impl<'a> MessageSet<'a> {
                             // skip messages with a lower offset
                             // than the request one
                             if offset >= req_offset {
+                                let timestamp = pmsg.timestamp.map(|ts| {
+                                    if pmsg.attr & 0b1000 == 0 {
+                                        KafkaTimestamp::Create(ts)
+                                    } else {
+                                        KafkaTimestamp::LogAppend(ts)
+                                    }
+                                });
                                 msgs.push(Message {
                                     offset,
                                     key: pmsg.key,
                                     value: pmsg.value,
+                                    timestamp,
                                 });
                             }
                         }
@@ -449,6 +476,7 @@ struct ProtocolMessage<'a> {
     attr: i8,
     key: &'a [u8],
     value: &'a [u8],
+    timestamp: Option<i64>,
 }
 
 impl<'a> ProtocolMessage<'a> {
@@ -462,23 +490,41 @@ impl<'a> ProtocolMessage<'a> {
         if validate_crc && to_crc(r.rest()) as i32 != msg_crc {
             return Err(Error::Kafka(KafkaCode::CorruptMessage));
         }
-        // ~ we support parsing only messages with the "zero"
-        // magic_byte; this covers kafka 0.8 and 0.9.
         let msg_magic = r.read_i8()?;
-        if msg_magic != 0 {
-            return Err(Error::UnsupportedProtocol);
+        match msg_magic {
+            0 => {
+                let attr = r.read_i8()?;
+                let key = r.read_bytes()?;
+                let value = r.read_bytes()?;
+        
+                debug_assert!(r.is_empty());
+        
+                Ok(ProtocolMessage {
+                    attr,
+                    key,
+                    value,
+                    timestamp: None,
+                })
+            },
+            1 => {
+                let attr = r.read_i8()?;
+                let timestamp = Some(r.read_i64()?);
+                let key = r.read_bytes()?;
+                let value = r.read_bytes()?;
+        
+                debug_assert!(r.is_empty());
+        
+                Ok(ProtocolMessage {
+                    attr,
+                    key,
+                    value,
+                    timestamp,
+                })
+            },
+            _ => {
+                Err(Error::UnsupportedProtocol)
+            }
         }
-        let msg_attr = r.read_i8()?;
-        let msg_key = r.read_bytes()?;
-        let msg_val = r.read_bytes()?;
-
-        debug_assert!(r.is_empty());
-
-        Ok(ProtocolMessage {
-            attr: msg_attr,
-            key: msg_key,
-            value: msg_val,
-        })
     }
 }
 

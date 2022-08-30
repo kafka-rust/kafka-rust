@@ -244,7 +244,8 @@ impl Builder {
         }
         // ~ load metadata if necessary
         if need_metadata {
-            client.load_metadata_all()?;
+            let topics: Vec<String> = self.assignments.keys().cloned().collect();
+            client.load_metadata(&topics)?;
         }
         // ~ load consumer state
         let config = Config {

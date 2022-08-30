@@ -150,6 +150,19 @@ macro_rules! decode {
     }};
 }
 
+impl FromByte for bool {
+    type R = bool;
+
+    fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
+        let mut res: i8 = 0;
+        if let Err(e) = decode!(buffer, &mut res) {
+            return Err(e);
+        }
+        *self = res != 0;
+        Ok(())
+    }
+}
+
 impl FromByte for i8 {
     type R = i8;
 
