@@ -309,6 +309,11 @@ fn load_fetch_states(
         // fetch the earliest and latest available offsets
         let latest = load_partition_offsets(client, &subscription_topics, FetchOffset::Latest)?;
         let earliest = load_partition_offsets(client, &subscription_topics, FetchOffset::Earliest)?;
+        let fallback = match config.fallback_offset {
+            FetchOffset::Latest => latest.clone(),
+            FetchOffset::Earliest => earliest.clone(),
+            _ => load_partition_offsets(client, &subscription_topics, config.fallback_offset)?,
+        };
         // ~ for each subscribed partition if we have a
         // consumed_offset verify it is in the earliest/latest range
         // and use that consumed_offset+1 as the fetch_message.
@@ -333,19 +338,15 @@ fn load_fetch_states(
 
                 // the "latest" offset is the offset of the "next coming message"
                 let offset = match consumed_offsets.get(&tp) {
-                    Some(co) if co.offset >= e_off && co.offset < l_off => co.offset + 1,
-                    _ => match config.fallback_offset {
+                    Some(co) => (co.offset + 1).clamp(e_off, l_off),
+                    None => match config.fallback_offset {
                         FetchOffset::Latest => l_off,
                         FetchOffset::Earliest => e_off,
                         _ => {
-                            debug!(
-                                "cannot determine fetch offset \
-                                        (group: {} / topic: {} / partition: {})",
-                                &config.group,
-                                s.assignment.topic(),
-                                p
-                            );
-                            return Err(Error::Kafka(KafkaCode::Unknown));
+                            *fallback
+                                .get(s.assignment.topic())
+                                .and_then(|ps| ps.get(p))
+                                .unwrap_or(&-1)
                         }
                     },
                 };
