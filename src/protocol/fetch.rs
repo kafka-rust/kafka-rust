@@ -375,7 +375,7 @@ pub struct Message<'a> {
     pub timestamp: Option<KafkaTimestamp>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KafkaTimestamp {
     Create(i64),
     LogAppend(i64),
