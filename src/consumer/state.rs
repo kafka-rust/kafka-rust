@@ -273,87 +273,56 @@ fn load_fetch_states(
         HashMap::with_capacity_and_hasher(result_capacity, PartitionHasher::default());
     let max_bytes = client.fetch_max_bytes_per_partition();
     let subscription_topics: Vec<_> = subscriptions.iter().map(|s| s.assignment.topic()).collect();
-    if consumed_offsets.is_empty() {
-        // ~ if there are no offsets on behalf of the consumer
-        // group - if any - we can directly use the fallback offsets.
-        let offsets = load_partition_offsets(client, &subscription_topics, config.fallback_offset)?;
-        for s in subscriptions {
-            let topic_ref = assignments
-                .topic_ref(s.assignment.topic())
-                .expect("unassigned subscription");
-            match offsets.get(s.assignment.topic()) {
-                None => {
-                    debug!(
-                        "load_fetch_states: failed to load fallback offsets for: {}",
-                        s.assignment.topic()
-                    );
-                    return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
-                }
-                Some(offsets) => {
-                    for p in &s.partitions {
-                        fetch_offsets.insert(
-                            TopicPartition {
-                                topic_ref,
-                                partition: *p,
-                            },
-                            FetchState {
-                                offset: *offsets.get(p).unwrap_or(&-1),
-                                max_bytes,
-                            },
-                        );
+    // fetch the earliest and latest available offsets
+    let latest = load_partition_offsets(client, &subscription_topics, FetchOffset::Latest)?;
+    let earliest = load_partition_offsets(client, &subscription_topics, FetchOffset::Earliest)?;
+    let fallback = match config.fallback_offset {
+        FetchOffset::Latest => latest.clone(),
+        FetchOffset::Earliest => earliest.clone(),
+        _ => load_partition_offsets(client, &subscription_topics, config.fallback_offset)?,
+    };
+    // ~ for each subscribed partition if we have a
+    // consumed_offset verify it is in the earliest/latest range
+    // and use that consumed_offset+1 as the fetch_message.
+    for s in subscriptions {
+        let topic_ref = assignments
+            .topic_ref(s.assignment.topic())
+            .expect("unassigned subscription");
+        for p in &s.partitions {
+            let l_off = *latest
+                .get(s.assignment.topic())
+                .and_then(|ps| ps.get(p))
+                .unwrap_or(&-1);
+            let e_off = *earliest
+                .get(s.assignment.topic())
+                .and_then(|ps| ps.get(p))
+                .unwrap_or(&-1);
+
+            let tp = TopicPartition {
+                topic_ref,
+                partition: *p,
+            };
+
+            // the "latest" offset is the offset of the "next coming message"
+            let offset = match consumed_offsets.get(&tp) {
+                Some(co) => (co.offset + 1).clamp(e_off, l_off),
+                None => match config.fallback_offset {
+                    FetchOffset::Latest => l_off,
+                    FetchOffset::Earliest => e_off,
+                    _ => {
+                        fallback
+                            .get(s.assignment.topic())
+                            .and_then(|ps| ps.get(p).copied())
+                            .filter(|o| *o != -1)
+                            .unwrap_or(e_off)
                     }
-                }
-            }
-        }
-    } else {
-        // fetch the earliest and latest available offsets
-        let latest = load_partition_offsets(client, &subscription_topics, FetchOffset::Latest)?;
-        let earliest = load_partition_offsets(client, &subscription_topics, FetchOffset::Earliest)?;
-        let fallback = match config.fallback_offset {
-            FetchOffset::Latest => latest.clone(),
-            FetchOffset::Earliest => earliest.clone(),
-            _ => load_partition_offsets(client, &subscription_topics, config.fallback_offset)?,
-        };
-        // ~ for each subscribed partition if we have a
-        // consumed_offset verify it is in the earliest/latest range
-        // and use that consumed_offset+1 as the fetch_message.
-        for s in subscriptions {
-            let topic_ref = assignments
-                .topic_ref(s.assignment.topic())
-                .expect("unassigned subscription");
-            for p in &s.partitions {
-                let l_off = *latest
-                    .get(s.assignment.topic())
-                    .and_then(|ps| ps.get(p))
-                    .unwrap_or(&-1);
-                let e_off = *earliest
-                    .get(s.assignment.topic())
-                    .and_then(|ps| ps.get(p))
-                    .unwrap_or(&-1);
-
-                let tp = TopicPartition {
-                    topic_ref,
-                    partition: *p,
-                };
-
-                // the "latest" offset is the offset of the "next coming message"
-                let offset = match consumed_offsets.get(&tp) {
-                    Some(co) => (co.offset + 1).clamp(e_off, l_off),
-                    None => match config.fallback_offset {
-                        FetchOffset::Latest => l_off,
-                        FetchOffset::Earliest => e_off,
-                        _ => {
-                            *fallback
-                                .get(s.assignment.topic())
-                                .and_then(|ps| ps.get(p))
-                                .unwrap_or(&-1)
-                        }
-                    },
-                };
-                fetch_offsets.insert(tp, FetchState { offset, max_bytes });
-            }
+                },
+            };
+            fetch_offsets.insert(tp, FetchState { offset, max_bytes });
         }
     }
+
+    info!("fetch offsets: {:#?}", &fetch_offsets);
     Ok(fetch_offsets)
 }
 
