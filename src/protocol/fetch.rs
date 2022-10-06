@@ -194,6 +194,12 @@ impl Response {
         let correlation_id = r.read_i32()?;
         let throttle_time_ms = r.read_i32()?;
         let topics = array_of!(r, Topic::read(&mut r, reqs, validate_crc));
+        
+        if !r.is_empty() {
+            error!("reader has {} bytes remaining", r.rest().len());
+            return Err(Error::CodecError);
+        }
+
         Ok(Response {
             raw_data: response,
             correlation_id,
@@ -343,20 +349,51 @@ impl<'a> Data<'a> {
 
     /// Retrieves the fetched message data for this partition.
     #[inline]
-    pub fn messages(&self) -> &[Message<'a>] {
+    pub fn messages(&self) -> &[MessageWrapper<'a>] {
         &self.message_set.messages
     }
 }
 
+#[cfg_attr(test, derive(Clone, PartialEq))]
 #[derive(Debug)]
-struct MessageSet<'a> {
-    #[allow(dead_code)]
+pub enum MessageWrapper<'a> {
+    Message(Message<'a>),
+    MessageSet(MessageSet<'a>),
+}
+
+impl MessageWrapper<'_> {
+    pub fn last_offset(&self) -> i64 {
+        match self {
+            MessageWrapper::Message(m) => m.offset,
+            MessageWrapper::MessageSet(ms) => ms.last_offset,
+        }
+    }
+
+    fn adjust_offset(&mut self, delta: i64) {
+        match self {
+            MessageWrapper::Message(m) => m.offset += delta,
+            MessageWrapper::MessageSet(ms) => {
+                ms.last_offset += delta;
+                for inner_message in &mut ms.messages {
+                    inner_message.adjust_offset(delta);
+                }
+            },
+        }
+    }
+}
+
+#[cfg_attr(test, derive(Clone, PartialEq))]
+#[derive(Debug)]
+pub struct MessageSet<'a> {
+    // #[allow(dead_code)]
     raw_data: Cow<'a, [u8]>, // ~ this field is used to potentially "own" the underlying vector
-    messages: Vec<Message<'a>>,
+    pub messages: Vec<MessageWrapper<'a>>,
+    last_offset: i64,
 }
 
 /// A fetched message from a remote Kafka broker for a particular
 /// topic partition.
+#[cfg_attr(test, derive(Clone, PartialEq))]
 #[derive(Debug)]
 pub struct Message<'a> {
     /// The offset at which this message resides in the remote kafka
@@ -383,26 +420,36 @@ pub enum KafkaTimestamp {
 
 impl<'a> MessageSet<'a> {
     #[allow(dead_code)]
-    fn from_vec(data: Vec<u8>, req_offset: i64, validate_crc: bool) -> Result<MessageSet<'a>> {
+    fn inner_from_vec(data: Vec<u8>, last_offset: i64, req_offset: i64, validate_crc: bool) -> Result<MessageSet<'a>> {
         // since we're going to keep the original
         // uncompressed vector around without
         // further modifying it and providing
         // publicly no mutability possibilities
         // this is safe
-        let ms = MessageSet::from_slice(
+        let mut ms = MessageSet::from_slice(
             unsafe { mem::transmute(&data[..]) },
             req_offset,
             validate_crc,
         )?;
+
+        if let Some(last_message) = ms.messages.last() {
+            let delta = last_offset - last_message.last_offset();
+            for message in &mut ms.messages {
+                message.adjust_offset(delta);
+            }
+        }
+
         return Ok(MessageSet {
             raw_data: Cow::Owned(data),
             messages: ms.messages,
+            last_offset,
         });
     }
 
     fn from_slice(raw_data: &[u8], req_offset: i64, validate_crc: bool) -> Result<MessageSet<'_>> {
         let mut r = ZReader::new(raw_data);
-        let mut msgs = Vec::new();
+        let mut messages = vec![];
+
         while !r.is_empty() {
             match MessageSet::next_message(&mut r, validate_crc) {
                 // this is the last messages which might be
@@ -421,6 +468,7 @@ impl<'a> MessageSet<'a> {
                         c if c == Compression::NONE as i8 => {
                             // skip messages with a lower offset
                             // than the request one
+
                             if offset >= req_offset {
                                 let timestamp = pmsg.timestamp.map(|ts| {
                                     if pmsg.attr & 0b1000 == 0 {
@@ -429,35 +477,38 @@ impl<'a> MessageSet<'a> {
                                         KafkaTimestamp::LogAppend(ts)
                                     }
                                 });
-                                msgs.push(Message {
+                                messages.push(MessageWrapper::Message(Message {
                                     offset,
                                     key: pmsg.key,
                                     value: pmsg.value,
                                     timestamp,
-                                });
+                                }));
                             }
                         }
-                        // XXX handle recursive compression in future
                         #[cfg(feature = "gzip")]
                         c if c == Compression::GZIP as i8 => {
                             let v = gzip::uncompress(pmsg.value)?;
-                            return MessageSet::from_vec(v, req_offset, validate_crc);
+                            let inner_messages = MessageSet::inner_from_vec(v, offset, req_offset, validate_crc)?;
+                            messages.push(MessageWrapper::MessageSet(inner_messages));
                         }
                         #[cfg(feature = "snappy")]
                         c if c == Compression::SNAPPY as i8 => {
                             use std::io::Read;
                             let mut v = Vec::new();
                             SnappyReader::new(pmsg.value)?.read_to_end(&mut v)?;
-                            return MessageSet::from_vec(v, req_offset, validate_crc);
+                            let inner_messages = MessageSet::inner_from_vec(v, offset, req_offset, validate_crc)?;
+                            messages.push(MessageWrapper::MessageSet(inner_messages));
                         }
                         _ => return Err(Error::UnsupportedCompression),
                     }
                 }
             };
         }
+
         Ok(MessageSet {
             raw_data: Cow::Borrowed(raw_data),
-            messages: msgs,
+            last_offset: messages.last().map(|m| m.last_offset()).unwrap_or(0),
+            messages,
         })
     }
 
@@ -535,7 +586,7 @@ mod tests {
     use std::str;
 
     use super::{FetchRequest, Message, Response};
-    use crate::error::{Error, KafkaCode};
+    use crate::{error::{Error, KafkaCode}, consumer::flatten_messages};
 
     static FETCH1_TXT: &str = include_str!("../../test-data/fetch1.txt");
 
@@ -575,7 +626,9 @@ mod tests {
                 all_msgs.extend(data.messages());
             }
         }
-        all_msgs
+        let mut ret = vec![];
+        flatten_messages(&mut ret, all_msgs.iter().cloned());
+        ret
     }
 
     fn test_decode_new_fetch_response(

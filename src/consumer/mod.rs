@@ -67,6 +67,7 @@ use std::slice;
 use crate::client::fetch;
 use crate::client::{CommitOffset, FetchPartition, KafkaClient};
 use crate::error::{Error, KafkaCode, Result};
+use crate::protocol::fetch::MessageWrapper;
 
 // public re-exports
 pub use self::builder::Builder;
@@ -259,7 +260,7 @@ impl Consumer {
                         .expect("non-requested partition");
                     // ~ book keeping
                     if let Some(last_msg) = data.messages().last() {
-                        fetch_state.offset = last_msg.offset + 1;
+                        fetch_state.offset = last_msg.last_offset() + 1;
                         empty = false;
 
                         // ~ reset the max_bytes again to its usual
@@ -501,7 +502,7 @@ impl MessageSets {
 pub struct MessageSet<'a> {
     topic: &'a str,
     partition: i32,
-    messages: &'a [Message<'a>],
+    messages: Vec<&'a Message<'a>>,
 }
 
 impl<'a> MessageSet<'a> {
@@ -516,8 +517,8 @@ impl<'a> MessageSet<'a> {
     }
 
     #[inline]
-    pub fn messages(&self) -> &'a [Message<'a>] {
-        self.messages
+    pub fn messages(&'a self) -> &'a [&'a Message<'a>] {
+        &self.messages
     }
 }
 
@@ -527,6 +528,15 @@ pub struct MessageSetsIter<'a> {
     topics: Option<slice::Iter<'a, fetch::Topic<'a>>>,
     curr_topic: &'a str,
     partitions: Option<slice::Iter<'a, fetch::Partition<'a>>>,
+}
+
+pub fn flatten_messages<'a>(dest: &mut Vec<&'a Message<'a>>, msgs: impl Iterator<Item = &'a MessageWrapper<'a>>) {
+    for msg in msgs {
+        match msg {
+            MessageWrapper::Message(m) => dest.push(m),
+            MessageWrapper::MessageSet(ms) => flatten_messages(dest, ms.messages.iter()),
+        }
+    }
 }
 
 impl<'a> Iterator for MessageSetsIter<'a> {
@@ -544,13 +554,16 @@ impl<'a> Iterator for MessageSetsIter<'a> {
                     }
                     Ok(pdata) => {
                         let msgs = pdata.messages();
+                        let mut messages = vec![];
+                        flatten_messages(&mut messages, msgs.iter());
+
                         if msgs.is_empty() {
                             continue;
                         } else {
                             return Some(MessageSet {
                                 topic: self.curr_topic,
                                 partition: p.partition(),
-                                messages: msgs,
+                                messages,
                             });
                         }
                     }
