@@ -310,6 +310,7 @@ impl<'a> Partition<'a> {
                 None => Ok(Data {
                     highwatermark_offset: highwatermark,
                     message_set: msgset,
+                    req_offset: proffs,
                 }),
             },
         })
@@ -333,6 +334,7 @@ impl<'a> Partition<'a> {
 /// The successfully fetched data payload for a particular partition.
 #[derive(Debug)]
 pub struct Data<'a> {
+    pub req_offset: i64,
     highwatermark_offset: i64,
     message_set: MessageSet<'a>,
 }
@@ -385,8 +387,7 @@ impl MessageWrapper<'_> {
 #[cfg_attr(test, derive(Clone, PartialEq))]
 #[derive(Debug)]
 pub struct MessageSet<'a> {
-    // #[allow(dead_code)]
-    raw_data: Cow<'a, [u8]>, // ~ this field is used to potentially "own" the underlying vector
+    _raw_data: Cow<'a, [u8]>, // ~ this field is used to potentially "own" the underlying vector
     pub messages: Vec<MessageWrapper<'a>>,
     last_offset: i64,
 }
@@ -440,7 +441,8 @@ impl<'a> MessageSet<'a> {
         }
 
         return Ok(MessageSet {
-            raw_data: Cow::Owned(data),
+            // TODO: replace with Pin<_>
+            _raw_data: Cow::Owned(data),
             messages: ms.messages,
             last_offset,
         });
@@ -469,21 +471,19 @@ impl<'a> MessageSet<'a> {
                             // skip messages with a lower offset
                             // than the request one
 
-                            if offset >= req_offset {
-                                let timestamp = pmsg.timestamp.map(|ts| {
-                                    if pmsg.attr & 0b1000 == 0 {
-                                        KafkaTimestamp::Create(ts)
-                                    } else {
-                                        KafkaTimestamp::LogAppend(ts)
-                                    }
-                                });
-                                messages.push(MessageWrapper::Message(Message {
-                                    offset,
-                                    key: pmsg.key,
-                                    value: pmsg.value,
-                                    timestamp,
-                                }));
-                            }
+                            let timestamp = pmsg.timestamp.map(|ts| {
+                                if pmsg.attr & 0b1000 == 0 {
+                                    KafkaTimestamp::Create(ts)
+                                } else {
+                                    KafkaTimestamp::LogAppend(ts)
+                                }
+                            });
+                            messages.push(MessageWrapper::Message(Message {
+                                offset,
+                                key: pmsg.key,
+                                value: pmsg.value,
+                                timestamp,
+                            }));
                         }
                         #[cfg(feature = "gzip")]
                         c if c == Compression::GZIP as i8 => {
@@ -506,7 +506,7 @@ impl<'a> MessageSet<'a> {
         }
 
         Ok(MessageSet {
-            raw_data: Cow::Borrowed(raw_data),
+            _raw_data: Cow::Borrowed(raw_data),
             last_offset: messages.last().map(|m| m.last_offset()).unwrap_or(0),
             messages,
         })
@@ -627,7 +627,7 @@ mod tests {
             }
         }
         let mut ret = vec![];
-        flatten_messages(&mut ret, all_msgs.iter().cloned());
+        flatten_messages(&mut ret, 0, all_msgs.iter().cloned());
         ret
     }
 

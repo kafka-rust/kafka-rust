@@ -530,11 +530,15 @@ pub struct MessageSetsIter<'a> {
     partitions: Option<slice::Iter<'a, fetch::Partition<'a>>>,
 }
 
-pub fn flatten_messages<'a>(dest: &mut Vec<&'a Message<'a>>, msgs: impl Iterator<Item = &'a MessageWrapper<'a>>) {
+pub fn flatten_messages<'a>(dest: &mut Vec<&'a Message<'a>>, min_offset: i64, msgs: impl Iterator<Item = &'a MessageWrapper<'a>>) {
     for msg in msgs {
         match msg {
-            MessageWrapper::Message(m) => dest.push(m),
-            MessageWrapper::MessageSet(ms) => flatten_messages(dest, ms.messages.iter()),
+            MessageWrapper::Message(m) => {
+                if m.offset >= min_offset {
+                    dest.push(m);
+                }
+            } 
+            MessageWrapper::MessageSet(ms) => flatten_messages(dest, min_offset, ms.messages.iter()),
         }
     }
 }
@@ -555,7 +559,7 @@ impl<'a> Iterator for MessageSetsIter<'a> {
                     Ok(pdata) => {
                         let msgs = pdata.messages();
                         let mut messages = vec![];
-                        flatten_messages(&mut messages, msgs.iter());
+                        flatten_messages(&mut messages, pdata.req_offset, msgs.iter());
 
                         if msgs.is_empty() {
                             continue;
