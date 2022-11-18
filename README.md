@@ -12,8 +12,8 @@ Welcome to kafka-rust's new home: https://github.com/kafka-rust
 
 ## Documentation
 
-- This library is primarily documented through examples in its [APIdocumentation](https://docs.rs/kafka/).
-- Documentation about Kafka itself can be found at [its projecthome page](http://kafka.apache.org/).
+- This library is primarily documented through examples in its [API documentation](https://docs.rs/kafka/).
+- Documentation about Kafka itself can be found at [its project home page](http://kafka.apache.org/).
 
 ## Sponsors
 
@@ -55,7 +55,7 @@ kafka = "0.9"
 
 To build kafka-rust the usual `cargo build` should suffice. The crate
 supports various features which can be turned off at compile time.
-See kafka-rust's `Cargo.toml` and [cargo'sdocumentation](http://doc.crates.io/manifest.html#the-features-section).
+See kafka-rust's `Cargo.toml` and [cargo's documentation](http://doc.crates.io/manifest.html#the-features-section).
 
 ## Supported Kafka version
 
@@ -64,9 +64,9 @@ not all features from Kafka 0.9 and newer are supported yet.
 
 ## Examples
 
-As mentioned, the [cargo generateddocumentation](https://docs.rs/kafka/) contains some examples.
+As mentioned, the [cargo generated documentation](https://docs.rs/kafka/) contains some examples.
 Further, standalone, compilable example programs are provided in the
-[examples directory of therepository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
+[examples directory of the repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
 
 ## Consumer
 
