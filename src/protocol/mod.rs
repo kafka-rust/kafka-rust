@@ -85,9 +85,18 @@ fn test_kafka_code_from_protocol() {
     }
 
     assert!(KafkaCode::from_protocol(0).is_none());
-    assert_kafka_code!(KafkaCode::OffsetOutOfRange, KafkaCode::OffsetOutOfRange as i16);
-    assert_kafka_code!(KafkaCode::IllegalGeneration, KafkaCode::IllegalGeneration as i16);
-    assert_kafka_code!(KafkaCode::UnsupportedVersion, KafkaCode::UnsupportedVersion as i16);
+    assert_kafka_code!(
+        KafkaCode::OffsetOutOfRange,
+        KafkaCode::OffsetOutOfRange as i16
+    );
+    assert_kafka_code!(
+        KafkaCode::IllegalGeneration,
+        KafkaCode::IllegalGeneration as i16
+    );
+    assert_kafka_code!(
+        KafkaCode::UnsupportedVersion,
+        KafkaCode::UnsupportedVersion as i16
+    );
     assert_kafka_code!(KafkaCode::Unknown, KafkaCode::Unknown as i16);
     // ~ test some un mapped non-zero codes; should all map to "unknown"
     assert_kafka_code!(KafkaCode::Unknown, i16::MAX);

@@ -3,7 +3,7 @@ use kafka::error::Error as KafkaError;
 
 /// This program demonstrates consuming messages through a `Consumer`.
 /// This is a convenient client that will fit most use cases.  Note
-/// that messages must be marked and commited as consumed to ensure
+/// that messages must be marked and committed as consumed to ensure
 /// only once delivery.
 fn main() {
     tracing_subscriber::fmt::init();
@@ -34,7 +34,13 @@ fn consume_messages(group: String, topic: String, brokers: Vec<String>) -> Resul
 
         for ms in mss.iter() {
             for m in ms.messages() {
-                println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
+                println!(
+                    "{}:{}@{}: {:?}",
+                    ms.topic(),
+                    ms.partition(),
+                    m.offset,
+                    m.value
+                );
             }
             let _ = con.consume_messageset(ms);
         }

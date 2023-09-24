@@ -127,7 +127,11 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
     // ~ print header line
     if cfg.header {
         use std::fmt::Write;
-        let _ = write!(out_buf, "{1:0$} {2:4} {3:4}", topic_width, "topic", "p-id", "l-id");
+        let _ = write!(
+            out_buf,
+            "{1:0$} {2:4} {3:4}",
+            topic_width, "topic", "p-id", "l-id"
+        );
         if cfg.host {
             let _ = write!(out_buf, " {1:>0$}", host_width, "(l-host)");
         }
@@ -170,8 +174,11 @@ fn dump_metadata(cfg: Config) -> Result<(), String> {
                         .leader()
                         .map(|b| (b.id(), b.host()))
                         .unwrap_or((-1, ""));
-                    let _ =
-                        write!(out_buf, "{1:0$} {2:>4} {3:>4}", topic_width, topic, pi, leader_id);
+                    let _ = write!(
+                        out_buf,
+                        "{1:0$} {2:>4} {3:>4}",
+                        topic_width, topic, pi, leader_id
+                    );
                     if cfg.host {
                         fmt_buf.clear();
                         let _ = write!(fmt_buf, "({})", leader_host);
@@ -212,7 +219,12 @@ impl Config {
         let mut opts = getopts::Options::new();
         opts.optflag("h", "help", "Print this help screen");
         opts.optflag("", "no-header", "Don't print headers");
-        opts.optopt("", "brokers", "Specify kafka brokers (comma separated)", "HOSTS");
+        opts.optopt(
+            "",
+            "brokers",
+            "Specify kafka brokers (comma separated)",
+            "HOSTS",
+        );
         opts.optopt("", "topics", "Specify topics (comma separated)", "NAMES");
         opts.optflag("", "no-host", "Don't print host:port of leaders");
         opts.optflag("", "no-size", "Don't print partition sizes");

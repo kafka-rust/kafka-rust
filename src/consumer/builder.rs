@@ -77,7 +77,7 @@ impl Builder {
     }
 
     /// Specifies a topic to consume. All of the available partitions
-    /// of the identified topic will be consumed unless overriden
+    /// of the identified topic will be consumed unless overridden
     /// later using `with_topic_partitions`.
     ///
     /// This method may be called multiple times to assign the
@@ -92,7 +92,7 @@ impl Builder {
 
     /// Explicitly specifies topic partitions to consume. Only the
     /// specified partitions for the identified topic will be consumed
-    /// unless overriden later using `with_topic`.
+    /// unless overridden later using `with_topic`.
     ///
     /// This method may be called multiple times to subscribe to
     /// multiple topics.
@@ -228,7 +228,10 @@ impl Builder {
         // ~ create the client if necessary
         let (mut client, need_metadata) = match self.client {
             Some(client) => (client, false),
-            None => (Self::new_kafka_client(self.hosts, self.security_config), true),
+            None => (
+                Self::new_kafka_client(self.hosts, self.security_config),
+                true,
+            ),
         };
         // ~ apply configuration settings
         client.set_fetch_max_wait_time(self.fetch_max_wait_time)?;
@@ -250,7 +253,10 @@ impl Builder {
             retry_max_bytes_limit: self.retry_max_bytes_limit,
         };
         let state = State::new(&mut client, &config, assignment::from_map(self.assignments))?;
-        debug!("initialized: Consumer {{ config: {:?}, state: {:?} }}", config, state);
+        debug!(
+            "initialized: Consumer {{ config: {:?}, state: {:?} }}",
+            config, state
+        );
         Ok(Consumer {
             client,
             state,

@@ -44,7 +44,7 @@ pub struct Broker {
 }
 
 impl Broker {
-    /// Retrives the node_id of this broker as identified with the
+    /// Retrieves the node_id of this broker as identified with the
     /// remote Kafka cluster.
     #[inline]
     pub fn id(&self) -> i32 {
@@ -374,7 +374,10 @@ impl ClientState {
         group: &str,
         gc: &protocol::GroupCoordinatorResponse,
     ) -> &'a str {
-        debug!("set_group_coordinator: registering coordinator for '{}': {:?}", group, gc);
+        debug!(
+            "set_group_coordinator: registering coordinator for '{}': {:?}",
+            group, gc
+        );
 
         let group_host = format!("{}:{}", gc.host, gc.port);
         // ~ try to find an already existing broker

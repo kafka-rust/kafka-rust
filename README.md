@@ -12,11 +12,34 @@ Welcome to kafka-rust's new home: https://github.com/kafka-rust
 
 ## Documentation
 
-* This library is primarily documented through examples in its [API
-  documentation](https://docs.rs/kafka/).
-* Documentation about Kafka itself can be found at [its project
-home page](http://kafka.apache.org/).
+- This library is primarily documented through examples in its [APIdocumentation](https://docs.rs/kafka/).
+- Documentation about Kafka itself can be found at [its projecthome page](http://kafka.apache.org/).
 
+## Sponsors
+
+Thank you to our sponsors, this helps me to spend more time on this project and also helps with infrastructure
+
+<table>
+<tr>
+<td>
+  <img width="1000" height="0">
+    <a href="https://upstash.com/?utm_source=kafka-rust" >
+  <img src="https://raw.githubusercontent.com/upstash/sponsorship/master/kafka.png" alt="Upstash" width="260" align="right">
+  </a>
+
+<h3>Upstash: Serverless Kafka</h3>
+
+<ul>
+    <li>True Serverless Kafka with per-request-pricing</li>
+    <li>Managed Apache Kafka, works with all Kafka clients</li>
+    <li>Built-in REST API designed for serverless and edge functions</li>
+  </ul>
+
+[Start for free in 30 seconds!](https://upstash.com/?utm_source=kafka-rust)
+
+</td>
+</tr>
+</table>
 
 ## Installation
 
@@ -27,13 +50,12 @@ expect the version number to grow quickly).
 
 ```toml
 [dependencies]
-kafka = "0.8"
+kafka = "0.9"
 ```
 
 To build kafka-rust the usual `cargo build` should suffice. The crate
 supports various features which can be turned off at compile time.
-See kafka-rust's `Cargo.toml` and [cargo's
-documentation](http://doc.crates.io/manifest.html#the-features-section).
+See kafka-rust's `Cargo.toml` and [cargo'sdocumentation](http://doc.crates.io/manifest.html#the-features-section).
 
 ## Supported Kafka version
 
@@ -42,12 +64,9 @@ not all features from Kafka 0.9 and newer are supported yet.
 
 ## Examples
 
-As mentioned, the [cargo generated
-documentation](https://docs.rs/kafka/) contains some examples.
+As mentioned, the [cargo generateddocumentation](https://docs.rs/kafka/) contains some examples.
 Further, standalone, compilable example programs are provided in the
-[examples directory of the
-repository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
-
+[examples directory of therepository](https://github.com/spicavigo/kafka-rust/tree/master/examples).
 
 ## Consumer
 
@@ -57,15 +76,13 @@ support on behalf of a specified group. This is the API a client
 application of this library wants to use for receiving messages from
 Kafka.
 
-
 ## Producer
 
 This is a higher-level producer API for Kafka and is provided by the
 module `kafka::producer`. It provides convenient automatic partition
 assignment capabilities through partitioners. This is the API a
-client application of this library wants to use for sending messsages
+client application of this library wants to use for sending messages
 to Kafka.
-
 
 ## KafkaClient
 
@@ -75,13 +92,12 @@ suitable for building higher-level APIs. Applications typically want
 to use the already mentioned `Consumer` and `Producer`.
 Nevertheless, the main features or `KafkaClient` are:
 
-* Loading metadata
-* Fetching topic offsets
-* Sending messages
-* Fetching messages
-* Committing a consumer group's offsets
-* Fetching a consumer group's offsets
-
+- Loading metadata
+- Fetching topic offsets
+- Sending messages
+- Fetching messages
+- Committing a consumer group's offsets
+- Fetching a consumer group's offsets
 
 ## Bugs / Features / Contributing
 
@@ -102,7 +118,6 @@ When working locally, the integration tests require that you must have
 Docker (1.10.0+) and docker-compose (1.6.0+) installed and run the tests via the
 included `run-all-tests` script in the `tests` directory. See the `run-all-tests`
 script itself for details on its usage.
-
 
 ## Creating a topic
 
@@ -125,5 +140,5 @@ for more information.
 
 ## Alternative/Related projects
 
-* [rust-rdkafka](https://github.com/fede1024/rust-rdkafka) is an emerging alternative Kafka client library for Rust based on
+- [rust-rdkafka](https://github.com/fede1024/rust-rdkafka) is an emerging alternative Kafka client library for Rust based on
   `librdkafka`. rust-rdkafka provides a safe Rust interface to librdkafka.

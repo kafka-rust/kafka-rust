@@ -150,14 +150,14 @@ impl FetchOffset {
 
 // --------------------------------------------------------------------
 
-/// Defines the availale storage types to utilize when fetching or
-/// comitting group offsets.  See also `KafkaClient::set_group_offset_storage`.
+/// Defines the available storage types to utilize when fetching or
+/// committing group offsets.  See also `KafkaClient::set_group_offset_storage`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum GroupOffsetStorage {
     /// Zookeeper based storage (available as of kafka 0.8.1)
     Zookeeper,
     /// Kafka based storage (available as of Kafka 0.8.2). This is the
-    /// prefered method for groups to store their offsets at.
+    /// preferred method for groups to store their offsets at.
     Kafka,
 }
 
@@ -206,7 +206,7 @@ impl<'a> AsRef<FetchGroupOffset<'a>> for FetchGroupOffset<'a> {
 // --------------------------------------------------------------------
 
 /// Data point identifying a particular topic partition offset to be
-/// commited.
+/// committed.
 /// See `KafkaClient::commit_offsets`.
 #[derive(Debug)]
 pub struct CommitOffset<'a> {
@@ -241,7 +241,7 @@ impl<'a> AsRef<CommitOffset<'a>> for CommitOffset<'a> {
 /// `KafkaClient::produce_messages`.
 #[derive(Debug, Copy, Clone)]
 pub enum RequiredAcks {
-    /// Indicates to the receiving Kafka broker not to acknowlegde
+    /// Indicates to the receiving Kafka broker not to acknowledge
     /// messages sent to it at all. Sending messages with this
     /// acknowledgement requirement translates into a fire-and-forget
     /// scenario which - of course - is very fast but not reliable.
@@ -315,7 +315,7 @@ pub struct FetchPartition<'a> {
     pub partition: i32,
 
     /// Specifies the max. amount of data to fetch (for this
-    /// partition.)  This implicitely defines the biggest message the
+    /// partition.)  This implicitly defines the biggest message the
     /// client can accept.  If this value is too small, no messages
     /// can be delivered.  Setting this size should be in sync with
     /// the producers to the partition.
@@ -753,7 +753,7 @@ impl KafkaClient {
     /// create topics"
     /// enabled](https://kafka.apache.org/documentation.html#configuration),
     /// the remote kafka instance will create the yet missing topics
-    /// on the fly as a result of explicitely loading their metadata.
+    /// on the fly as a result of explicitly loading their metadata.
     /// This is in contrast to other methods of this `KafkaClient`
     /// which will silently filter out requests to
     /// not-yet-loaded/not-yet-known topics and, thus, not cause
@@ -953,8 +953,8 @@ impl KafkaClient {
     ///
     /// It takes a vector specifying the topic partitions and their
     /// offsets as of which to fetch messages.  Additionally, the
-    /// default "max fetch size per partition" can be explicitely
-    /// overriden if it is "defined" - this is, if `max_bytes` is
+    /// default "max fetch size per partition" can be explicitly
+    /// overridden if it is "defined" - this is, if `max_bytes` is
     /// greater than zero.
     ///
     /// The result is exposed in a raw, complicated manner but allows
@@ -1255,7 +1255,7 @@ impl KafkaClient {
     /// client.load_metadata_all().unwrap();
     /// let offsets = client.fetch_group_topic_offsets("my-group", "my-topic").unwrap();
     /// ```
-    pub fn fetch_group_topic_offsets(
+    pub fn fetch_group_topic_offset
         &mut self,
         group: &str,
         topic: &str,
@@ -1284,6 +1284,12 @@ impl KafkaClient {
             }
             None => Err(Error::UnsetOffsetStorage),
         }
+
+        Ok(
+            __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
+                .remove(topic)
+                .unwrap_or_default(),
+        )
     }
 }
 
@@ -1335,7 +1341,7 @@ fn __get_group_coordinator<'a>(
 ) -> Result<&'a str> {
     if let Some(host) = state.group_coordinator(group) {
         // ~ decouple the lifetimes to make borrowck happy;
-        // this is actually safe since we're immediatelly
+        // this is actually safe since we're immediately
         // returning this, so the follow up code is not
         // affected here
         return Ok(unsafe { mem::transmute(host) });
@@ -1349,7 +1355,10 @@ fn __get_group_coordinator<'a>(
         // try connecting to the user specified bootstrap server similar
         // to the way `load_metadata` works.
         let conn = conn_pool.get_conn_any(now).expect("available connection");
-        debug!("get_group_coordinator: asking for coordinator of '{}' on: {:?}", group, conn);
+        debug!(
+            "get_group_coordinator: asking for coordinator of '{}' on: {:?}",
+            group, conn
+        );
         let r = __send_receive_conn::<_, protocol::GroupCoordinatorResponse>(conn, &req)?;
         let retry_code = match r.into_result() {
             Ok(r) => {
@@ -1385,7 +1394,10 @@ fn __commit_offsets(
 
         let tps = {
             let host = __get_group_coordinator(req.group, state, conn_pool, config, now)?;
-            debug!("__commit_offsets: sending offset commit request '{:?}' to: {}", req, host);
+            debug!(
+                "__commit_offsets: sending offset commit request '{:?}' to: {}",
+                req, host
+            );
             __send_receive::<_, protocol::OffsetCommitResponse>(conn_pool, host, now, &req)?
                 .topic_partitions
         };
@@ -1401,7 +1413,10 @@ fn __commit_offsets(
                         break 'rproc;
                     }
                     Some(e @ KafkaCode::NotCoordinatorForGroup) => {
-                        debug!("commit_offsets: resetting group coordinator for '{}'", req.group);
+                        debug!(
+                            "commit_offsets: resetting group coordinator for '{}'",
+                            req.group
+                        );
                         state.remove_group_coordinator(req.group);
                         retry_code = Some(e);
                         break 'rproc;
@@ -1443,7 +1458,10 @@ fn __fetch_group_offsets(
 
         let r = {
             let host = __get_group_coordinator(req.group, state, conn_pool, config, now)?;
-            debug!("fetch_group_offsets: sending request {:?} to: {}", req, host);
+            debug!(
+                "fetch_group_offsets: sending request {:?} to: {}",
+                req, host
+            );
             __send_receive::<_, protocol::OffsetFetchResponse>(conn_pool, host, now, &req)?
         };
 
@@ -1474,7 +1492,7 @@ fn __fetch_group_offsets(
                         break 'rproc;
                     }
                     Err(e) => {
-                        // ~ immeditaly abort with the error
+                        // ~ immediately abort with the error
                         return Err(e);
                     }
                 }
@@ -1590,7 +1608,7 @@ fn __send_request<T: ToByte>(conn: &mut network::KafkaConnection, request: T) ->
     buffer.extend_from_slice(&[0, 0, 0, 0]);
     // ~ encode the request data
     request.encode(&mut buffer)?;
-    // ~ put the size of the request data into the reseved area
+    // ~ put the size of the request data into the reserved area
     let size = buffer.len() as i32 - 4;
     size.encode(&mut &mut buffer[..])?;
 

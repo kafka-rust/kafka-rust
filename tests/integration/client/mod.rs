@@ -175,7 +175,7 @@ fn test_commit_offset() {
 
         let partition_offsets: HashSet<PartitionOffset> = client
             .fetch_group_topic_offsets(TEST_GROUP_NAME, TEST_TOPIC_NAME)
-            .unwrap() // Already being unwraped
+            .unwrap() // Already being unwrapped
             .into_iter()
             .collect();
 

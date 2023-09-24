@@ -48,7 +48,11 @@ impl SecurityConfig {
 #[cfg(feature = "security")]
 impl fmt::Debug for SecurityConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SecurityConfig {{ verify_hostname: {} }}", self.verify_hostname)
+        write!(
+            f,
+            "SecurityConfig {{ verify_hostname: {} }}",
+            self.verify_hostname
+        )
     }
 }
 
@@ -70,7 +74,11 @@ impl<T> Pooled<T> {
 
 impl<T: fmt::Debug> fmt::Debug for Pooled<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Pooled {{ last_checkout: {:?}, item: {:?} }}", self.last_checkout, self.item)
+        write!(
+            f,
+            "Pooled {{ last_checkout: {:?}, item: {:?} }}",
+            self.last_checkout, self.item
+        )
     }
 }
 
@@ -186,14 +194,16 @@ impl Connections {
             conn.last_checkout = now;
             let kconn: &mut KafkaConnection = &mut conn.item;
             // ~ decouple the lifetimes to make the borrowck happy;
-            // this is safe since we're immediatelly returning the
+            // this is safe since we're immediately returning the
             // reference and the rest of the code in this method is
             // not affected
             return Ok(unsafe { mem::transmute(kconn) });
         }
         let cid = self.state.next_conn_id();
-        self.conns
-            .insert(host.to_owned(), Pooled::new(now, self.config.new_conn(cid, host)?));
+        self.conns.insert(
+            host.to_owned(),
+            Pooled::new(now, self.config.new_conn(cid, host)?),
+        );
         Ok(&mut self.conns.get_mut(host).unwrap().item)
     }
 

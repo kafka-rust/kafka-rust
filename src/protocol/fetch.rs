@@ -370,8 +370,11 @@ impl<'a> MessageSet<'a> {
         // further modifying it and providing
         // publicly no mutability possibilities
         // this is safe
-        let ms =
-            MessageSet::from_slice(unsafe { mem::transmute(&data[..]) }, req_offset, validate_crc)?;
+        let ms = MessageSet::from_slice(
+            unsafe { mem::transmute(&data[..]) },
+            req_offset,
+            validate_crc,
+        )?;
         return Ok(MessageSet {
             raw_data: Cow::Owned(data),
             messages: ms.messages,
@@ -597,8 +600,11 @@ mod tests {
     fn test_unsupported_compression_snappy() {
         let mut req = FetchRequest::new(0, "test", -1, -1);
         req.add("my-topic", 0, 0, -1);
-        let r =
-            Response::from_vec(FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(), Some(&req), false);
+        let r = Response::from_vec(
+            FETCH1_FETCH_RESPONSE_SNAPPY_K0821.to_owned(),
+            Some(&req),
+            false,
+        );
         assert!(match r {
             return Err(Error::UnsupportedCompression) => true,
             _ => false,
