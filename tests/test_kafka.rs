@@ -5,13 +5,6 @@ extern crate kafka;
 extern crate rand;
 
 #[cfg(feature = "integration_tests")]
-#[macro_use]
-extern crate log;
-
-#[cfg(feature = "integration_tests")]
-extern crate env_logger;
-
-#[cfg(feature = "integration_tests")]
 extern crate openssl;
 
 #[cfg(feature = "integration_tests")]
@@ -22,6 +15,9 @@ extern crate lazy_static;
 mod integration {
     use std;
     use std::collections::HashMap;
+
+    
+    use tracing::debug;
 
     use kafka::client::{Compression, GroupOffsetStorage, KafkaClient, SecurityConfig};
 
@@ -82,7 +78,7 @@ mod integration {
             KafkaClient::new(hosts)
         };
 
-        client.set_group_offset_storage(GroupOffsetStorage::Kafka);
+        client.set_group_offset_storage(Some(GroupOffsetStorage::Kafka));
 
         let compression = std::env::var(KAFKA_CLIENT_COMPRESSION).unwrap_or(String::from(""));
         let compression = COMPRESSIONS.get(&*compression).unwrap();

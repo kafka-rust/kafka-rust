@@ -59,7 +59,7 @@ See kafka-rust's `Cargo.toml` and [cargo'sdocumentation](http://doc.crates.io/ma
 
 ## Supported Kafka version
 
-`kafka-rust` is tested for compatibility with Kafka 0.8.2 and newer. However,
+`kafka-rust` is tested for compatibility with a select few Kafka versions from 0.8.2 to 3.1.0. However,
 not all features from Kafka 0.9 and newer are supported yet.
 
 ## Examples

@@ -6,7 +6,7 @@ use kafka::error::Error as KafkaError;
 /// that messages must be marked and committed as consumed to ensure
 /// only once delivery.
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let broker = "localhost:9092".to_owned();
     let topic = "my-topic".to_owned();
@@ -22,7 +22,7 @@ fn consume_messages(group: String, topic: String, brokers: Vec<String>) -> Resul
         .with_topic(topic)
         .with_group(group)
         .with_fallback_offset(FetchOffset::Earliest)
-        .with_offset_storage(GroupOffsetStorage::Kafka)
+        .with_offset_storage(Some(GroupOffsetStorage::Kafka))
         .create()?;
 
     loop {

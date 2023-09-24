@@ -3,12 +3,10 @@ use super::*;
 use kafka::error;
 use kafka::producer::Record;
 
-use env_logger;
-
 /// Tests that consuming one message works
 #[test]
 fn test_consumer_poll() {
-    let _ = env_logger::try_init();
+    tracing_subscriber::fmt::try_init();
 
     // poll once to set a position in the topic
     let mut consumer = test_consumer();
@@ -49,7 +47,7 @@ fn test_consumer_poll() {
 /// Test Consumer::commit_messageset
 #[test]
 fn test_consumer_commit_messageset() {
-    let _ = env_logger::try_init();
+    tracing_subscriber::fmt::try_init();
 
     let mut consumer = test_consumer();
 
@@ -131,7 +129,7 @@ fn test_consumer_commit_messageset() {
 /// message sets, nothing is committed.
 #[test]
 fn test_consumer_commit_messageset_no_consumes() {
-    let _ = env_logger::try_init();
+    tracing_subscriber::fmt::try_init();
 
     let mut consumer = test_consumer();
 

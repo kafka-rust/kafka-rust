@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate log;
-
 fn main() {
     example::main();
 }
@@ -9,6 +6,7 @@ fn main() {
 mod example {
     use kafka;
     use openssl;
+    use tracing::info;
 
     use std::env;
     use std::process;
@@ -18,7 +16,7 @@ mod example {
     use self::openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
 
     pub fn main() {
-        env_logger::init();
+        tracing_subscriber::fmt::init();
 
         // ~ parse the command line arguments
         let cfg = match Config::from_cmdline() {

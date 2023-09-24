@@ -30,7 +30,7 @@ pub struct Builder {
     retry_max_bytes_limit: i32,
     fetch_crc_validation: bool,
     security_config: Option<SecurityConfig>,
-    group_offset_storage: GroupOffsetStorage,
+    group_offset_storage: Option<GroupOffsetStorage>,
     conn_idle_timeout: Duration,
     client_id: Option<String>,
 }
@@ -154,7 +154,7 @@ impl Builder {
     }
 
     /// See `KafkaClient::set_group_offset_storage`
-    pub fn with_offset_storage(mut self, storage: GroupOffsetStorage) -> Builder {
+    pub fn with_offset_storage(mut self, storage: Option<GroupOffsetStorage>) -> Builder {
         self.group_offset_storage = storage;
         self
     }

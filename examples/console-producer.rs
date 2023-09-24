@@ -1,13 +1,12 @@
-use anyhow::{ensure, Result};
+use anyhow::{bail, ensure, Result};
 use std::fs::File;
-use std::io::{self, stderr, stdin, BufRead, BufReader, Write};
+use std::io::{stderr, stdin, BufRead, BufReader, Write};
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::time::Duration;
 use std::{env, process};
 
 use anyhow::anyhow;
-use kafka::Error;
 
 use kafka::client::{
     Compression, KafkaClient, RequiredAcks, DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS,
@@ -21,7 +20,7 @@ use kafka::producer::{AsBytes, Producer, Record, DEFAULT_ACK_TIMEOUT_MILLIS};
 /// Alternatively, messages can be read from an input file and sent do
 /// kafka in batches (the typical use-case).
 fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let cfg = match Config::from_cmdline() {
         Ok(cfg) => cfg,
@@ -216,13 +215,20 @@ impl Config {
             "MILLIS",
         );
 
+        macro_rules! on_error {
+            ($name:expr) => {{
+                let brief = format!("{} [options]", args[0]);
+                println!("{}", opts.usage(&brief));
+                bail!($name);
+            }};
+        }
+
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
-            Err(e) => return Err(anyhow!("Error {:?}", e)),
+            Err(e) => on_error!(format!("Error {:?}", e)),
         };
         if m.opt_present("help") {
-            let brief = format!("{} [options]", args[0]);
-            return Err(anyhow!("opts usage: {:?}", opts.usage(&brief)));
+            on_error!("help")
         }
         Ok(Config {
             brokers: m
