@@ -35,14 +35,14 @@
 //! links to such.
 //!
 //! A call to `.poll()` on the consumer will ask for the next
-//! available "chunk of data" for client code to process.  The
-//! returned data are `MessageSet`s - at most one for each partition
+//! available "chunk of data" for the client code to process.  The
+//! returned data are `MessageSet`s. There is at most one for each partition
 //! of the consumed topics. Individual messages are embedded in the
 //! retrieved messagesets and can be processed using the `messages()`
-//! iterator.  Due to this embedding, individual messages's lifetime
-//! is bound to the `MessageSet` they are part of. Typically, client
-//! code access the raw data/bytes, parses it into custom data types
-//! and passes that for further processing within the application.
+//! iterator.  Due to this embedding, an individual message's lifetime
+//! is bound to the `MessageSet` it is part of. Typically, client
+//! code accesses the raw data/bytes, parses it into custom data types,
+//! and passes that along for further processing within the application.
 //! Although inconvenient, this helps in reducing the number of
 //! allocations within the pipeline of processing incoming messages.
 //!
