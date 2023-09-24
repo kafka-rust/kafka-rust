@@ -1212,7 +1212,7 @@ impl KafkaClient {
     ///             .unwrap();
     /// ```
     ///
-    /// See also `KafkaClient::fetch_group_topic_offsets`.
+    /// See also `KafkaClient::fetch_group_topic_offset`.
     pub fn fetch_group_offsets<'a, J, I>(
         &mut self,
         group: &str,
@@ -1253,9 +1253,9 @@ impl KafkaClient {
     ///
     /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
-    /// let offsets = client.fetch_group_topic_offsets("my-group", "my-topic").unwrap();
+    /// let offsets = client.fetch_group_topic_offset("my-group", "my-topic").unwrap();
     /// ```
-    pub fn fetch_group_topic_offset
+    pub fn fetch_group_topic_offset(
         &mut self,
         group: &str,
         topic: &str,
@@ -1278,18 +1278,20 @@ impl KafkaClient {
                     }
                 }
 
-                Ok(__fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
-                    .remove(topic)
-                    .unwrap_or_default())
+                Ok(
+                    __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
+                        .remove(topic)
+                        .unwrap_or_default(),
+                )
             }
             None => Err(Error::UnsetOffsetStorage),
         }
 
-        Ok(
-            __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
-                .remove(topic)
-                .unwrap_or_default(),
-        )
+        // Ok(
+        //     __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
+        //         .remove(topic)
+        //         .unwrap_or_default(),
+        // )
     }
 }
 

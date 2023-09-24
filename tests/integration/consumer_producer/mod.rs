@@ -71,7 +71,7 @@ pub fn test_consumer_with_client(mut client: KafkaClient) -> Consumer {
 
     client.load_metadata_all(); // Why unwrap ?
     let partition_offsets: HashSet<PartitionOffset> = client
-        .fetch_group_topic_offsets(TEST_GROUP_NAME, TEST_TOPIC_NAME)
+        .fetch_group_topic_offset(TEST_GROUP_NAME, TEST_TOPIC_NAME)
         .unwrap()
         .into_iter()
         .collect();
@@ -106,7 +106,7 @@ pub(crate) fn get_group_offsets(
     default_offset: Option<i64>,
 ) -> HashMap<i32, i64> {
     client
-        .fetch_group_topic_offsets(group, topic)
+        .fetch_group_topic_offset(group, topic)
         .unwrap()
         .iter()
         .map(|po| {

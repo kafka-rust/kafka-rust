@@ -131,7 +131,7 @@ impl State {
 
         if !group.is_empty() {
             // ~ get the current group offsets
-            let groups = client.fetch_group_topic_offsets(group, topic)?;
+            let groups = client.fetch_group_topic_offset(group, topic)?;
             for g in groups {
                 let off = self
                     .offsets

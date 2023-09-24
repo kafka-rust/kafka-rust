@@ -174,7 +174,7 @@ fn test_commit_offset() {
         client.commit_offset(TEST_GROUP_NAME, TEST_TOPIC_NAME, partition, offset);
 
         let partition_offsets: HashSet<PartitionOffset> = client
-            .fetch_group_topic_offsets(TEST_GROUP_NAME, TEST_TOPIC_NAME)
+            .fetch_group_topic_offset(TEST_GROUP_NAME, TEST_TOPIC_NAME)
             .unwrap() // Already being unwrapped
             .into_iter()
             .collect();
@@ -232,7 +232,7 @@ fn test_commit_offsets() {
         client.commit_offsets(TEST_GROUP_NAME, commit_pair); // why unwrap ??
 
         let partition_offsets: HashSet<PartitionOffset> = client
-            .fetch_group_topic_offsets(TEST_GROUP_NAME, TEST_TOPIC_NAME)
+            .fetch_group_topic_offset(TEST_GROUP_NAME, TEST_TOPIC_NAME)
             .unwrap()
             .into_iter()
             .collect();
