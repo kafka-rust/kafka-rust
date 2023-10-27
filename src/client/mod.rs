@@ -15,7 +15,9 @@ use std::time::{Duration, Instant};
 
 // pub re-export
 pub use crate::compression::Compression;
+use crate::protocol::list_offset::ListOffsetVersion;
 pub use crate::utils::PartitionOffset;
+use crate::utils::TimestampedPartitionOffset;
 
 #[cfg(feature = "security")]
 pub use self::network::SecurityConfig;
@@ -908,6 +910,110 @@ impl KafkaClient {
             }
         }
 
+        Ok(res)
+    }
+
+    /// Fetch offsets for a list of topics
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use kafka::client::KafkaClient;
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.load_metadata_all().unwrap();
+    /// let topics = vec!["test-topic".to_string()];
+    /// let offsets = client.list_offsets(&s, FetchOffset::ByTime(1698425676797));
+    /// ```
+    ///
+    /// Returns a mapping of topic name to `TimestampedPartitionOffset`s.
+    /// Each entry in the vector represents the timestamp, and the corresponding offset,
+    /// that Kafka finds to be the first message with timestamp *later* than the passed in
+    /// FetchOffset parameter.
+    /// example: Ok({"test-topic": [TimestampedPartitionOffset { offset: 20, partition: 0, time: 1698425676798 } ]
+    /// Note that the message might not be exactly at the given timestamp.
+    pub fn list_offsets<T: AsRef<str>>(
+        &mut self,
+        topics: &[T],
+        offset: FetchOffset,
+    ) -> Result<HashMap<String, Vec<TimestampedPartitionOffset>>> {
+        let api_ver = ListOffsetVersion::V1;
+        let time = offset.to_kafka_value();
+        let n_topics = topics.len();
+
+        let state = &mut self.state;
+        let correlation = state.next_correlation_id();
+
+        // Map topic and partition to the corresponding broker
+        let config = &self.config;
+        let mut reqs: HashMap<&str, protocol::ListOffsetsRequest<'_>> =
+            HashMap::with_capacity(n_topics);
+        for topic in topics {
+            let topic = topic.as_ref();
+            if let Some(ps) = state.partitions_for(topic) {
+                for (id, host) in ps
+                    .iter()
+                    .filter_map(|(id, p)| p.broker(state).map(|b| (id, b.host())))
+                {
+                    let entry = reqs.entry(host).or_insert_with(|| {
+                        protocol::ListOffsetsRequest::new(correlation, api_ver, &config.client_id)
+                    });
+                    entry.add(topic, id, time);
+                }
+            }
+        }
+
+        // Call each broker with the request formed earlier
+        let now = Instant::now();
+        let mut res: HashMap<String, Vec<TimestampedPartitionOffset>> =
+            HashMap::with_capacity(n_topics);
+        for (host, req) in reqs {
+            let resp = __send_receive::<_, protocol::ListOffsetsResponse>(
+                &mut self.conn_pool,
+                host,
+                now,
+                req,
+            )?;
+            for tp in resp.topics {
+                let mut entry = res.entry(tp.topic);
+                let mut new_resp_offsets = None;
+                let mut err = None;
+                // Use an explicit scope here to allow insertion into a vacant entry
+                // below
+                {
+                    let resp_offsets = match entry {
+                        hash_map::Entry::Occupied(ref mut e) => e.get_mut(),
+                        hash_map::Entry::Vacant(_) => {
+                            new_resp_offsets = Some(Vec::new());
+                            new_resp_offsets.as_mut().unwrap()
+                        }
+                    };
+                    for p in tp.partitions {
+                        let pto: TimestampedPartitionOffset = match p.to_offset() {
+                            Ok(po) => po,
+                            Err(code) => {
+                                err = Some((p.partition, code));
+                                break;
+                            }
+                        };
+                        resp_offsets.push(pto);
+                    }
+                }
+                if let Some((partition, code)) = err {
+                    let topic = KafkaClient::get_key_from_entry(entry);
+                    return Err(Error::TopicPartitionError {
+                        topic_name: topic,
+                        partition_id: partition,
+                        error_code: code,
+                    });
+                }
+                if let hash_map::Entry::Vacant(e) = entry {
+                    // unwrap is ok because if it is Vacant, it would have
+                    // been made into a Some above
+                    e.insert(new_resp_offsets.unwrap());
+                }
+            }
+        }
         Ok(res)
     }
 
