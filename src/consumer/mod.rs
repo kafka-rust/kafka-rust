@@ -70,6 +70,7 @@ use crate::error::{Error, KafkaCode, Result};
 
 // public re-exports
 pub use self::builder::Builder;
+use self::state::TopicPartition;
 pub use crate::client::fetch::Message;
 pub use crate::client::FetchOffset;
 pub use crate::client::GroupOffsetStorage;
@@ -168,6 +169,61 @@ impl Consumer {
     /// The empty group name specifies a group-less consumer.
     pub fn group(&self) -> &str {
         &self.config.group
+    }
+
+    /// Convenient method to allow consumer to manually reposition to a set of
+    /// topic, partition and offset.
+    /// let mut client: KafkaClient = KafkaClient::new(vec!["kafka.test.fio.drw:9092".to_string()]);
+    /// # Examples
+    ///
+    /// ```no_run
+    ///
+    /// let mut consumer: Consumer = Consumer::from_hosts(vec!["localhost:9092".to_string()])
+    ///     .with_topic("test-topic".to_string())
+    ///     .with_fallback_offset(FetchOffset::Latest)
+    ///     .with_offset_storage(Some(GroupOffsetStorage::Kafka))
+    ///     .create()
+    ///     .unwrap();
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.load_metadata_all().unwrap();
+    /// let tpos = client.list_offsets(&s, FetchOffset::ByTime(1698425676797)).unwrap();
+    /// let seek_results: Vec<Result<(), Error>> = res
+    ///     .unwrap()
+    ///     .into_iter()
+    ///     .flat_map(|topic, partition_offsets) {
+    ///         partition_offsets.into_iter()
+    ///             .map(move |po| topic.clone(), po.partition, po.offset))
+    ///     })
+    ///     .map(|topic, partition, offset| consumer.seek(topic.as_str(), partition, offset))
+    ///     .collect()
+    /// ```
+    ///
+    /// This makes the consumer resets its fetch offsets to the nearest offsets after the
+    /// timestamp.
+    pub fn seek(&mut self, topic: &str, partition: i32, offset: i64) -> Result<()> {
+        let topic_ref = self.state.topic_ref(topic);
+        match topic_ref {
+            Some(topic_ref) => {
+                let tp = TopicPartition {
+                    topic_ref,
+                    partition,
+                };
+                let maybe_entry = self.state.fetch_offsets.entry(tp);
+                match maybe_entry {
+                    Entry::Occupied(mut e) => {
+                        e.get_mut().offset = offset;
+                        Ok(())
+                    }
+                    Entry::Vacant(_) => Err(Error::TopicPartitionError {
+                        topic_name: topic.to_string(),
+                        partition_id: partition,
+                        error_code: KafkaCode::UnknownTopicOrPartition,
+                    }),
+                }
+            }
+            None => Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+        }
     }
 
     // ~ returns (number partitions queried, fecth responses)
