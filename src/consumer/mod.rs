@@ -252,7 +252,7 @@ impl Consumer {
                     // XXX need to prevent updating fetch_offsets in case we're gonna fail here
                     let data = p.data()?;
 
-                    let mut fetch_state = self
+                    let fetch_state = self
                         .state
                         .fetch_offsets
                         .get_mut(&tp)
