@@ -35,11 +35,12 @@ fn consume_messages(group: String, topic: String, brokers: Vec<String>) -> Resul
         for ms in mss.iter() {
             for m in ms.messages() {
                 println!(
-                    "{}:{}@{}: {:?}",
+                    "{}:{}@{} ({:?}): {:?}",
                     ms.topic(),
                     ms.partition(),
                     m.offset,
-                    m.value
+                    m.timestamp,
+                    std::str::from_utf8(m.value),
                 );
             }
             let _ = con.consume_messageset(ms);

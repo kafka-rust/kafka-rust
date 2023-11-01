@@ -44,8 +44,9 @@ const API_KEY_OFFSET_COMMIT: i16 = 8;
 const API_KEY_OFFSET_FETCH: i16 = 9;
 const API_KEY_GROUP_COORDINATOR: i16 = 10;
 
-// the default version of Kafka API we are requesting
-const API_VERSION: i16 = 0;
+// the default versions of Kafka API we are requesting
+const API_VERSION: i16 = 1;
+const API_VERSION_FETCH: i16 = 2;
 
 // --------------------------------------------------------------------
 

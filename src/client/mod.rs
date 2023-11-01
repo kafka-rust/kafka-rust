@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 // pub re-export
 pub use crate::compression::Compression;
 pub use crate::utils::PartitionOffset;
+pub use crate::protocol::fetch::KafkaTimestamp;
 
 #[cfg(feature = "security")]
 pub use self::network::SecurityConfig;

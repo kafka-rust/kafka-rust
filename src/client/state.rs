@@ -439,21 +439,25 @@ mod tests {
     fn metadata_response_initial() -> protocol::MetadataResponse {
         protocol::MetadataResponse {
             header: protocol::HeaderResponse { correlation: 1 },
+            controller_id: 10,
             brokers: vec![
                 md::BrokerMetadata {
                     node_id: 10,
                     host: "gin1.dev".to_owned(),
                     port: 1234,
+                    rack: "".to_owned(),
                 },
                 md::BrokerMetadata {
                     node_id: 50,
                     host: "gin2.dev".to_owned(),
                     port: 9876,
+                    rack: "".to_owned(),
                 },
                 md::BrokerMetadata {
                     node_id: 30,
                     host: "gin3.dev".to_owned(),
                     port: 9092,
+                    rack: "".to_owned(),
                 },
             ],
             topics: vec![
@@ -467,6 +471,7 @@ mod tests {
                         new_partition(3, -1),
                         new_partition(4, 50),
                     ],
+                    is_internal: false,
                 },
                 md::TopicMetadata {
                     error: 0,
@@ -477,11 +482,13 @@ mod tests {
                         new_partition(2, -1),
                         new_partition(3, 10),
                     ],
+                    is_internal: false,
                 },
                 md::TopicMetadata {
                     error: 0,
                     topic: "tee-three".to_owned(),
                     partitions: vec![],
+                    is_internal: false,
                 },
             ],
         }
@@ -555,11 +562,13 @@ mod tests {
     fn metadata_response_update() -> protocol::MetadataResponse {
         protocol::MetadataResponse {
             header: protocol::HeaderResponse { correlation: 2 },
+            controller_id: 10,
             brokers: vec![
                 md::BrokerMetadata {
                     node_id: 10,
                     host: "gin1.dev".to_owned(),
                     port: 1234,
+                    rack: "".to_owned(),
                 },
                 // note: compared to the initial metadata
                 // response this broker moved to a different
@@ -568,11 +577,13 @@ mod tests {
                     node_id: 50,
                     host: "aladin1.dev".to_owned(),
                     port: 9091,
+                    rack: "".to_owned(),
                 },
                 md::BrokerMetadata {
                     node_id: 30,
                     host: "gin3.dev".to_owned(),
                     port: 9092,
+                    rack: "".to_owned(),
                 },
             ],
             // metadata for topic "tee-two" only
@@ -586,6 +597,7 @@ mod tests {
                     new_partition(3, -1),
                     new_partition(4, 30),
                 ],
+                is_internal: false,
             }],
         }
     }
