@@ -1,6 +1,5 @@
 use std::io::{Read, Write};
 
-use crate::codecs::{self, FromByte, ToByte};
 use crate::error::{self, Error, KafkaCode, Result};
 use crate::utils::PartitionOffset;
 
