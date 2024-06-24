@@ -32,7 +32,7 @@ fn consume_messages(group: String, topic: String, brokers: Vec<String>) -> Resul
             return Ok(());
         }
 
-        for ms in mss.iter() {
+        for ms in mss.into_iter() {
             for m in ms.messages() {
                 println!(
                     "{}:{}@{}: {:?}",
@@ -42,7 +42,7 @@ fn consume_messages(group: String, topic: String, brokers: Vec<String>) -> Resul
                     m.value
                 );
             }
-            let _ = con.consume_messageset(ms);
+            let _ = con.consume_messageset(&ms);
         }
         con.commit_consumed()?;
     }

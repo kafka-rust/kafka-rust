@@ -21,7 +21,10 @@ fn main() {
             process::exit(1);
         }
     };
-    info!("Starting consumer with the following configuration: {:?}", cfg);
+    info!(
+        "Starting consumer with the following configuration: {:?}",
+        cfg
+    );
 
     if let Err(e) = process(cfg) {
         error!("{}", e);
@@ -51,7 +54,7 @@ fn process(cfg: Config) -> Result<()> {
     let mut buf = Vec::with_capacity(1024);
 
     loop {
-        for ms in c.poll().unwrap().iter() {
+        for ms in c.poll().unwrap().into_iter() {
             for m in ms.messages() {
                 // ~ clear the output buffer
                 unsafe { buf.set_len(0) };
@@ -62,7 +65,7 @@ fn process(cfg: Config) -> Result<()> {
                 // ~ write to output channel
                 stdout.write_all(&buf)?;
             }
-            let _ = c.consume_messageset(ms);
+            let _ = c.consume_messageset(&ms);
         }
         if cfg.commit {
             c.commit_consumed()?;
@@ -99,7 +102,12 @@ impl Config {
         opts.optopt("", "group", "Specify the consumer group", "NAME");
 
         opts.optflag("", "commit", "Commit group offsets");
-        opts.optopt("", "storage", "Specify the offset store [zookeeper, kafka]", "STORE");
+        opts.optopt(
+            "",
+            "storage",
+            "Specify the offset store [zookeeper, kafka]",
+            "STORE",
+        );
 
         opts.optflag(
             "",
@@ -122,7 +130,10 @@ impl Config {
         let m = match opts.parse(&args[1..]) {
             Ok(m) => m,
             Err(e) => {
-                on_error!(format!("argument parsing encountered an error: {}", e.to_string()))
+                on_error!(format!(
+                    "argument parsing encountered an error: {}",
+                    e.to_string()
+                ))
             }
         };
         if m.opt_present("help") {

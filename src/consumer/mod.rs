@@ -24,7 +24,7 @@
 //!     for m in ms.messages() {
 //!       println!("{:?}", m);
 //!     }
-//!     consumer.consume_messageset(ms);
+//!     consumer.consume_messageset(&ms);
 //!   }
 //!   consumer.commit_consumed().unwrap();
 //! }
@@ -67,6 +67,7 @@ use std::slice;
 use crate::client::fetch;
 use crate::client::{CommitOffset, FetchPartition, KafkaClient};
 use crate::error::{Error, KafkaCode, Result};
+use crate::protocol;
 
 // public re-exports
 pub use self::builder::Builder;
@@ -100,33 +101,39 @@ pub struct Consumer {
 
 impl Consumer {
     /// Starts building a consumer using the given kafka client.
+    #[must_use]
     pub fn from_client(client: KafkaClient) -> Builder {
         builder::new(Some(client), Vec::new())
     }
 
     /// Starts building a consumer bootstraping internally a new kafka
     /// client from the given kafka hosts.
+    #[must_use]
     pub fn from_hosts(hosts: Vec<String>) -> Builder {
         builder::new(None, hosts)
     }
 
     /// Borrows the underlying kafka client.
+    #[must_use]
     pub fn client(&self) -> &KafkaClient {
         &self.client
     }
 
     /// Borrows the underlying kafka client as mut.
+    #[must_use]
     pub fn client_mut(&mut self) -> &mut KafkaClient {
         &mut self.client
     }
 
     /// Destroys this consumer returning back the underlying kafka client.
+    #[must_use]
     pub fn into_client(self) -> KafkaClient {
         self.client
     }
 
     /// Retrieves the topic partitions being currently consumed by
     /// this consumer.
+    #[must_use]
     pub fn subscriptions(&self) -> HashMap<String, Vec<i32>> {
         // ~ current subscriptions are reflected by
         // `self.state.fetch_offsets` see `self.fetch_messages()`.
@@ -160,12 +167,14 @@ impl Consumer {
 
     /// Determines whether this consumer is set up to consume only a
     /// single topic partition.
+    #[must_use]
     fn single_partition_consumer(&self) -> bool {
         self.state.fetch_offsets.len() == 1
     }
 
     /// Retrieves the group on which behalf this consumer is acting.
     /// The empty group name specifies a group-less consumer.
+    #[must_use]
     pub fn group(&self) -> &str {
         &self.config.group
     }
@@ -175,41 +184,37 @@ impl Consumer {
         // ~ if there's a retry partition ... fetch messages just for
         // that one. Otherwise try to fetch messages for all assigned
         // partitions.
-        match self.state.retry_partitions.pop_front() {
-            Some(tp) => {
-                let s = match self.state.fetch_offsets.get(&tp) {
-                    Some(fstate) => fstate,
-                    None => return (1, Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition))),
-                };
-                let topic = self.state.topic_name(tp.topic_ref);
-                debug!(
-                    "fetching retry messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
-                    topic, tp.partition, s
-                );
-                (
-                    1,
-                    self.client.fetch_messages_for_partition(
-                        &FetchPartition::new(topic, tp.partition, s.offset)
-                            .with_max_bytes(s.max_bytes),
-                    ),
-                )
-            }
-            None => {
-                let client = &mut self.client;
-                let state = &self.state;
-                debug!(
-                    "fetching messages: (fetch-offsets: {:?})",
-                    state.fetch_offsets_debug()
-                );
-                let reqs = state.fetch_offsets.iter().map(|(tp, s)| {
-                    let topic = state.topic_name(tp.topic_ref);
-                    FetchPartition::new(topic, tp.partition, s.offset).with_max_bytes(s.max_bytes)
-                });
-                (
-                    state.fetch_offsets.len() as u32,
-                    client.fetch_messages(reqs),
-                )
-            }
+        if let Some(tp) = self.state.retry_partitions.pop_front() {
+            let Some(s) = self.state.fetch_offsets.get(&tp) else {
+                return (1, Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)));
+            };
+
+            let topic = self.state.topic_name(tp.topic_ref);
+            debug!(
+                "fetching retry messages: (fetch-offset: {{\"{}:{}\": {:?}}})",
+                topic, tp.partition, s
+            );
+            (
+                1,
+                self.client.fetch_messages_for_partition(
+                    &FetchPartition::new(topic, tp.partition, s.offset).with_max_bytes(s.max_bytes),
+                ),
+            )
+        } else {
+            let client = &mut self.client;
+            let state = &self.state;
+            debug!(
+                "fetching messages: (fetch-offsets: {:?})",
+                state.fetch_offsets_debug()
+            );
+            let reqs = state.fetch_offsets.iter().map(|(tp, s)| {
+                let topic = state.topic_name(tp.topic_ref);
+                FetchPartition::new(topic, tp.partition, s.offset).with_max_bytes(s.max_bytes)
+            });
+            (
+                state.fetch_offsets.len() as u32,
+                client.fetch_messages(reqs),
+            )
         }
     }
 
@@ -325,7 +330,7 @@ impl Consumer {
                             if !single_partition_consumer {
                                 // ~ mark this partition for a retry on its own
                                 debug!("rescheduled for retry: {}:{}", t.topic(), tp.partition);
-                                retry_partitions.push_back(tp)
+                                retry_partitions.push_back(tp);
                             }
                         }
                     }
@@ -347,6 +352,7 @@ impl Consumer {
     /// Retrieves the offset of the last "consumed" message in the
     /// specified partition. Results in `None` if there is no such
     /// "consumed" message.
+    #[must_use]
     pub fn last_consumed_message(&self, topic: &str, partition: i32) -> Option<i64> {
         self.state
             .topic_ref(topic)
@@ -371,10 +377,11 @@ impl Consumer {
     /// Results in an error if the specified topic partition is not
     /// being consumed by this consumer.
     pub fn consume_message(&mut self, topic: &str, partition: i32, offset: i64) -> Result<()> {
-        let topic_ref = match self.state.topic_ref(topic) {
-            None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
-            Some(topic_ref) => topic_ref,
-        };
+        let topic_ref = self
+            .state
+            .topic_ref(topic)
+            .ok_or_else(|| Error::Kafka(KafkaCode::UnknownTopicOrPartition))?;
+
         let tp = state::TopicPartition {
             topic_ref,
             partition,
@@ -400,13 +407,9 @@ impl Consumer {
     /// A convenience method to mark the given message set consumed as a
     /// whole by the caller. This is equivalent to marking the last
     /// message of the given set as consumed.
-    pub fn consume_messageset(&mut self, msgs: MessageSet<'_>) -> Result<()> {
-        if !msgs.messages.is_empty() {
-            self.consume_message(
-                msgs.topic,
-                msgs.partition,
-                msgs.messages.last().unwrap().offset,
-            )
+    pub fn consume_messageset(&mut self, msgs: &MessageSet<'_>) -> Result<()> {
+        if let Some(last) = msgs.messages().last() {
+            self.consume_message(msgs.topic(), msgs.partition(), last.offset)
         } else {
             Ok(())
         }
@@ -471,25 +474,34 @@ pub struct MessageSets {
 impl MessageSets {
     /// Determines efficiently whether there are any consumeable
     /// messages in this data set.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.empty
     }
 
-    /// Iterates over the message sets delivering the fetched message
-    /// data of consumed topic partitions.
+    #[must_use]
     pub fn iter(&self) -> MessageSetsIter<'_> {
+        <&Self as IntoIterator>::into_iter(self)
+    }
+}
+
+/// Iterates over the message sets delivering the fetched message
+/// data of consumed topic partitions.
+impl<'a> IntoIterator for &'a MessageSets {
+    type Item = MessageSet<'a>;
+    type IntoIter = MessageSetsIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
         let mut responses = self.responses.iter();
         let mut topics = responses.next().map(|r| r.topics().iter());
         let (curr_topic, partitions) = topics
             .as_mut()
-            .and_then(|t| t.next())
-            .map_or((None, None), |t| {
-                (Some(t.topic()), Some(t.partitions().iter()))
-            });
+            .and_then(Iterator::next)
+            .map_or(("", None), |t| (t.topic(), Some(t.partitions().iter())));
         MessageSetsIter {
             responses,
             topics,
-            curr_topic: curr_topic.unwrap_or(""),
+            curr_topic,
             partitions,
         }
     }
@@ -505,16 +517,19 @@ pub struct MessageSet<'a> {
 
 impl<'a> MessageSet<'a> {
     #[inline]
+    #[must_use]
     pub fn topic(&self) -> &'a str {
         self.topic
     }
 
     #[inline]
+    #[must_use]
     pub fn partition(&self) -> i32 {
         self.partition
     }
 
     #[inline]
+    #[must_use]
     pub fn messages(&self) -> &'a [Message<'a>] {
         self.messages
     }
@@ -534,29 +549,24 @@ impl<'a> Iterator for MessageSetsIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             // ~ then the next available partition
-            if let Some(p) = self.partitions.as_mut().and_then(|p| p.next()) {
+            if let Some(p) = self.partitions.as_mut().and_then(Iterator::next) {
                 // ~ skip erroneous partitions
                 // ~ skip empty partitions
-                match p.data() {
-                    Err(_) => {
-                        continue;
-                    }
-                    Ok(pdata) => {
-                        let msgs = pdata.messages();
-                        if msgs.is_empty() {
-                            continue;
-                        } else {
-                            return Some(MessageSet {
-                                topic: self.curr_topic,
-                                partition: p.partition(),
-                                messages: msgs,
-                            });
-                        }
-                    }
+                if let Some(messages) = p
+                    .data()
+                    .ok()
+                    .map(protocol::fetch::Data::messages)
+                    .filter(|msgs| !msgs.is_empty())
+                {
+                    return Some(MessageSet {
+                        topic: self.curr_topic,
+                        partition: p.partition(),
+                        messages,
+                    });
                 }
             }
             // ~ then the next available topic
-            if let Some(t) = self.topics.as_mut().and_then(|t| t.next()) {
+            if let Some(t) = self.topics.as_mut().and_then(Iterator::next) {
                 self.curr_topic = t.topic();
                 self.partitions = Some(t.partitions().iter());
                 continue;
