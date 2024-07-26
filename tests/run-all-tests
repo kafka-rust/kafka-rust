@@ -21,18 +21,18 @@
 set -e
 
 stop_docker() {
-  docker-compose down
+  docker compose down
 }
 
 start_docker() {
   # pull zookeeper and build the kafka image
-  docker-compose pull
-  docker-compose build kafka
-  docker-compose up -d zookeeper kafka
+  docker compose pull
+  docker compose build kafka
+  docker compose up -d zookeeper kafka
 
   # wait for Kafka to be ready and the test topic to be created
-  ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test\"'"
-  ./do_until_success "docker-compose logs kafka | grep 'Created topic \"kafka-rust-test2\"'"
+  ./do_until_success "docker compose logs kafka | grep 'Created topic \"kafka-rust-test\"'"
+  ./do_until_success "docker compose logs kafka | grep 'Created topic \"kafka-rust-test2\"'"
 }
 
 setup() {
