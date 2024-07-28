@@ -15,32 +15,6 @@ Welcome to kafka-rust's new home: https://github.com/kafka-rust
 - This library is primarily documented through examples in its [API documentation](https://docs.rs/kafka/).
 - Documentation about Kafka itself can be found at [its project home page](http://kafka.apache.org/).
 
-## Sponsors
-
-Thank you to our sponsors, this helps me to spend more time on this project and also helps with infrastructure
-
-<table>
-<tr>
-<td>
-  <img width="1000" height="0">
-    <a href="https://upstash.com/?utm_source=kafka-rust" >
-  <img src="https://raw.githubusercontent.com/upstash/sponsorship/master/kafka.png" alt="Upstash" width="260" align="right">
-  </a>
-
-<h3>Upstash: Serverless Kafka</h3>
-
-<ul>
-    <li>True Serverless Kafka with per-request-pricing</li>
-    <li>Managed Apache Kafka, works with all Kafka clients</li>
-    <li>Built-in REST API designed for serverless and edge functions</li>
-  </ul>
-
-[Start for free in 30 seconds!](https://upstash.com/?utm_source=kafka-rust)
-
-</td>
-</tr>
-</table>
-
 ## Installation
 
 This crate works with Cargo and is on
