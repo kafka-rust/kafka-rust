@@ -1,9 +1,7 @@
 use std::collections::hash_map::{Entry, HashMap, Keys};
 use std::convert::AsRef;
 use std::slice;
-use std::u32;
 
-use crate::error::Result;
 use crate::protocol;
 
 #[derive(Debug)]
@@ -44,15 +42,17 @@ pub struct Broker {
 }
 
 impl Broker {
-    /// Retrieves the node_id of this broker as identified with the
+    /// Retrieves the `node_id` of this broker as identified with the
     /// remote Kafka cluster.
     #[inline]
+    #[must_use]
     pub fn id(&self) -> i32 {
         self.node_id
     }
 
     /// Retrieves the host:port of the this Kafka broker.
     #[inline]
+    #[must_use]
     pub fn host(&self) -> &str {
         &self.host
     }
@@ -81,7 +81,7 @@ impl BrokerRef {
         BrokerRef { _index: index }
     }
 
-    fn index(&self) -> usize {
+    fn index(self) -> usize {
         self._index as usize
     }
 
@@ -92,7 +92,7 @@ impl BrokerRef {
     }
 
     fn set_unknown(&mut self) {
-        self.set(BrokerRef::new(UNKNOWN_BROKER_INDEX))
+        self.set(BrokerRef::new(UNKNOWN_BROKER_INDEX));
     }
 }
 
@@ -268,7 +268,7 @@ impl ClientState {
 
     /// Loads new and updates existing metadata from the given
     /// metadata response.
-    pub fn update_metadata(&mut self, md: protocol::MetadataResponse) -> Result<()> {
+    pub fn update_metadata(&mut self, md: protocol::MetadataResponse) {
         debug!("updating metadata from: {:?}", md);
 
         // ~ register new brokers with self.brokers and obtain an
@@ -304,13 +304,13 @@ impl ClientState {
             for partition in t.partitions {
                 let tp = &mut tps[partition.id as usize];
                 if let Some(bref) = brokers.get(&partition.leader) {
-                    tp.broker.set(*bref)
+                    tp.broker.set(*bref);
                 } else {
-                    tp.broker.set_unknown()
+                    tp.broker.set_unknown();
                 }
             }
         }
-        Ok(())
+        // Ok(())
     }
 
     /// Updates self.brokers from the given metadata returning an
@@ -638,12 +638,12 @@ mod tests {
     fn test_loading_metadata() {
         let mut state = ClientState::new();
         // Test loading metadata into a new, empty client state.
-        state.update_metadata(metadata_response_initial()).unwrap();
+        state.update_metadata(metadata_response_initial());
         assert_initial_metadata_load(&state);
 
         // Test loading a metadata update into a client state with
         // already some initial metadata loaded.
-        state.update_metadata(metadata_response_update()).unwrap();
+        state.update_metadata(metadata_response_update());
         assert_updated_metadata_load(&state);
     }
 }

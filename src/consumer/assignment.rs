@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 use std::ops::Index;
-use std::u32;
 
 /// A read-only configuration for `Consumer`.
 #[derive(Debug)]

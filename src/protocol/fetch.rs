@@ -66,7 +66,7 @@ impl<'a, 'b> FetchRequest<'a, 'b> {
         self.topic_partitions
             .entry(topic)
             .or_insert_with(TopicPartitionFetchRequest::new)
-            .add(partition, offset, max_bytes)
+            .add(partition, offset, max_bytes);
     }
 
     pub fn get<'d>(&'a self, topic: &'d str) -> Option<&'a TopicPartitionFetchRequest> {
@@ -105,7 +105,7 @@ impl<'a, 'b> ToByte for FetchRequest<'a, 'b> {
         self.min_bytes.encode(buffer)?;
         // encode the hashmap as a vector
         (self.topic_partitions.len() as i32).encode(buffer)?;
-        for (name, tp) in self.topic_partitions.iter() {
+        for (name, tp) in &self.topic_partitions {
             tp.encode(name, buffer)?;
         }
         Ok(())
@@ -117,7 +117,7 @@ impl TopicPartitionFetchRequest {
         topic.encode(buffer)?;
         // encode the hashmap as a vector
         (self.partitions.len() as i32).encode(buffer)?;
-        for (&pid, p) in self.partitions.iter() {
+        for (&pid, p) in &self.partitions {
             p.encode(pid, buffer)?;
         }
         Ok(())
@@ -202,6 +202,7 @@ impl Response {
     /// Retrieves the id corresponding to the fetch messages request
     /// (provided for debugging purposes only).
     #[inline]
+    #[must_use]
     pub fn correlation_id(&self) -> i32 {
         self.correlation_id
     }
@@ -209,7 +210,8 @@ impl Response {
     /// Provides an iterator over all the topics and the fetched data
     /// relative to these topics.
     #[inline]
-    pub fn topics<'a>(&'a self) -> &[Topic<'a>] {
+    #[must_use]
+    pub fn topics(&self) -> &[Topic<'_>] {
         &self.topics
     }
 }
@@ -241,6 +243,7 @@ impl<'a> Topic<'a> {
 
     /// Retrieves the identifier/name of the represented topic.
     #[inline]
+    #[must_use]
     pub fn topic(&self) -> &'a str {
         self.topic
     }
@@ -248,6 +251,7 @@ impl<'a> Topic<'a> {
     /// Provides an iterator over all the partitions of this topic for
     /// which messages were requested.
     #[inline]
+    #[must_use]
     pub fn partitions(&self) -> &[Partition<'a>] {
         &self.partitions
     }
@@ -278,8 +282,7 @@ impl<'a> Partition<'a> {
         let partition = r.read_i32()?;
         let proffs = preqs
             .and_then(|preqs| preqs.get(partition))
-            .map(|preq| preq.offset)
-            .unwrap_or(0);
+            .map_or(0, |preq| preq.offset);
 
         let err = Error::from_protocol(r.read_i16()?);
         // we need to parse the rest even if there was an error to
@@ -301,6 +304,7 @@ impl<'a> Partition<'a> {
 
     /// Retrieves the identifier of the represented partition.
     #[inline]
+    #[must_use]
     pub fn partition(&self) -> i32 {
         self.partition
     }
@@ -327,12 +331,14 @@ impl<'a> Data<'a> {
     /// This can be used by clients to find out how much behind the
     /// latest available message they are.
     #[inline]
+    #[must_use]
     pub fn highwatermark_offset(&self) -> i64 {
         self.highwatermark_offset
     }
 
     /// Retrieves the fetched message data for this partition.
     #[inline]
+    #[must_use]
     pub fn messages(&self) -> &[Message<'a>] {
         &self.message_set.messages
     }

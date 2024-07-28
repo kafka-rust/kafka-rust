@@ -19,7 +19,7 @@ pub type PartitionHasher = BuildHasherDefault<FnvHasher>;
 pub struct FetchState {
     /// ~ specifies the offset which to fetch from
     pub offset: i64,
-    /// ~ specifies the max_bytes to be fetched
+    /// ~ specifies the `max_bytes` to be fetched 
     pub max_bytes: i32,
 }
 
@@ -58,7 +58,7 @@ pub struct State {
     pub consumed_offsets: HashMap<TopicPartition, ConsumedOffset, PartitionHasher>,
 }
 
-impl<'a> fmt::Debug for State {
+impl fmt::Debug for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -86,7 +86,7 @@ impl State {
                 let xs = assignments.as_slice();
                 let mut subs = Vec::with_capacity(xs.len());
                 for x in xs {
-                    subs.push(determine_partitions(x, client.topics())?);
+                    subs.push(determine_partitions(x, &client.topics())?);
                 }
                 subs
             };
@@ -142,27 +142,24 @@ struct Subscription<'a> {
 /// ordered list of the partition ids to consume.
 fn determine_partitions<'a>(
     assignment: &'a Assignment,
-    metadata: Topics<'_>,
+    metadata: &Topics<'_>,
 ) -> Result<Subscription<'a>> {
     let topic = assignment.topic();
     let req_partitions = assignment.partitions();
-    let avail_partitions = match metadata.partitions(topic) {
-        // ~ fail if the underlying topic is unknown to the given client
-        None => {
-            debug!(
-                "determine_partitions: no such topic: {} (all metadata: {:?})",
-                topic, metadata
-            );
-            return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
-        }
-        Some(tp) => tp,
-    };
+
+    let avail_partitions = metadata.partitions(topic).ok_or_else(|| {
+        debug!(
+            "determine_partitions: no such topic: {} (all metadata: {:?})",
+            topic, metadata
+        );
+        Error::Kafka(KafkaCode::UnknownTopicOrPartition)
+    })?;
+
     let ps = if req_partitions.is_empty() {
         // ~ no partitions configured ... use all available
         let mut ps: Vec<i32> = Vec::with_capacity(avail_partitions.len());
-        for p in avail_partitions {
-            ps.push(p.id());
-        }
+
+        ps.extend(avail_partitions.iter().map(|p| p.id()));
         ps
     } else {
         // ~ validate that all partitions we're going to consume are
@@ -337,7 +334,7 @@ fn load_fetch_states(
                     _ => match config.fallback_offset {
                         FetchOffset::Latest => l_off,
                         FetchOffset::Earliest => e_off,
-                        _ => {
+                        FetchOffset::ByTime(_) => {
                             debug!(
                                 "cannot determine fetch offset \
                                         (group: {} / topic: {} / partition: {})",

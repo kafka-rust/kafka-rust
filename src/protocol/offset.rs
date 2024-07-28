@@ -122,19 +122,15 @@ pub struct PartitionOffsetResponse {
 
 impl PartitionOffsetResponse {
     pub fn to_offset(&self) -> std::result::Result<PartitionOffset, KafkaCode> {
-        match KafkaCode::from_protocol(self.error) {
-            Some(code) => Err(code),
-            None => {
-                let offset = match self.offset.first() {
-                    Some(offs) => *offs,
-                    None => -1,
-                };
+        if let Some(code) = KafkaCode::from_protocol(self.error) {
+            Err(code)
+        } else {
+            let offset = self.offset.first().copied().unwrap_or(-1);
 
-                Ok(PartitionOffset {
-                    partition: self.partition,
-                    offset,
-                })
-            }
+            Ok(PartitionOffset {
+                partition: self.partition,
+                offset,
+            })
         }
     }
 }

@@ -20,6 +20,7 @@ impl<'a> Topics<'a> {
     /// Constructs a view of the currently loaded topic metadata from
     /// the specified kafka client.
     #[inline]
+    #[must_use]
     pub fn new(client: &KafkaClient) -> Topics<'_> {
         Topics {
             state: &client.state,
@@ -28,16 +29,19 @@ impl<'a> Topics<'a> {
 
     /// Retrieves the number of the underlying topics.
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.state.num_topics()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Provides an iterator over the underlying topics.
     #[inline]
+    #[must_use]
     pub fn iter(&'a self) -> TopicIter<'a> {
         TopicIter::new(self.state)
     }
@@ -45,6 +49,7 @@ impl<'a> Topics<'a> {
     /// A convenience method to return an iterator over the topics'
     /// names.
     #[inline]
+    #[must_use]
     pub fn names(&'a self) -> TopicNames<'a> {
         self.state.topic_names()
     }
@@ -52,12 +57,14 @@ impl<'a> Topics<'a> {
     /// A convenience method to determine whether the specified topic
     /// is known.
     #[inline]
+    #[must_use]
     pub fn contains(&'a self, topic: &str) -> bool {
         self.state.contains_topic(topic)
     }
 
     /// Retrieves the partitions of a specified topic.
     #[inline]
+    #[must_use]
     pub fn partitions(&'a self, topic: &str) -> Option<Partitions<'a>> {
         self.state.partitions_for(topic).map(|tp| Partitions {
             state: self.state,
@@ -71,10 +78,10 @@ impl<'a> fmt::Debug for Topics<'a> {
         write!(f, "Topics {{ topics: [")?;
         let mut ts = self.iter();
         if let Some(t) = ts.next() {
-            write!(f, "{:?}", t)?;
+            write!(f, "{t:?}")?;
         }
         for t in ts {
-            write!(f, ", {:?}", t)?;
+            write!(f, ", {t:?}")?;
         }
         write!(f, "] }}")
     }
@@ -136,12 +143,14 @@ pub struct Topic<'a> {
 impl<'a> Topic<'a> {
     /// Retrieves the name of this topic.
     #[inline]
+    #[must_use]
     pub fn name(&self) -> &str {
         self.name
     }
 
     /// Retrieves the list of all partitions for this topic.
     #[inline]
+    #[must_use]
     pub fn partitions(&self) -> Partitions<'a> {
         Partitions {
             state: self.state,
@@ -170,24 +179,28 @@ pub struct Partitions<'a> {
 impl<'a> Partitions<'a> {
     /// Retrieves the number of the topic's partitions.
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.tp.len()
     }
 
     /// Tests for `.len() > 0`.
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.tp.is_empty()
     }
 
     /// Retrieves an iterator of the partitions of the underlying topic.
     #[inline]
+    #[must_use]
     pub fn iter(&self) -> PartitionIter<'a> {
         PartitionIter::new(self.state, self.tp)
     }
 
     /// Finds a specified partition identified by its id.
     #[inline]
+    #[must_use]
     pub fn partition(&self, partition_id: i32) -> Option<Partition<'a>> {
         self.tp
             .partition(partition_id)
@@ -198,6 +211,7 @@ impl<'a> Partitions<'a> {
     /// currently "available" partitions.  Such partitions are known
     /// to have a leader broker and can be sent messages to.
     #[inline]
+    #[must_use]
     pub fn available_ids(&self) -> Vec<i32> {
         self.tp
             .iter()
@@ -211,10 +225,10 @@ impl<'a> fmt::Debug for Partitions<'a> {
         write!(f, "Partitions {{ [")?;
         let mut ps = self.iter();
         if let Some(p) = ps.next() {
-            write!(f, "{:?}", p)?;
+            write!(f, "{p:?}")?;
         }
         for p in ps {
-            write!(f, ", {:?}", p)?;
+            write!(f, ", {p:?}")?;
         }
         write!(f, "] }}")
     }
@@ -281,7 +295,7 @@ pub struct Partition<'a> {
 
 impl<'a> Partition<'a> {
     fn new(state: &'a ClientState, partition: &'a TopicPartition, id: i32) -> Partition<'a> {
-        Partition {
+        Self {
             state,
             partition,
             id,
@@ -290,6 +304,7 @@ impl<'a> Partition<'a> {
 
     /// Retrieves the identifier of this topic partition.
     #[inline]
+    #[must_use]
     pub fn id(&self) -> i32 {
         self.id
     }
@@ -297,12 +312,14 @@ impl<'a> Partition<'a> {
     /// Retrieves the current leader broker of this partition - if
     /// any.  A partition with a leader is said to be "available".
     #[inline]
+    #[must_use]
     pub fn leader(&self) -> Option<&'a Broker> {
         self.partition.broker(self.state)
     }
 
     /// Determines whether this partition is currently "available".
     /// See `Partition::leader()`.
+    #[must_use]
     pub fn is_available(&self) -> bool {
         self.leader().is_some()
     }

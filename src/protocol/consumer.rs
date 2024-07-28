@@ -264,12 +264,12 @@ pub enum OffsetCommitVersion {
 }
 
 impl OffsetCommitVersion {
-    fn from_protocol(n: i16) -> OffsetCommitVersion {
+    fn from_protocol(n: i16) -> Self {
         match n {
-            0 => OffsetCommitVersion::V0,
-            1 => OffsetCommitVersion::V1,
-            2 => OffsetCommitVersion::V2,
-            _ => panic!("Unknown offset commit version code: {}", n),
+            0 => Self::V0,
+            1 => Self::V1,
+            2 => Self::V2,
+            _ => panic!("Unknown offset commit version code: {n}"),
         }
     }
 }
@@ -337,7 +337,7 @@ impl<'a> TopicPartitionOffsetCommitRequest<'a> {
     pub fn add(&mut self, partition: i32, offset: i64, metadata: &'a str) {
         self.partitions.push(PartitionOffsetCommitRequest::new(
             partition, offset, metadata,
-        ))
+        ));
     }
 }
 
@@ -366,7 +366,7 @@ impl<'a, 'b> ToByte for OffsetCommitRequest<'a, 'b> {
                 "".encode(buffer)?;
                 (-1i64).encode(buffer)?;
             }
-            _ => {
+            OffsetCommitVersion::V0 => {
                 // nothing to do
             }
         }

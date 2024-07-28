@@ -71,6 +71,7 @@ impl Builder {
     ///
     /// The group is allowed to be the empty string, in which case the
     /// resulting consumer will be group-less.
+    #[must_use]
     pub fn with_group(mut self, group: String) -> Builder {
         self.group = group;
         self
@@ -85,6 +86,7 @@ impl Builder {
     ///
     /// This method or `with_topic_partitions` must be called at least
     /// once, to assign a topic to the consumer.
+    #[must_use]
     pub fn with_topic(mut self, topic: String) -> Builder {
         self.assignments.insert(topic, Vec::new());
         self
@@ -99,6 +101,7 @@ impl Builder {
     ///
     /// This method or `with_topic` must be called at least once, to
     /// assign a topic to the consumer.
+    #[must_use]
     pub fn with_topic_partitions(mut self, topic: String, partitions: &[i32]) -> Builder {
         self.assignments.insert(topic, partitions.to_vec());
         self
@@ -107,6 +110,7 @@ impl Builder {
     /// Specifies the security config to use.
     /// See `KafkaClient::new_secure` for more info.
     #[cfg(feature = "security")]
+    #[must_use]
     pub fn with_security(mut self, sec: SecurityConfig) -> Builder {
         self.security_config = Some(sec);
         self
@@ -124,36 +128,42 @@ impl Builder {
     /// (thereby staring to consume only newly arriving messages.)
     /// The "fallback offset" here corresponds to `time` in
     /// `KafkaClient::fetch_offsets`.
+    #[must_use]
     pub fn with_fallback_offset(mut self, fallback_offset: FetchOffset) -> Builder {
         self.fallback_offset = fallback_offset;
         self
     }
 
     /// See `KafkaClient::set_fetch_max_wait_time`
+    #[must_use]
     pub fn with_fetch_max_wait_time(mut self, max_wait_time: Duration) -> Builder {
         self.fetch_max_wait_time = max_wait_time;
         self
     }
 
     /// See `KafkaClient::set_fetch_min_bytes`
+    #[must_use]
     pub fn with_fetch_min_bytes(mut self, min_bytes: i32) -> Builder {
         self.fetch_min_bytes = min_bytes;
         self
     }
 
     /// See `KafkaClient::set_fetch_max_bytes_per_partition`
+    #[must_use]
     pub fn with_fetch_max_bytes_per_partition(mut self, max_bytes_per_partition: i32) -> Builder {
         self.fetch_max_bytes_per_partition = max_bytes_per_partition;
         self
     }
 
     /// See `KafkaClient::set_fetch_crc_validation`
+    #[must_use]
     pub fn with_fetch_crc_validation(mut self, validate_crc: bool) -> Builder {
         self.fetch_crc_validation = validate_crc;
         self
     }
 
     /// See `KafkaClient::set_group_offset_storage`
+    #[must_use]
     pub fn with_offset_storage(mut self, storage: Option<GroupOffsetStorage>) -> Builder {
         self.group_offset_storage = storage;
         self
@@ -181,6 +191,7 @@ impl Builder {
     /// `KafkaClient::fetch_max_bytes_per_partition` appropriately
     /// instead of relying on the limit specified here.  This limit is
     /// just an upper bound for already additional retry requests.
+    #[must_use]
     pub fn with_retry_max_bytes_limit(mut self, limit: i32) -> Builder {
         self.retry_max_bytes_limit = limit;
         self
@@ -188,19 +199,22 @@ impl Builder {
 
     /// Specifies the timeout for idle connections.
     /// See `KafkaClient::set_connection_idle_timeout`.
+    #[must_use]
     pub fn with_connection_idle_timeout(mut self, timeout: Duration) -> Self {
         self.conn_idle_timeout = timeout;
         self
     }
 
-    /// Specifies a client_id to be sent along every request to Kafka
+    /// Specifies a `client_id` to be sent along every request to Kafka
     /// brokers. See `KafkaClient::set_client_id`.
+    #[must_use]
     pub fn with_client_id(mut self, client_id: String) -> Self {
         self.client_id = Some(client_id);
         self
     }
 
     #[cfg(not(feature = "security"))]
+    #[must_use]
     fn new_kafka_client(hosts: Vec<String>, _: Option<SecurityConfig>) -> KafkaClient {
         KafkaClient::new(hosts)
     }
@@ -240,7 +254,7 @@ impl Builder {
         client.set_group_offset_storage(self.group_offset_storage);
         client.set_connection_idle_timeout(self.conn_idle_timeout);
         if let Some(client_id) = self.client_id {
-            client.set_client_id(client_id)
+            client.set_client_id(client_id);
         }
         // ~ load metadata if necessary
         if need_metadata {

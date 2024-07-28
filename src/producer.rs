@@ -166,6 +166,7 @@ impl<'a, K, V> Record<'a, K, V> {
 
     /// Convenience method to set the partition.
     #[inline]
+    #[must_use]
     pub fn with_partition(mut self, partition: i32) -> Self {
         self.partition = partition;
         self
@@ -226,17 +227,20 @@ struct Config {
 
 impl Producer {
     /// Starts building a new producer using the given Kafka client.
+    #[must_use]
     pub fn from_client(client: KafkaClient) -> Builder<DefaultPartitioner> {
         Builder::new(Some(client), Vec::new())
     }
 
     /// Starts building a producer bootstraping internally a new kafka
     /// client from the given kafka hosts.
+    #[must_use]
     pub fn from_hosts(hosts: Vec<String>) -> Builder<DefaultPartitioner> {
         Builder::new(None, hosts)
     }
 
     /// Borrows the underlying kafka client.
+    #[must_use]
     pub fn client(&self) -> &KafkaClient {
         &self.client
     }
@@ -247,6 +251,7 @@ impl Producer {
     }
 
     /// Destroys this producer returning the underlying kafka client.
+    #[must_use]
     pub fn into_client(self) -> KafkaClient {
         self.client
     }
@@ -254,7 +259,7 @@ impl Producer {
 
 impl<P: Partitioner> Producer<P> {
     /// Synchronously send the specified message to Kafka.
-    pub fn send<'a, K, V>(&mut self, rec: &Record<'a, K, V>) -> Result<()>
+    pub fn send<K, V>(&mut self, rec: &Record<K, V>) -> Result<()>
     where
         K: AsBytes,
         V: AsBytes,
@@ -283,7 +288,7 @@ impl<P: Partitioner> Producer<P> {
     /// Synchronously send all of the specified messages to Kafka. To validate
     /// that all of the specified records have been successfully delivered,
     /// inspection of the offsets on the returned confirms is necessary.
-    pub fn send_all<'a, K, V>(&mut self, recs: &[Record<'a, K, V>]) -> Result<Vec<ProduceConfirm>>
+    pub fn send_all<K, V>(&mut self, recs: &[Record<'_, K, V>]) -> Result<Vec<ProduceConfirm>>
     where
         K: AsBytes,
         V: AsBytes,
@@ -321,7 +326,7 @@ fn to_option(data: &[u8]) -> Option<&[u8]> {
 // --------------------------------------------------------------------
 
 impl<P> State<P> {
-    fn new(client: &mut KafkaClient, partitioner: P) -> Result<State<P>> {
+    fn new(client: &mut KafkaClient, partitioner: P) -> State<P> {
         let ts = client.topics();
         let mut ids = HashMap::with_capacity(ts.len());
         for t in ts {
@@ -334,10 +339,10 @@ impl<P> State<P> {
                 },
             );
         }
-        Ok(State {
+        State {
             partitions: ids,
             partitioner,
-        })
+        }
     }
 }
 
@@ -382,6 +387,7 @@ impl Builder {
     /// Specifies the security config to use.
     /// See `KafkaClient::new_secure` for more info.
     #[cfg(feature = "security")]
+    #[must_use]
     pub fn with_security(mut self, security: SecurityConfig) -> Self {
         self.security_config = Some(security);
         self
@@ -390,6 +396,7 @@ impl Builder {
     /// Sets the compression algorithm to use when sending out data.
     ///
     /// See `KafkaClient::set_compression`.
+    #[must_use]
     pub fn with_compression(mut self, compression: Compression) -> Self {
         self.compression = compression;
         self
@@ -399,6 +406,7 @@ impl Builder {
     /// of required acknowledgements (which is specified through
     /// `Builder::with_required_acks`.)  Note that Kafka explicitly
     /// documents this not to be a hard limit.
+    #[must_use]
     pub fn with_ack_timeout(mut self, timeout: Duration) -> Self {
         self.ack_timeout = timeout;
         self
@@ -406,6 +414,7 @@ impl Builder {
 
     /// Specifies the timeout for idle connections.
     /// See `KafkaClient::set_connection_idle_timeout`.
+    #[must_use]
     pub fn with_connection_idle_timeout(mut self, timeout: Duration) -> Self {
         self.conn_idle_timeout = timeout;
         self
@@ -415,13 +424,15 @@ impl Builder {
     /// receive before responding to sent messages.
     ///
     /// See `RequiredAcks`.
+    #[must_use]
     pub fn with_required_acks(mut self, acks: RequiredAcks) -> Self {
         self.required_acks = acks;
         self
     }
 
-    /// Specifies a client_id to be sent along every request to Kafka
+    /// Specifies a `client_id` to be sent along every request to Kafka
     /// brokers. See `KafkaClient::set_client_id`.
+    #[must_use]
     pub fn with_client_id(mut self, client_id: String) -> Self {
         self.client_id = Some(client_id);
         self
@@ -485,7 +496,7 @@ impl<P> Builder<P> {
             client.load_metadata_all()?;
         }
         // ~ create producer state
-        let state = State::new(&mut client, self.partitioner)?;
+        let state = State::new(&mut client, self.partitioner);
         Ok(Producer {
             client,
             state,
@@ -516,6 +527,7 @@ impl Partitions {
     /// partitions for the given topic.  This list excludes partitions
     /// which do not have a leader broker assigned.
     #[inline]
+    #[must_use]
     pub fn available_ids(&self) -> &[i32] {
         &self.available_ids
     }
@@ -523,6 +535,7 @@ impl Partitions {
     /// Retrieves the number of "available" partitions. This is a
     /// merely a convenience method. See `Partitions::available_ids`.
     #[inline]
+    #[must_use]
     pub fn num_available(&self) -> u32 {
         self.available_ids.len() as u32
     }
@@ -531,6 +544,7 @@ impl Partitions {
     /// number includes also partitions without a current leader
     /// assignment.
     #[inline]
+    #[must_use]
     pub fn num_all(&self) -> u32 {
         self.num_all_partitions
     }
@@ -543,6 +557,7 @@ impl<'a> Topics<'a> {
 
     /// Retrieves informationa about a topic's partitions.
     #[inline]
+    #[must_use]
     pub fn partitions(&'a self, topic: &str) -> Option<&'a Partitions> {
         self.partitions.get(topic)
     }
@@ -617,6 +632,7 @@ impl DefaultPartitioner {
         }
     }
 
+    #[must_use]
     pub fn with_default_hasher<B>() -> DefaultPartitioner<BuildHasherDefault<B>>
     where
         B: Hasher + Default,
@@ -639,39 +655,37 @@ impl<H: BuildHasher> Partitioner for DefaultPartitioner<H> {
             None => return, // ~ unknown topic, this is not the place to deal with it.
             Some(partitions) => partitions,
         };
-        match rec.key {
-            Some(key) => {
-                let num_partitions = partitions.num_all();
-                if num_partitions == 0 {
-                    // ~ no partitions at all ... a rather strange
-                    // topic. again, this is not the right place to
-                    // deal with it.
-                    return;
-                }
-                let mut h = self.hash_builder.build_hasher();
-                h.write(key);
-                // ~ unconditionally dispatch to partitions no matter
-                // whether they are currently available or not.  this
-                // guarantees consistency which is the point of
-                // partitioning by key.  other behaviour - if desired
-                // - can be implemented in custom, user provided
-                // partitioners.
-                let hash = h.finish() as u32;
-                // if `num_partitions == u32::MAX` this can lead to a
-                // negative partition ... such a partition count is very
-                // unlikely though
-                rec.partition = (hash % num_partitions) as i32;
+
+        if let Some(key) = rec.key {
+            let num_partitions = partitions.num_all();
+            if num_partitions == 0 {
+                // ~ no partitions at all ... a rather strange
+                // topic. again, this is not the right place to
+                // deal with it.
+                return;
             }
-            None => {
-                // ~ no key available, determine a partition from the
-                // available ones.
-                let avail = partitions.available_ids();
-                if !avail.is_empty() {
-                    rec.partition = avail[self.cntr as usize % avail.len()];
-                    // ~ update internal state so that the next time we choose
-                    // a different partition
-                    self.cntr = self.cntr.wrapping_add(1);
-                }
+            let mut h = self.hash_builder.build_hasher();
+            h.write(key);
+            // ~ unconditionally dispatch to partitions no matter
+            // whether they are currently available or not.  this
+            // guarantees consistency which is the point of
+            // partitioning by key.  other behaviour - if desired
+            // - can be implemented in custom, user provided
+            // partitioners.
+            let hash = h.finish() as u32;
+            // if `num_partitions == u32::MAX` this can lead to a
+            // negative partition ... such a partition count is very
+            // unlikely though
+            rec.partition = (hash % num_partitions) as i32;
+        } else {
+            // ~ no key available, determine a partition from the
+            // available ones.
+            let avail = partitions.available_ids();
+            if !avail.is_empty() {
+                rec.partition = avail[self.cntr as usize % avail.len()];
+                // ~ update internal state so that the next time we choose
+                // a different partition
+                self.cntr = self.cntr.wrapping_add(1);
             }
         }
     }
