@@ -36,6 +36,7 @@ impl<'a, T: AsRef<str> + 'a> ToByte for MetadataRequest<'a, T> {
 pub struct MetadataResponse {
     pub header: HeaderResponse,
     pub brokers: Vec<BrokerMetadata>,
+    pub controller_id: i32,
     pub topics: Vec<TopicMetadata>,
 }
 
@@ -44,12 +45,14 @@ pub struct BrokerMetadata {
     pub node_id: i32,
     pub host: String,
     pub port: i32,
+    pub rack: String,
 }
 
 #[derive(Default, Debug)]
 pub struct TopicMetadata {
     pub error: i16,
     pub topic: String,
+    pub is_internal: bool,
     pub partitions: Vec<PartitionMetadata>,
 }
 
@@ -70,6 +73,7 @@ impl FromByte for MetadataResponse {
         try_multi!(
             self.header.decode(buffer),
             self.brokers.decode(buffer),
+            self.controller_id.decode(buffer),
             self.topics.decode(buffer)
         )
     }
@@ -83,7 +87,8 @@ impl FromByte for BrokerMetadata {
         try_multi!(
             self.node_id.decode(buffer),
             self.host.decode(buffer),
-            self.port.decode(buffer)
+            self.port.decode(buffer),
+            self.rack.decode(buffer)
         )
     }
 }
@@ -96,6 +101,7 @@ impl FromByte for TopicMetadata {
         try_multi!(
             self.error.decode(buffer),
             self.topic.decode(buffer),
+            self.is_internal.decode(buffer),
             self.partitions.decode(buffer)
         )
     }

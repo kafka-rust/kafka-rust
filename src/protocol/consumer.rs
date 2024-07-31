@@ -35,14 +35,16 @@ impl<'a, 'b> GroupCoordinatorRequest<'a, 'b> {
 
 impl<'a, 'b> ToByte for GroupCoordinatorRequest<'a, 'b> {
     fn encode<W: Write>(&self, buffer: &mut W) -> Result<()> {
-        try_multi!(self.header.encode(buffer), self.group.encode(buffer))
+        try_multi!(self.header.encode(buffer), self.group.encode(buffer), 0i8.encode(buffer))
     }
 }
 
 #[derive(Debug, Default)]
 pub struct GroupCoordinatorResponse {
     pub header: HeaderResponse,
+    pub throttle_time_ms: i32,
     pub error: i16,
+    pub error_message: String,
     pub broker_id: i32,
     pub port: i32,
     pub host: String,
@@ -62,8 +64,10 @@ impl FromByte for GroupCoordinatorResponse {
 
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         try_multi!(
+            self.throttle_time_ms.decode(buffer),
             self.header.decode(buffer),
             self.error.decode(buffer),
+            self.error_message.decode(buffer),
             self.broker_id.decode(buffer),
             self.host.decode(buffer),
             self.port.decode(buffer)

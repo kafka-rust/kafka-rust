@@ -23,7 +23,6 @@ pub struct TopicPartitionOffsetRequest<'a> {
 #[derive(Default, Debug)]
 pub struct PartitionOffsetRequest {
     pub partition: i32,
-    pub max_offsets: i32,
     pub time: i64,
 }
 
@@ -67,7 +66,6 @@ impl PartitionOffsetRequest {
     pub fn new(partition: i32, time: i64) -> PartitionOffsetRequest {
         PartitionOffsetRequest {
             partition,
-            max_offsets: 1,
             time,
         }
     }
@@ -93,8 +91,7 @@ impl ToByte for PartitionOffsetRequest {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         try_multi!(
             self.partition.encode(buffer),
-            self.time.encode(buffer),
-            self.max_offsets.encode(buffer)
+            self.time.encode(buffer)
         )
     }
 }
@@ -117,7 +114,8 @@ pub struct TopicPartitionOffsetResponse {
 pub struct PartitionOffsetResponse {
     pub partition: i32,
     pub error: i16,
-    pub offset: Vec<i64>,
+    pub timestamp: i64,
+    pub offset: i64,
 }
 
 impl PartitionOffsetResponse {
@@ -125,14 +123,9 @@ impl PartitionOffsetResponse {
         match KafkaCode::from_protocol(self.error) {
             Some(code) => Err(code),
             None => {
-                let offset = match self.offset.first() {
-                    Some(offs) => *offs,
-                    None => -1,
-                };
-
                 Ok(PartitionOffset {
                     partition: self.partition,
-                    offset,
+                    offset: self.offset,
                 })
             }
         }
@@ -168,6 +161,7 @@ impl FromByte for PartitionOffsetResponse {
         try_multi!(
             self.partition.decode(buffer),
             self.error.decode(buffer),
+            self.timestamp.decode(buffer),
             self.offset.decode(buffer)
         )
     }
