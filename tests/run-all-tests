@@ -57,13 +57,15 @@ teardown() {
 
 # need to run tests serially to avoid the tests stepping on each others' toes
 export RUST_TEST_THREADS=1
-DEFAULT_VERS='3.0.0:3.1.0:3.2.0'
+DEFAULT_VERS='3.4.0:3.5.0:3.6.0:3.7.0:3.8.0'
 DEFAULT_COMPRESSIONS='NONE:SNAPPY:GZIP'
 DEFAULT_SECURES=':secure'
 
-declare SCALA_VERS_3_0_0='2.13'
-declare SCALA_VERS_3_1_0='2.13'
-declare SCALA_VERS_3_0_0='2.13'
+declare SCALA_VERS_3_4_0='2.13'
+declare SCALA_VERS_3_5_0='2.13'
+declare SCALA_VERS_3_6_0='2.13'
+declare SCALA_VERS_3_7_0='2.13'
+declare SCALA_VERS_3_8_0='2.13'
 
 scala_version_for_kafka() {
     local kv=$(echo $1 | sed 's/\./_/g')
