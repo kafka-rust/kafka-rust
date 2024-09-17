@@ -1,8 +1,5 @@
 #!/bin/bash
 
-set -x
-
-SECURE_PARAM=""
 if [[ -z "$START_TIMEOUT" ]]; then
     START_TIMEOUT=600
 fi
