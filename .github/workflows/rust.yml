@@ -18,22 +18,40 @@ jobs:
     strategy:
       matrix:
         include:
-          - KAFKA_VER: 3.0.0
+          - KAFKA_VER: 3.4.0
             COMPRESSIONS: NONE
             SECURES: ""
-          - KAFKA_VER: 3.0.0
+          - KAFKA_VER: 3.4.0
             COMPRESSIONS: NONE
             SECURES: secure
-          - KAFKA_VER: 3.0.0
+          - KAFKA_VER: 3.4.0
             COMPRESSIONS: SNAPPY
             SECURES: ""
-          - KAFKA_VER: 3.0.0
+          - KAFKA_VER: 3.4.0
             COMPRESSIONS: SNAPPY
             SECURES: secure
-          - KAFKA_VER: 3.0.0
+          - KAFKA_VER: 3.4.0
             COMPRESSIONS: GZIP
             SECURES: ""
-          - KAFKA_VER: 3.0.0
+          - KAFKA_VER: 3.4.0
+            COMPRESSIONS: GZIP
+            SECURES: secure
+          - KAFKA_VER: 3.8.0
+            COMPRESSIONS: NONE
+            SECURES: ""
+          - KAFKA_VER: 3.8.0
+            COMPRESSIONS: NONE
+            SECURES: secure
+          - KAFKA_VER: 3.8.0
+            COMPRESSIONS: SNAPPY
+            SECURES: ""
+          - KAFKA_VER: 3.8.0
+            COMPRESSIONS: SNAPPY
+            SECURES: secure
+          - KAFKA_VER: 3.8.0
+            COMPRESSIONS: GZIP
+            SECURES: ""
+          - KAFKA_VER: 3.8.0
             COMPRESSIONS: GZIP
             SECURES: secure
     steps:
