@@ -15,8 +15,11 @@ KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD:-brokerpass}
 TRUSTSTORE_PASSWORD=${TRUSTSTORE_PASSWORD:-brokerpass}
 KEY_PASSWORD=${KEY_PASSWORD:-brokerpass}
 
-# Configure SSL settings in server.properties
-echo "Configuring SSL settings in server.properties..."
+
+if [ "$1" = "ssl" ]; then
+
+  # Configure SSL settings in server.properties
+  echo "Configuring SSL settings in server.properties..."
 
 cat <<EOL >> ${KAFKA_HOME}/config/server.properties
 
@@ -25,12 +28,13 @@ listeners=SSL://:9093
 advertised.listeners=SSL://localhost:9093
 security.inter.broker.protocol=SSL
 ssl.keystore.location=/opt/kafka/secrets/kafka.broker.keystore.jks
-ssl.keystore.password=brokerpass
-ssl.key.password=brokerpass
+ssl.keystore.password=${KEYSTORE_PASSWORD}
+ssl.key.password=${KEY_PASSWORD}
 ssl.truststore.location=/opt/kafka/secrets/kafka.broker.truststore.jks
-ssl.truststore.password=brokerpass
+ssl.truststore.password=${TRUSTSTORE_PASSWORD}
 ssl.client.auth=required
 EOL
+fi
 
 # Start Kafka server in the background
 ${KAFKA_HOME}/bin/kafka-server-start.sh ${KAFKA_HOME}/config/server.properties &

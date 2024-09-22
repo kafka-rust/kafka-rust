@@ -36,4 +36,4 @@ COPY secrets/kafka.broker.truststore.jks /opt/kafka/secrets/kafka.broker.trustst
 COPY ssl.properties /opt/kafka/config/ssl.properties
 
 # Start Kafka when the container launches
-CMD ["start-kafka.sh"]
+CMD ["start-kafka.sh", "ssl"]
