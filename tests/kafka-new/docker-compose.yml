@@ -10,6 +10,9 @@ services:
       KAFKA_LISTENERS: SSL://0.0.0.0:9092
       KAFKA_ZOOKEEPER_CONNECT: localhost:2181
       TOPIC_NAME: my-custom-topic
+      KEYSTORE_PASSWORD: brokerpass
+      TRUSTSTORE_PASSWORD: brokerpass
+      KEY_PASSWORD: brokerpass
     volumes:
       - ./data:/opt/kafka/data
       - ./secrets:/opt/kafka/secrets

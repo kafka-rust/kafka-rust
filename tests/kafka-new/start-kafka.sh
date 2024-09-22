@@ -10,6 +10,11 @@ while ! nc -z localhost 2181; do
 done
 echo "Zookeeper started."
 
+# Set default passwords if not provided
+KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD:-brokerpass}
+TRUSTSTORE_PASSWORD=${TRUSTSTORE_PASSWORD:-brokerpass}
+KEY_PASSWORD=${KEY_PASSWORD:-brokerpass}
+
 # Configure SSL settings in server.properties
 echo "Configuring SSL settings in server.properties..."
 
