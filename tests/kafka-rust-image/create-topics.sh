@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 if [[ -z "$START_TIMEOUT" ]]; then
     START_TIMEOUT=600
 fi
@@ -23,14 +22,22 @@ if $start_timeout_exceeded; then
     exit 1
 fi
 
+if [[ ! -z "$KAFKA_CLIENT_SECURE" ]]; then
+    SECURE_PARAM_NAME="--command-config"
+    SECURE_PARAM_VALUE="$KAFKA_HOME/config/client-ssl.properties"
+else
+    SECURE_PARAM_NAME=""
+    SECURE_PARAM_VALUE=""
+fi
+
 if [[ -n $KAFKA_CREATE_TOPICS ]]; then
     IFS=','; for topicToCreate in $KAFKA_CREATE_TOPICS; do
         echo "creating topics: $topicToCreate"
         IFS=':' read -a topicConfig <<< "$topicToCreate"
         if [ ${topicConfig[3]} ]; then
-          JMX_PORT='' $KAFKA_HOME/bin/kafka-topics.sh --create --zookeeper $KAFKA_ZOOKEEPER_CONNECT --replication-factor ${topicConfig[2]} --partitions ${topicConfig[1]} --topic "${topicConfig[0]}" --config cleanup.policy="${topicConfig[3]}"
+          JMX_PORT='' $KAFKA_HOME/bin/kafka-topics.sh --create --bootstrap-server localhost:$KAFKA_PORT $SECURE_PARAM_NAME $SECURE_PARAM_VALUE --replication-factor ${topicConfig[2]} --partitions ${topicConfig[1]} --topic "${topicConfig[0]}" --config cleanup.policy="${topicConfig[3]}" 
         else
-          JMX_PORT='' $KAFKA_HOME/bin/kafka-topics.sh --create --zookeeper $KAFKA_ZOOKEEPER_CONNECT --replication-factor ${topicConfig[2]} --partitions ${topicConfig[1]} --topic "${topicConfig[0]}"
+          JMX_PORT='' $KAFKA_HOME/bin/kafka-topics.sh --create --bootstrap-server localhost:$KAFKA_PORT $SECURE_PARAM_NAME $SECURE_PARAM_VALUE --replication-factor ${topicConfig[2]} --partitions ${topicConfig[1]} --topic "${topicConfig[0]}" 
         fi
     done
 fi

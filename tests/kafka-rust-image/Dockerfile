@@ -1,4 +1,4 @@
-FROM ubuntu:xenial
+FROM ubuntu:latest
 
 RUN apt-get update && apt-get install -y wget jq coreutils net-tools openjdk-8-jre
 
@@ -21,7 +21,7 @@ COPY start-kafka.sh /usr/bin/start-kafka.sh
 COPY create-topics.sh /usr/bin/create-topics.sh
 
 ENV KAFKA_ZOOKEEPER_CONNECT zookeeper
-COPY server.properties secure.server.properties /opt/kafka/config/
+COPY server.properties secure.server.properties client-ssl.properties /opt/kafka/config/
 
 # set up an SSL certificate for secure mode
 RUN keytool \
@@ -33,6 +33,10 @@ RUN keytool \
         -dname "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown" \
         -storepass xxxxxx \
         -keypass xxxxxx
+
+RUN keytool -exportcert -alias localhost -keystore /server.keystore.jks -file server-cert.pem -storepass xxxxxx -noprompt 
+RUN keytool -importcert -file server-cert.pem -alias server-cert -keystore client.truststore.jks -storepass xxxxxx -noprompt
+RUN keytool -list -v -keystore client.truststore.jks -storepass xxxxxx -noprompt
 
 EXPOSE 9092
 

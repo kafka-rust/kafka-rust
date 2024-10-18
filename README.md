@@ -1,6 +1,5 @@
 # Kafka Rust Client
 
-[![Build Status](https://travis-ci.org/spicavigo/kafka-rust.svg?branch=master)](https://travis-ci.org/spicavigo/kafka-rust) [![](http://meritbadge.herokuapp.com/kafka)](https://crates.io/crates/kafka)
 
 ## Project Status
 
@@ -24,7 +23,7 @@ expect the version number to grow quickly).
 
 ```toml
 [dependencies]
-kafka = "0.9"
+kafka = "0.10"
 ```
 
 To build kafka-rust the usual `cargo build` should suffice. The crate
