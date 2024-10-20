@@ -122,7 +122,7 @@ impl<'a> HeaderRequest<'a> {
         api_version: i16,
         correlation_id: i32,
         client_id: &'a str,
-    ) -> HeaderRequest<'_> {
+    ) -> HeaderRequest<'a> {
         HeaderRequest {
             api_key,
             api_version,
