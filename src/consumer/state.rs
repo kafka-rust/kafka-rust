@@ -19,7 +19,7 @@ pub type PartitionHasher = BuildHasherDefault<FnvHasher>;
 pub struct FetchState {
     /// ~ specifies the offset which to fetch from
     pub offset: i64,
-    /// ~ specifies the `max_bytes` to be fetched 
+    /// ~ specifies the `max_bytes` to be fetched
     pub max_bytes: i32,
 }
 

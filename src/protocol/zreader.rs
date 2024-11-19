@@ -157,7 +157,7 @@ fn test_read_i16() {
 fn test_read_i32() {
     let data = &[1, 2, 3, 4];
     let mut r = ZReader::new(data);
-    assert_eq!(16909060, r.read_i32().unwrap());
+    assert_eq!(16_909_060, r.read_i32().unwrap());
     assert!(r.read_i32().is_err());
 
     let data = &[0xff, 0xff, 0xff, 0xfd];
@@ -170,7 +170,7 @@ fn test_read_i32() {
 fn test_read_i64() {
     let data = &[1, 2, 3, 4, 5, 6, 7, 8];
     let mut r = ZReader::new(data);
-    assert_eq!(72623859790382856, r.read_i64().unwrap());
+    assert_eq!(72_623_859_790_382_856, r.read_i64().unwrap());
     assert!(r.read_i64().is_err());
 
     let data = &[0, 0, 0, 0, 0, 0, 0, 1];
