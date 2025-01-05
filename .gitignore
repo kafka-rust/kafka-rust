@@ -1,3 +1,8 @@
+# IDE
+.vscode/
+.idea/
+
+# Rust
 target
 Cargo.lock
 src/main.rs

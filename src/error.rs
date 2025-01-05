@@ -12,7 +12,7 @@ pub enum Error {
 
     #[cfg(feature = "security")]
     #[error(transparent)]
-    Ssl(#[from] openssl::ssl::Error),
+    Ssl(#[from] rustls::Error),
 
     #[cfg(feature = "snappy")]
     #[error(transparent)]

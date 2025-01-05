@@ -12,8 +12,6 @@ use std::net::{Shutdown, TcpStream};
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "security")]
-use openssl::ssl::SslConnector;
-
 use crate::error::Result;
 
 // --------------------------------------------------------------------
@@ -21,43 +19,20 @@ use crate::error::Result;
 /// Security relevant configuration options for `KafkaClient`.
 // This will be expanded in the future. See #51.
 #[cfg(feature = "security")]
+#[derive(Debug, Clone)]
 pub struct SecurityConfig {
-    connector: SslConnector,
-    verify_hostname: bool,
+    connector: rustls::ClientConfig,
 }
 
 #[cfg(feature = "security")]
 impl SecurityConfig {
     /// In the future this will also support a kerbos via #51.
-    pub fn new(connector: SslConnector) -> Self {
-        SecurityConfig {
-            connector,
-            verify_hostname: true,
-        }
-    }
-
-    /// Initiates a client-side TLS session with/without performing hostname verification.
-    pub fn with_hostname_verification(self, verify_hostname: bool) -> SecurityConfig {
-        SecurityConfig {
-            verify_hostname,
-            ..self
-        }
-    }
-}
-
-#[cfg(feature = "security")]
-impl fmt::Debug for SecurityConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SecurityConfig {{ verify_hostname: {} }}",
-            self.verify_hostname
-        )
+    pub fn new(connector: rustls::ClientConfig) -> Self {
+        SecurityConfig { connector }
     }
 }
 
 // --------------------------------------------------------------------
-
 struct Pooled<T> {
     last_checkout: Instant,
     item: T,
@@ -105,9 +80,7 @@ impl Config {
             id,
             host,
             self.rw_timeout,
-            self.security_config
-                .as_ref()
-                .map(|c| (c.connector.clone(), c.verify_hostname)),
+            self.security_config.as_ref(),
         )
         .map(|c| {
             debug!("Established: {:?}", c);
@@ -257,13 +230,13 @@ mod openssled {
     use std::net::{Shutdown, TcpStream};
     use std::time::Duration;
 
-    use openssl::ssl::SslStream;
+    use rustls::ClientConnection;
 
     use super::IsSecured;
 
     pub enum KafkaStream {
         Plain(TcpStream),
-        Ssl(SslStream<TcpStream>),
+        Ssl(rustls::StreamOwned<ClientConnection, TcpStream>),
     }
 
     impl IsSecured for KafkaStream {
@@ -276,7 +249,7 @@ mod openssled {
         fn get_ref(&self) -> &TcpStream {
             match *self {
                 KafkaStream::Plain(ref s) => s,
-                KafkaStream::Ssl(ref s) => s.get_ref(),
+                KafkaStream::Ssl(ref s) => &s.sock,
             }
         }
 
@@ -297,7 +270,7 @@ mod openssled {
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
             match *self {
                 KafkaStream::Plain(ref mut s) => s.read(buf),
-                KafkaStream::Ssl(ref mut s) => s.read(buf),
+                KafkaStream::Ssl(ref mut s) => s.sock.read(buf),
             }
         }
     }
@@ -306,13 +279,13 @@ mod openssled {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
             match *self {
                 KafkaStream::Plain(ref mut s) => s.write(buf),
-                KafkaStream::Ssl(ref mut s) => s.write(buf),
+                KafkaStream::Ssl(ref mut s) => s.sock.write(buf),
             }
         }
         fn flush(&mut self) -> io::Result<()> {
             match *self {
                 KafkaStream::Plain(ref mut s) => s.flush(),
-                KafkaStream::Ssl(ref mut s) => s.flush(),
+                KafkaStream::Ssl(ref mut s) => s.sock.flush(),
             }
         }
     }
@@ -391,30 +364,35 @@ impl KafkaConnection {
         id: u32,
         host: &str,
         rw_timeout: Option<Duration>,
-        security: Option<(SslConnector, bool)>,
+        security: Option<&SecurityConfig>,
     ) -> Result<KafkaConnection> {
+        use std::sync::Arc;
+
+        use rustls::pki_types::ServerName;
+
         use crate::Error;
+
 
         let stream = TcpStream::connect(host)?;
         let stream = match security {
-            Some((connector, verify_hostname)) => {
-                if !verify_hostname {
-                    connector
-                        .configure()
-                        .map_err(openssl::ssl::Error::from)?
-                        .set_verify_hostname(false);
-                }
+            Some(conf) => {
                 let domain = match host.rfind(':') {
                     None => host,
                     Some(i) => &host[..i],
                 };
-                let connection = connector.connect(domain, stream).map_err(|err| match err {
-                    openssl::ssl::HandshakeError::SetupFailure(err) => {
-                        Error::from(openssl::ssl::Error::from(err))
-                    }
-                    openssl::ssl::HandshakeError::Failure(err) => Error::from(err.into_error()),
-                    openssl::ssl::HandshakeError::WouldBlock(err) => Error::from(err.into_error()),
-                })?;
+
+                let connector = rustls::ClientConnection::new(
+                    Arc::new(conf.connector.clone()),
+                    ServerName::try_from(domain.to_owned()).unwrap(),
+                );
+
+                let connector = match connector {
+                    Ok(conn) => conn,
+                    Err(e) => return Err(Error::from(rustls::Error::from(e))),
+                };
+
+                let connection = rustls::StreamOwned::new(connector, stream);
+
                 KafkaStream::Ssl(connection)
             }
             None => KafkaStream::Plain(stream),
