@@ -67,6 +67,9 @@ jobs:
 
     - name: Build
       run: cargo build
+      
+    - name: Make the test script executable
+      run: chmod +x ./tests/run-all-tests
 
     - name: Run tests
       run: ./tests/run-all-tests ${{ matrix.KAFKA_VER }}
