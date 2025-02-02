@@ -136,7 +136,7 @@ pub enum FetchOffset {
     Latest,
     /// Used to ask for all messages before a certain time (ms); unix
     /// timestamp in milliseconds.
-    /// See https://cwiki.apache.org/confluence/display/KAFKA/Writing+a+Driver+for+Kafka#WritingaDriverforKafka-Offsets
+    /// See [Writing a Driver for Kafka](https://cwiki.apache.org/confluence/display/KAFKA/Writing+a+Driver+for+Kafka#WritingaDriverforKafka-Offsets)
     ByTime(i64),
 }
 
@@ -194,6 +194,7 @@ pub struct FetchGroupOffset<'a> {
 
 impl<'a> FetchGroupOffset<'a> {
     #[inline]
+    #[must_use]
     pub fn new(topic: &'a str, partition: i32) -> Self {
         FetchGroupOffset { topic, partition }
     }
@@ -221,11 +222,12 @@ pub struct CommitOffset<'a> {
 }
 
 impl<'a> CommitOffset<'a> {
+    #[must_use]
     pub fn new(topic: &'a str, partition: i32, offset: i64) -> Self {
         CommitOffset {
+            offset,
             topic,
             partition,
-            offset,
         }
     }
 }
@@ -286,6 +288,7 @@ impl<'a, 'b> AsRef<ProduceMessage<'a, 'b>> for ProduceMessage<'a, 'b> {
 impl<'a, 'b> ProduceMessage<'a, 'b> {
     /// A convenient constructor method to create a new produce
     /// message with all attributes specified.
+    #[must_use]
     pub fn new(
         topic: &'a str,
         partition: i32,
@@ -329,6 +332,7 @@ pub struct FetchPartition<'a> {
 impl<'a> FetchPartition<'a> {
     /// Creates a new "fetch messages" request structure with an
     /// unspecified `max_bytes`.
+    #[must_use]
     pub fn new(topic: &'a str, partition: i32, offset: i64) -> Self {
         FetchPartition {
             topic,
@@ -339,6 +343,7 @@ impl<'a> FetchPartition<'a> {
     }
 
     /// Sets the `max_bytes` value for the "fetch messages" request.
+    #[must_use]
     pub fn with_max_bytes(mut self, max_bytes: i32) -> Self {
         self.max_bytes = max_bytes;
         self
@@ -377,7 +382,7 @@ pub struct ProducePartitionConfirm {
 // --------------------------------------------------------------------
 
 impl KafkaClient {
-    /// Creates a new instance of KafkaClient. Before being able to
+    /// Creates a new instance of `KafkaClient`. Before being able to
     /// successfully use the new client, you'll have to load metadata.
     ///
     /// # Examples
@@ -386,6 +391,7 @@ impl KafkaClient {
     /// let mut client = kafka::client::KafkaClient::new(vec!("localhost:9092".to_owned()));
     /// client.load_metadata_all().unwrap();
     /// ```
+    #[must_use]
     pub fn new(hosts: Vec<String>) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
@@ -411,7 +417,7 @@ impl KafkaClient {
         }
     }
 
-    /// Creates a new secure instance of KafkaClient. Before being able to
+    /// Creates a new secure instance of `KafkaClient`. Before being able to
     /// successfully use the new client, you'll have to load metadata.
     ///
     /// # Examples
@@ -454,6 +460,7 @@ impl KafkaClient {
     /// as well as
     /// [Kafka's documentation](https://kafka.apache.org/documentation.html#security_ssl).
     #[cfg(feature = "security")]
+    #[must_use]
     pub fn new_secure(hosts: Vec<String>, security: SecurityConfig) -> KafkaClient {
         KafkaClient {
             config: ClientConfig {
@@ -484,11 +491,12 @@ impl KafkaClient {
     /// cluster.  This set of hosts corresponds to the values supplied
     /// to `KafkaClient::new`.
     #[inline]
+    #[must_use]
     pub fn hosts(&self) -> &[String] {
         &self.config.hosts
     }
 
-    /// Sets the client_id to be sent along every request to the
+    /// Sets the `client_id` to be sent along every request to the
     /// remote Kafka brokers.  By default, this value is the empty
     /// string.
     ///
@@ -499,6 +507,7 @@ impl KafkaClient {
     }
 
     /// Retrieves the current `KafkaClient::set_client_id` setting.
+    #[must_use]
     pub fn client_id(&self) -> &str {
         &self.config.client_id
     }
@@ -521,6 +530,7 @@ impl KafkaClient {
 
     /// Retrieves the current `KafkaClient::set_compression` setting.
     #[inline]
+    #[must_use]
     pub fn compression(&self) -> Compression {
         self.config.compression
     }
@@ -539,6 +549,7 @@ impl KafkaClient {
     /// Retrieves the current `KafkaClient::set_fetch_max_wait_time`
     /// setting.
     #[inline]
+    #[must_use]
     pub fn fetch_max_wait_time(&self) -> Duration {
         Duration::from_millis(self.config.fetch_max_wait_time as u64)
     }
@@ -550,7 +561,7 @@ impl KafkaClient {
     /// By setting higher values in combination with the timeout the
     /// consumer can tune for throughput and trade a little additional
     /// latency for reading only large chunks of data (e.g. setting
-    /// MaxWaitTime to 100 ms and setting MinBytes to 64k would allow
+    /// `MaxWaitTime` to 100 ms and setting `MinBytes` to 64k would allow
     /// the server to wait up to 100ms to try to accumulate 64k of
     /// data before responding).
     ///
@@ -577,6 +588,7 @@ impl KafkaClient {
     /// Retrieves the current `KafkaClient::set_fetch_min_bytes`
     /// setting.
     #[inline]
+    #[must_use]
     pub fn fetch_min_bytes(&self) -> i32 {
         self.config.fetch_min_bytes
     }
@@ -609,6 +621,7 @@ impl KafkaClient {
     /// Retrieves the current
     /// `KafkaClient::set_fetch_max_bytes_per_partition` setting.
     #[inline]
+    #[must_use]
     pub fn fetch_max_bytes_per_partition(&self) -> i32 {
         self.config.fetch_max_bytes_per_partition
     }
@@ -627,6 +640,7 @@ impl KafkaClient {
     /// Retrieves the current `KafkaClient::set_fetch_crc_validation`
     /// setting.
     #[inline]
+    #[must_use]
     pub fn fetch_crc_validation(&self) -> bool {
         self.config.fetch_crc_validation
     }
@@ -653,6 +667,7 @@ impl KafkaClient {
 
     /// Retrieves the current `KafkaClient::set_group_offset_storage`
     /// settings.
+    #[must_use]
     pub fn group_offset_storage(&self) -> Option<GroupOffsetStorage> {
         self.config.offset_storage
     }
@@ -667,6 +682,7 @@ impl KafkaClient {
 
     /// Retrieves the current `KafkaClient::set_retry_backoff_time`
     /// setting.
+    #[must_use]
     pub fn retry_backoff_time(&self) -> Duration {
         self.config.retry_backoff_time
     }
@@ -682,6 +698,7 @@ impl KafkaClient {
     /// Retrieves the current `KafkaClient::set_retry_max_attempts`
     /// setting.
     #[inline]
+    #[must_use]
     pub fn retry_max_attempts(&self) -> u32 {
         self.config.retry_max_attempts
     }
@@ -700,6 +717,7 @@ impl KafkaClient {
     /// Retrieves the current
     /// `KafkaClient::set_connection_idle_timeout` setting.
     #[inline]
+    #[must_use]
     pub fn connection_idle_timeout(&self) -> Duration {
         self.conn_pool.idle_timeout()
     }
@@ -723,6 +741,7 @@ impl KafkaClient {
     /// }
     /// ```
     #[inline]
+    #[must_use]
     pub fn topics(&self) -> metadata::Topics<'_> {
         metadata::Topics::new(self)
     }
@@ -774,7 +793,8 @@ impl KafkaClient {
     #[inline]
     pub fn load_metadata<T: AsRef<str>>(&mut self, topics: &[T]) -> Result<()> {
         let resp = self.fetch_metadata(topics)?;
-        self.state.update_metadata(resp)
+        self.state.update_metadata(resp);
+        Ok(())
     }
 
     /// Clears metadata stored in the client.  You must load metadata
@@ -879,8 +899,7 @@ impl KafkaClient {
                     let resp_offsets = match entry {
                         hash_map::Entry::Occupied(ref mut e) => e.get_mut(),
                         hash_map::Entry::Vacant(_) => {
-                            new_resp_offsets = Some(Vec::new());
-                            new_resp_offsets.as_mut().unwrap()
+                            new_resp_offsets.get_or_insert(Vec::with_capacity(tp.partitions.len()))
                         }
                     };
                     for p in tp.partitions {
@@ -1165,11 +1184,11 @@ impl KafkaClient {
     /// Fetch messages from a single kafka partition.
     ///
     /// See `KafkaClient::fetch_messages`.
-    pub fn fetch_messages_for_partition<'a>(
+    pub fn fetch_messages_for_partition(
         &mut self,
-        req: &FetchPartition<'a>,
+        req: &FetchPartition<'_>,
     ) -> Result<Vec<fetch::Response>> {
-        self.fetch_messages(&[req])
+        self.fetch_messages([req])
     }
 
     /// Send a message to Kafka
@@ -1270,7 +1289,7 @@ impl KafkaClient {
                     debug!("commit_offsets: no offsets provided");
                     Ok(())
                 } else {
-                    __commit_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
+                    __commit_offsets(&req, &mut self.state, &mut self.conn_pool, &self.config)
                 }
             }
             None => Err(Error::UnsetOffsetStorage),
@@ -1344,7 +1363,7 @@ impl KafkaClient {
                         return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition));
                     }
                 }
-                __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)
+                __fetch_group_offsets(&req, &mut self.state, &mut self.conn_pool, &self.config)
             }
             None => Err(Error::UnsetOffsetStorage),
         }
@@ -1385,9 +1404,14 @@ impl KafkaClient {
                 }
 
                 Ok(
-                    __fetch_group_offsets(req, &mut self.state, &mut self.conn_pool, &self.config)?
-                        .remove(topic)
-                        .unwrap_or_default(),
+                    __fetch_group_offsets(
+                        &req,
+                        &mut self.state,
+                        &mut self.conn_pool,
+                        &self.config,
+                    )?
+                    .remove(topic)
+                    .unwrap_or_default(),
                 )
             }
             None => Err(Error::UnsetOffsetStorage),
@@ -1491,7 +1515,7 @@ fn __get_group_coordinator<'a>(
 }
 
 fn __commit_offsets(
-    req: protocol::OffsetCommitRequest<'_, '_>,
+    req: &protocol::OffsetCommitRequest<'_, '_>,
     state: &mut state::ClientState,
     conn_pool: &mut network::Connections,
     config: &ClientConfig,
@@ -1555,7 +1579,7 @@ fn __commit_offsets(
 }
 
 fn __fetch_group_offsets(
-    req: protocol::OffsetFetchRequest<'_, '_, '_>,
+    req: &protocol::OffsetFetchRequest<'_, '_, '_>,
     state: &mut state::ClientState,
     conn_pool: &mut network::Connections,
     config: &ClientConfig,
@@ -1619,7 +1643,7 @@ fn __fetch_group_offsets(
                         req.header.correlation_id, e
                     );
                     attempt += 1;
-                    __retry_sleep(config)
+                    __retry_sleep(config);
                 } else {
                     return Err(Error::Kafka(e));
                 }
@@ -1796,5 +1820,5 @@ fn __get_response_size(conn: &mut network::KafkaConnection) -> Result<i32> {
 /// Suspends the calling thread for the configured "retry" time. This
 /// method should be called _only_ as part of a retry attempt.
 fn __retry_sleep(cfg: &ClientConfig) {
-    thread::sleep(cfg.retry_backoff_time)
+    thread::sleep(cfg.retry_backoff_time);
 }

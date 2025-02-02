@@ -12,7 +12,7 @@ use std::net::{Shutdown, TcpStream};
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "security")]
-use openssl::ssl::SslConnector;
+use openssl::ssl::{Error as SslError, HandshakeError, SslConnector};
 
 use crate::error::Result;
 
@@ -29,6 +29,7 @@ pub struct SecurityConfig {
 #[cfg(feature = "security")]
 impl SecurityConfig {
     /// In the future this will also support a kerbos via #51.
+    #[must_use]
     pub fn new(connector: SslConnector) -> Self {
         SecurityConfig {
             connector,
@@ -37,6 +38,7 @@ impl SecurityConfig {
     }
 
     /// Initiates a client-side TLS session with/without performing hostname verification.
+    #[must_use]
     pub fn with_hostname_verification(self, verify_hostname: bool) -> SecurityConfig {
         SecurityConfig {
             verify_hostname,
@@ -349,7 +351,7 @@ impl KafkaConnection {
     }
 
     pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-        let r = (&mut self.stream).read_exact(buf).map_err(From::from);
+        let r = (self.stream).read_exact(buf).map_err(From::from);
         trace!("Read {} bytes from: {:?} => {:?}", buf.len(), self, r);
         r
     }
@@ -401,7 +403,7 @@ impl KafkaConnection {
                 if !verify_hostname {
                     connector
                         .configure()
-                        .map_err(openssl::ssl::Error::from)?
+                        .map_err(SslError::from)?
                         .set_verify_hostname(false);
                 }
                 let domain = match host.rfind(':') {
@@ -409,11 +411,10 @@ impl KafkaConnection {
                     Some(i) => &host[..i],
                 };
                 let connection = connector.connect(domain, stream).map_err(|err| match err {
-                    openssl::ssl::HandshakeError::SetupFailure(err) => {
-                        Error::from(openssl::ssl::Error::from(err))
+                    HandshakeError::SetupFailure(err) => Error::from(SslError::from(err)),
+                    HandshakeError::Failure(err) | HandshakeError::WouldBlock(err) => {
+                        Error::from(err.into_error())
                     }
-                    openssl::ssl::HandshakeError::Failure(err) => Error::from(err.into_error()),
-                    openssl::ssl::HandshakeError::WouldBlock(err) => Error::from(err.into_error()),
                 })?;
                 KafkaStream::Ssl(connection)
             }

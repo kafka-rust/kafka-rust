@@ -1,7 +1,5 @@
 # Kafka Rust Client
 
-[![Build Status](https://travis-ci.org/spicavigo/kafka-rust.svg?branch=master)](https://travis-ci.org/spicavigo/kafka-rust) [![](http://meritbadge.herokuapp.com/kafka)](https://crates.io/crates/kafka)
-
 ## Project Status
 
 This project is starting to be maintained by John Ward, the current status is that I am bringing the project up to date with the latest dependencies, removing deprecated Rust code and adjusting the tests.
@@ -15,32 +13,6 @@ Welcome to kafka-rust's new home: https://github.com/kafka-rust
 - This library is primarily documented through examples in its [API documentation](https://docs.rs/kafka/).
 - Documentation about Kafka itself can be found at [its project home page](http://kafka.apache.org/).
 
-## Sponsors
-
-Thank you to our sponsors, this helps me to spend more time on this project and also helps with infrastructure
-
-<table>
-<tr>
-<td>
-  <img width="1000" height="0">
-    <a href="https://upstash.com/?utm_source=kafka-rust" >
-  <img src="https://raw.githubusercontent.com/upstash/sponsorship/master/kafka.png" alt="Upstash" width="260" align="right">
-  </a>
-
-<h3>Upstash: Serverless Kafka</h3>
-
-<ul>
-    <li>True Serverless Kafka with per-request-pricing</li>
-    <li>Managed Apache Kafka, works with all Kafka clients</li>
-    <li>Built-in REST API designed for serverless and edge functions</li>
-  </ul>
-
-[Start for free in 30 seconds!](https://upstash.com/?utm_source=kafka-rust)
-
-</td>
-</tr>
-</table>
-
 ## Installation
 
 This crate works with Cargo and is on
@@ -50,7 +22,7 @@ expect the version number to grow quickly).
 
 ```toml
 [dependencies]
-kafka = "0.9"
+kafka = "0.10"
 ```
 
 To build kafka-rust the usual `cargo build` should suffice. The crate
@@ -133,6 +105,12 @@ distribution):
 
 ```
 kafka-topics.sh --topic my-topic --create --zookeeper localhost:2181 --partitions 1 --replication-factor 1
+```
+
+Zookeeper will be removed in the next major kafka release. Using `--bootstrap-server` to be more ready.
+
+```
+kafka-topics.sh --topic my-topic --create --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
 ```
 
 See also [Kafka's quickstart guide](https://kafka.apache.org/documentation.html#quickstart)

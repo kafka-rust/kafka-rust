@@ -74,15 +74,9 @@ impl KafkaCode {
 
 #[test]
 fn test_kafka_code_from_protocol() {
-    use std::i16;
-
     macro_rules! assert_kafka_code {
         ($kcode:path, $n:expr) => {
-            assert!(if let Some($kcode) = KafkaCode::from_protocol($n) {
-                true
-            } else {
-                false
-            })
+            assert_eq!(KafkaCode::from_protocol($n), Some($kcode));
         };
     }
 
@@ -130,7 +124,7 @@ impl<'a> HeaderRequest<'a> {
         api_version: i16,
         correlation_id: i32,
         client_id: &'a str,
-    ) -> HeaderRequest<'_> {
+    ) -> HeaderRequest<'a> {
         HeaderRequest {
             api_key,
             api_version,
@@ -178,11 +172,10 @@ pub fn to_crc(data: &[u8]) -> u32 {
 /// Safely converts a Duration into the number of milliseconds as a
 /// i32 as often required in the kafka protocol.
 pub fn to_millis_i32(d: Duration) -> Result<i32> {
-    use std::i32;
     let m = d
         .as_secs()
         .saturating_mul(1_000)
-        .saturating_add(d.subsec_millis() as u64);
+        .saturating_add(u64::from(d.subsec_millis()));
     if m > i32::MAX as u64 {
         Err(Error::InvalidDuration)
     } else {
@@ -192,8 +185,6 @@ pub fn to_millis_i32(d: Duration) -> Result<i32> {
 
 #[test]
 fn test_to_millis_i32() {
-    use std::{i32, u32, u64};
-
     fn assert_invalid(d: Duration) {
         match to_millis_i32(d) {
             Err(Error::InvalidDuration) => {}

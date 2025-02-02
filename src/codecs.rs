@@ -124,7 +124,7 @@ pub trait FromByte {
     fn decode_new<T: Read>(buffer: &mut T) -> Result<Self::R> {
         let mut temp: Self::R = Default::default();
         match temp.decode(buffer) {
-            Ok(_) => Ok(temp),
+            Ok(()) => Ok(temp),
             Err(e) => Err(e),
         }
     }
@@ -227,7 +227,7 @@ impl FromByte for Vec<u8> {
     fn decode<T: Read>(&mut self, buffer: &mut T) -> Result<()> {
         let mut length: i32 = 0;
         match decode!(buffer, read_i32, &mut length) {
-            Ok(_) => {}
+            Ok(()) => {}
             Err(e) => return Err(e),
         }
         if length <= 0 {
