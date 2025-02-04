@@ -16,7 +16,6 @@ mod integration {
     use std;
     use std::collections::HashMap;
 
-    
     use tracing::debug;
 
     use kafka::client::{Compression, GroupOffsetStorage, KafkaClient, SecurityConfig};
