@@ -68,6 +68,9 @@ use std::slice::from_ref;
 use std::time::Duration;
 use twox_hash::XxHash32;
 
+#[cfg(feature = "producer_timestamp")]
+use crate::protocol::produce::ProducerTimestamp;
+
 #[cfg(feature = "security")]
 use crate::client::SecurityConfig;
 
@@ -360,6 +363,8 @@ pub struct Builder<P = DefaultPartitioner> {
     partitioner: P,
     security_config: Option<SecurityConfig>,
     client_id: Option<String>,
+    #[cfg(feature = "producer_timestamp")]
+    producer_timestamp: Option<ProducerTimestamp>,
 }
 
 impl Builder {
@@ -376,6 +381,8 @@ impl Builder {
             partitioner: DefaultPartitioner::default(),
             security_config: None,
             client_id: None,
+            #[cfg(feature = "producer_timestamp")]
+            producer_timestamp: None,
         };
         if let Some(ref c) = b.client {
             b.compression = c.compression();
@@ -437,6 +444,16 @@ impl Builder {
         self.client_id = Some(client_id);
         self
     }
+
+    #[cfg(feature = "producer_timestamp")]
+    /// Sets the compression algorithm to use when sending out data.
+    ///
+    /// See `KafkaClient::set_producer_timestamp`.
+    #[must_use]
+    pub fn with_timestamp(mut self, timestamp: ProducerTimestamp) -> Self {
+        self.producer_timestamp = Some(timestamp);
+        self
+    }
 }
 
 impl<P> Builder<P> {
@@ -453,6 +470,8 @@ impl<P> Builder<P> {
             partitioner,
             security_config: None,
             client_id: None,
+            #[cfg(feature = "producer_timestamp")]
+            producer_timestamp: None,
         }
     }
 
@@ -484,6 +503,8 @@ impl<P> Builder<P> {
         // ~ apply configuration settings
         client.set_compression(self.compression);
         client.set_connection_idle_timeout(self.conn_idle_timeout);
+        #[cfg(feature = "producer_timestamp")]
+        client.set_producer_timestamp(self.producer_timestamp);
         if let Some(client_id) = self.client_id {
             client.set_client_id(client_id);
         }

@@ -17,6 +17,13 @@ use crate::producer::{ProduceConfirm, ProducePartitionConfirm};
 /// The magic byte (a.k.a version) we use for sent messages.
 const MESSAGE_MAGIC_BYTE: i8 = 0;
 
+#[cfg(feature = "producer_timestamp")]
+/// The magic byte (a.k.a version) used to specify message type with timestamp.
+// In versions prior to Kafka 0.10, the only supported message format version (which is indicated in the magic value) was 0.
+// Message format version 1 was introduced with timestamp support in version 0.10.
+// See https://kafka.apache.org/documentation/#messageset
+const MESSAGE_MAGIC_BYTE_WITH_TIMESTAMP: i8 = 1;
+
 #[derive(Debug)]
 pub struct ProduceRequest<'a, 'b> {
     pub header: HeaderRequest<'a>,
@@ -24,6 +31,7 @@ pub struct ProduceRequest<'a, 'b> {
     pub timeout: i32,
     pub topic_partitions: Vec<TopicPartitionProduceRequest<'b>>,
     pub compression: Compression,
+    pub timestamp: Option<ProducerTimestamp>,
 }
 
 #[derive(Debug)]
@@ -31,6 +39,8 @@ pub struct TopicPartitionProduceRequest<'a> {
     pub topic: &'a str,
     pub partitions: Vec<PartitionProduceRequest<'a>>,
     pub compression: Compression,
+    #[allow(unused)]
+    pub timestamp: Option<ProducerTimestamp>,
 }
 
 #[derive(Debug)]
@@ -45,6 +55,14 @@ pub struct MessageProduceRequest<'a> {
     value: Option<&'a [u8]>,
 }
 
+#[allow(unused)]
+#[derive(Debug, Copy, Clone)]
+#[repr(u8)]
+pub enum ProducerTimestamp {
+    CreateTime = 0,
+    LogAppendTime = 8, // attributes bit 3 should be set to 1 in case of the LogAppend param. See https://kafka.apache.org/39/documentation/#messageset
+}
+
 impl<'a, 'b> ProduceRequest<'a, 'b> {
     pub fn new(
         required_acks: i16,
@@ -52,6 +70,7 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
         correlation_id: i32,
         client_id: &'a str,
         compression: Compression,
+        #[cfg(feature = "producer_timestamp")] timestamp: Option<ProducerTimestamp>,
     ) -> ProduceRequest<'a, 'b> {
         ProduceRequest {
             header: HeaderRequest::new(API_KEY_PRODUCE, API_VERSION, correlation_id, client_id),
@@ -59,6 +78,10 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
             timeout,
             topic_partitions: vec![],
             compression,
+            #[cfg(feature = "producer_timestamp")]
+            timestamp,
+            #[cfg(not(feature = "producer_timestamp"))]
+            timestamp: None,
         }
     }
 
@@ -75,18 +98,23 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
                 return;
             }
         }
-        let mut tp = TopicPartitionProduceRequest::new(topic, self.compression);
+        let mut tp = TopicPartitionProduceRequest::new(topic, self.compression, self.timestamp);
         tp.add(partition, key, value);
         self.topic_partitions.push(tp);
     }
 }
 
 impl<'a> TopicPartitionProduceRequest<'a> {
-    pub fn new(topic: &'a str, compression: Compression) -> TopicPartitionProduceRequest<'a> {
+    pub fn new(
+        topic: &'a str,
+        compression: Compression,
+        timestamp: Option<ProducerTimestamp>,
+    ) -> TopicPartitionProduceRequest<'a> {
         TopicPartitionProduceRequest {
             topic,
             partitions: vec![],
             compression,
+            timestamp,
         }
     }
 
@@ -141,7 +169,18 @@ impl<'a> ToByte for TopicPartitionProduceRequest<'a> {
         self.topic.encode(buffer)?;
         (self.partitions.len() as i32).encode(buffer)?;
         for e in &self.partitions {
+            #[cfg(not(feature = "producer_timestamp"))]
             e._encode(buffer, self.compression)?;
+
+            #[cfg(feature = "producer_timestamp")]
+            {
+                match self.timestamp {
+                    Some(timestamp) => {
+                        e._encode_with_timestamp(buffer, self.compression, timestamp)?
+                    }
+                    None => e._encode(buffer, self.compression)?,
+                }
+            }
         }
         Ok(())
     }
@@ -177,6 +216,44 @@ impl<'a> PartitionProduceRequest<'a> {
         }
         buf.encode(out)
     }
+
+    #[cfg(feature = "producer_timestamp")]
+    fn _encode_with_timestamp<W: Write>(
+        &self,
+        out: &mut W,
+        compression: Compression,
+        timestamp: ProducerTimestamp,
+    ) -> Result<()> {
+        self.partition.encode(out)?;
+
+        // ~ render the whole MessageSet first to a temporary buffer
+        let mut buf = Vec::new();
+        for msg in &self.messages {
+            let now = chrono::Utc::now().timestamp_millis(); // ~ get current timestamp
+            msg._encode_to_buf_with_timestamp(
+                &mut buf,
+                MESSAGE_MAGIC_BYTE_WITH_TIMESTAMP,
+                timestamp as i8,
+                now,
+            )?;
+        }
+        match compression {
+            Compression::NONE => {
+                // ~ nothing to do
+            }
+            #[cfg(feature = "gzip")]
+            Compression::GZIP => {
+                let cdata = gzip::compress(&buf)?;
+                render_compressed_with_timestamp(&mut buf, &cdata, compression, timestamp)?;
+            }
+            #[cfg(feature = "snappy")]
+            Compression::SNAPPY => {
+                let cdata = snappy::compress(&buf)?;
+                render_compressed_with_timestamp(&mut buf, &cdata, compression, timestamp)?;
+            }
+        }
+        buf.encode(out)
+    }
 }
 
 // ~ A helper method to render `cdata` into `out` as a compressed message.
@@ -185,7 +262,33 @@ impl<'a> PartitionProduceRequest<'a> {
 fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) -> Result<()> {
     out.clear();
     let cmsg = MessageProduceRequest::new(None, Some(cdata));
+
     cmsg._encode_to_buf(out, MESSAGE_MAGIC_BYTE, compression as i8)
+}
+
+// available when feature producer_timestamp and snappy || gzip are available
+// ~ A helper method to render `cdata` into `out` as a compressed message.
+// ~ `out` is first cleared and then populated with the rendered message.
+#[cfg(all(
+    feature = "producer_timestamp",
+    any(feature = "snappy", feature = "gzip")
+))]
+fn render_compressed_with_timestamp(
+    out: &mut Vec<u8>,
+    cdata: &[u8],
+    compression: Compression,
+    timestamp: ProducerTimestamp,
+) -> Result<()> {
+    out.clear();
+    let cmsg = MessageProduceRequest::new(None, Some(cdata));
+
+    let now = chrono::Utc::now().timestamp_millis(); // ~ get current timestamp
+    cmsg._encode_to_buf_with_timestamp(
+        out,
+        MESSAGE_MAGIC_BYTE_WITH_TIMESTAMP,
+        compression as i8 | timestamp as i8,
+        now,
+    )
 }
 
 impl<'a> MessageProduceRequest<'a> {
@@ -217,6 +320,53 @@ impl<'a> MessageProduceRequest<'a> {
         crc.encode(buffer)?; // reserve space for the crc to be computed later
         magic.encode(buffer)?;
         attributes.encode(buffer)?;
+        self.key.encode(buffer)?;
+        self.value.encode(buffer)?;
+
+        // compute the crc and store it back in the reserved space
+        crc = to_crc(&buffer[(crc_pos + 4)..]) as i32;
+        crc.encode(&mut &mut buffer[crc_pos..crc_pos + 4])?;
+
+        // compute the size and store it back in the reserved space
+        size = (buffer.len() - crc_pos) as i32;
+        size.encode(&mut &mut buffer[size_pos..size_pos + 4])?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "producer_timestamp")]
+    // render a single message as: Offset MessageSize Message
+    //
+    // Offset => int64 (always encoded as zero here)
+    // MessageSize => int32
+    // Message => Crc MagicByte Attributes Key Value
+    // Crc => int32
+    // MagicByte => int8
+    // Attributes => int8
+    // Timestamp => int64
+    // Key => bytes
+    // Value => bytes
+    //
+    // note: the rendered data corresponds to a single MessageSet in the kafka protocol
+    fn _encode_to_buf_with_timestamp(
+        &self,
+        buffer: &mut Vec<u8>,
+        magic: i8,
+        attributes: i8,
+        timestamp: i64,
+    ) -> Result<()> {
+        (0i64).encode(buffer)?; // offset in the response request can be anything
+
+        let size_pos = buffer.len();
+        let mut size: i32 = 0;
+        size.encode(buffer)?; // reserve space for the size to be computed later
+
+        let crc_pos = buffer.len(); // remember the position where to update the crc later
+        let mut crc: i32 = 0;
+        crc.encode(buffer)?; // reserve space for the crc to be computed later
+        magic.encode(buffer)?;
+        attributes.encode(buffer)?;
+        timestamp.encode(buffer)?;
         self.key.encode(buffer)?;
         self.value.encode(buffer)?;
 
