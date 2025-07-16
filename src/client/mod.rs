@@ -19,6 +19,12 @@ use crate::protocol::list_offset::ListOffsetVersion;
 pub use crate::utils::PartitionOffset;
 use crate::utils::TimestampedPartitionOffset;
 
+#[cfg(feature = "producer_timestamp")]
+pub use crate::protocol::produce::ProducerTimestamp;
+
+#[cfg(not(feature = "producer_timestamp"))]
+use crate::protocol::produce::ProducerTimestamp;
+
 #[cfg(feature = "security")]
 pub use self::network::SecurityConfig;
 
@@ -78,6 +84,9 @@ pub const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 120_000 / DEFAULT_RETRY_BACKOFF_TIME
 /// The default value for `KafkaClient::set_connection_idle_timeout(..)`
 pub const DEFAULT_CONNECTION_IDLE_TIMEOUT_MILLIS: u64 = 540_000;
 
+/// The default value for `KafkaClient::set_producer_timestamp(..)`
+pub(crate) const DEFAULT_PRODUCER_TIMESTAMP: Option<ProducerTimestamp> = None;
+
 /// Client struct keeping track of brokers and topic metadata.
 ///
 /// Implements methods described by the [Kafka Protocol](http://kafka.apache.org/protocol.html).
@@ -122,6 +131,9 @@ struct ClientConfig {
     // ~ the number of repeated retry attempts; prevents endless
     // repetition of a retry attempt
     retry_max_attempts: u32,
+    // ~ producer's message timestamp option CreateTime/LogAppendTime
+    #[allow(unused)]
+    producer_timestamp: Option<ProducerTimestamp>,
 }
 
 // --------------------------------------------------------------------
@@ -408,6 +420,7 @@ impl KafkaClient {
                 offset_storage: DEFAULT_GROUP_OFFSET_STORAGE,
                 retry_backoff_time: Duration::from_millis(DEFAULT_RETRY_BACKOFF_TIME_MILLIS),
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
+                producer_timestamp: DEFAULT_PRODUCER_TIMESTAMP,
             },
             conn_pool: network::Connections::new(
                 default_conn_rw_timeout(),
@@ -477,6 +490,7 @@ impl KafkaClient {
                 offset_storage: DEFAULT_GROUP_OFFSET_STORAGE,
                 retry_backoff_time: Duration::from_millis(DEFAULT_RETRY_BACKOFF_TIME_MILLIS),
                 retry_max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
+                producer_timestamp: DEFAULT_PRODUCER_TIMESTAMP,
             },
             conn_pool: network::Connections::new_with_security(
                 default_conn_rw_timeout(),
@@ -720,6 +734,31 @@ impl KafkaClient {
     #[must_use]
     pub fn connection_idle_timeout(&self) -> Duration {
         self.conn_pool.idle_timeout()
+    }
+
+    #[cfg(feature = "producer_timestamp")]
+    /// Sets the compression algorithm to use when sending out messages.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use kafka::client::{Compression, KafkaClient};
+    ///
+    /// let mut client = KafkaClient::new(vec!("localhost:9092".to_owned()));
+    /// client.load_metadata_all().unwrap();
+    /// client.set_producer_timestamp(Timestamp::CreateTime);
+    /// ```
+    #[inline]
+    pub fn set_producer_timestamp(&mut self, producer_timestamp: Option<ProducerTimestamp>) {
+        self.config.producer_timestamp = producer_timestamp;
+    }
+
+    #[cfg(feature = "producer_timestamp")]
+    /// Retrieves the current `KafkaClient::producer_timestamp` setting.
+    #[inline]
+    #[must_use]
+    pub fn producer_timestamp(&self) -> Option<ProducerTimestamp> {
+        self.config.producer_timestamp
     }
 
     /// Provides a view onto the currently loaded metadata of known .
@@ -1455,6 +1494,8 @@ impl KafkaClientInternals for KafkaClient {
                             correlation,
                             &config.client_id,
                             config.compression,
+                            #[cfg(feature = "producer_timestamp")]
+                            config.producer_timestamp,
                         )
                     })
                     .add(msg.topic, msg.partition, msg.key, msg.value),
