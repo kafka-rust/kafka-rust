@@ -187,6 +187,10 @@ impl Consumer {
     ///
     /// ```no_run
     ///
+    /// use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
+    /// use kafka::client::KafkaClient;
+    /// use kafka::error::Error;
+    ///
     /// let mut consumer: Consumer = Consumer::from_hosts(vec!["localhost:9092".to_string()])
     ///     .with_topic("test-topic".to_string())
     ///     .with_fallback_offset(FetchOffset::Latest)
@@ -196,16 +200,17 @@ impl Consumer {
     ///
     /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
-    /// let tpos = client.list_offsets(&s, FetchOffset::ByTime(1698425676797)).unwrap();
-    /// let seek_results: Vec<Result<(), Error>> = res
+    /// let topics = vec!["test-topic".to_string()];
+    /// let tpos = client.list_offsets(&topics, FetchOffset::ByTime(1698425676797));
+    /// let seek_results: Vec<Result<(), Error>> = tpos
     ///     .unwrap()
     ///     .into_iter()
-    ///     .flat_map(|topic, partition_offsets) {
+    ///     .flat_map(|(topic, partition_offsets)| {
     ///         partition_offsets.into_iter()
-    ///             .map(move |po| topic.clone(), po.partition, po.offset))
+    ///             .map(move |po| (topic.clone(), po.partition, po.offset))
     ///     })
-    ///     .map(|topic, partition, offset| consumer.seek(topic.as_str(), partition, offset))
-    ///     .collect()
+    ///     .map(|(topic, partition, offset)| consumer.seek(topic.as_str(), partition, offset))
+    ///     .collect();
     /// ```
     ///
     /// This makes the consumer resets its fetch offsets to the nearest offsets after the
