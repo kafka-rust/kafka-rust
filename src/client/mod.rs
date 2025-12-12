@@ -976,12 +976,12 @@ impl KafkaClient {
     /// # Examples
     ///
     /// ```no_run
-    /// use kafka::client::KafkaClient;
+    /// use kafka::client::{KafkaClient, FetchOffset};
     ///
     /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
     /// let topics = vec!["test-topic".to_string()];
-    /// let offsets = client.list_offsets(&s, FetchOffset::ByTime(1698425676797));
+    /// let offsets = client.list_offsets(&topics, FetchOffset::ByTime(1698425676797));
     /// ```
     ///
     /// Returns a mapping of topic name to `TimestampedPartitionOffset`s.
