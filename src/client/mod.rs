@@ -835,6 +835,74 @@ impl KafkaClient {
         Err(Error::NoHostReachable)
     }
 
+    /// Negotiates API versions with a broker.
+    /// This is called automatically when needed to determine the broker's supported API versions.
+    /// Falls back to version 0 if the broker doesn't support ApiVersions (e.g., Kafka < 0.10).
+    fn negotiate_api_versions(&mut self, host: &str) -> Result<()> {
+        // Skip if already negotiated
+        if self.state.has_api_versions(host) {
+            return Ok(());
+        }
+
+        debug!("negotiate_api_versions: negotiating with {}", host);
+        
+        let correlation = self.state.next_correlation_id();
+        let now = Instant::now();
+        let req = protocol::ApiVersionsRequest::new(correlation, &self.config.client_id);
+        
+        match __send_receive::<protocol::ApiVersionsRequest, protocol::ApiVersionsResponse>(
+            &mut self.conn_pool,
+            host,
+            now,
+            req,
+        ) {
+            Ok(resp) => match resp.into_result() {
+                Ok(resp) => {
+                    // Extract version information
+                    let versions: Vec<(i16, i16, i16)> = resp
+                        .api_versions
+                        .into_iter()
+                        .map(|v| (v.api_key, v.min_version, v.max_version))
+                        .collect();
+                    
+                    debug!("negotiate_api_versions: negotiated {} API versions with {}", 
+                           versions.len(), host);
+                    
+                    self.state.set_api_versions(host.to_owned(), versions);
+                    Ok(())
+                }
+                Err(e) => {
+                    // If broker returns an error, fall back to version 0
+                    debug!(
+                        "negotiate_api_versions: broker {} returned error: {}, falling back to version 0",
+                        host, e
+                    );
+                    Ok(())
+                }
+            },
+            Err(e) => {
+                // If ApiVersions fails (e.g., old broker doesn't support it),
+                // we'll use version 0 as fallback
+                debug!(
+                    "negotiate_api_versions: failed to negotiate with {}: {}, using version 0 fallback",
+                    host, e
+                );
+                Ok(())
+            }
+        }
+    }
+
+    /// Gets the negotiated API version for a specific API key and broker.
+    /// Automatically attempts to negotiate if not done yet.
+    /// Falls back to version 0 for compatibility with old brokers.
+    fn get_api_version(&mut self, host: &str, api_key: i16) -> i16 {
+        // Try to negotiate if not done yet
+        let _ = self.negotiate_api_versions(host);
+        
+        // Return the negotiated version (or 0 if negotiation failed/not available)
+        self.state.get_api_version(host, api_key)
+    }
+
     /// Fetch offsets for a list of topics
     ///
     /// # Examples

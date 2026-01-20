@@ -24,6 +24,10 @@ pub struct ClientState {
 
     // ~ a mapping of groups to their coordinators
     group_coordinators: HashMap<String, BrokerRef>,
+
+    // ~ negotiated API versions per broker (broker_host -> api_key -> max_version)
+    // This allows dynamic protocol version selection based on broker capabilities
+    api_versions: HashMap<String, HashMap<i16, i16>>,
 }
 
 // --------------------------------------------------------------------
@@ -212,6 +216,7 @@ impl ClientState {
             brokers: Vec::new(),
             topic_partitions: HashMap::new(),
             group_coordinators: HashMap::new(),
+            api_versions: HashMap::new(),
         }
     }
 
@@ -264,6 +269,34 @@ impl ClientState {
         // through `BrokerIndex`
         self.topic_partitions.clear();
         self.brokers.clear();
+        // Note: we don't clear api_versions as they remain valid
+        // across metadata refreshes for the same brokers
+    }
+
+    /// Gets the negotiated API version for a specific API key and broker.
+    /// Returns None if no version has been negotiated yet.
+    /// Falls back to version 0 if the broker doesn't support the API.
+    pub fn get_api_version(&self, broker_host: &str, api_key: i16) -> i16 {
+        self.api_versions
+            .get(broker_host)
+            .and_then(|versions| versions.get(&api_key).copied())
+            .unwrap_or(0) // Default to version 0 for backward compatibility
+    }
+
+    /// Sets the negotiated API versions for a broker.
+    /// This is typically called after a successful ApiVersions request.
+    pub fn set_api_versions(&mut self, broker_host: String, versions: Vec<(i16, i16, i16)>) {
+        let mut version_map = HashMap::new();
+        for (api_key, _min_version, max_version) in versions {
+            // Store the maximum supported version for each API key
+            version_map.insert(api_key, max_version);
+        }
+        self.api_versions.insert(broker_host, version_map);
+    }
+
+    /// Checks if API versions have been negotiated for a broker.
+    pub fn has_api_versions(&self, broker_host: &str) -> bool {
+        self.api_versions.contains_key(broker_host)
     }
 
     /// Loads new and updates existing metadata from the given

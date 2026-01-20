@@ -14,6 +14,7 @@ macro_rules! try_multi {
     })
 }
 
+pub mod api_versions;
 pub mod consumer;
 pub mod metadata;
 pub mod offset;
@@ -25,6 +26,7 @@ mod zreader;
 
 // ~ convenient re-exports for request/response types defined in the
 // submodules
+pub use self::api_versions::{ApiVersion, ApiVersionsRequest, ApiVersionsResponse};
 pub use self::consumer::{
     GroupCoordinatorRequest, GroupCoordinatorResponse, OffsetCommitRequest, OffsetCommitResponse,
     OffsetCommitVersion, OffsetFetchRequest, OffsetFetchResponse, OffsetFetchVersion,
@@ -45,8 +47,12 @@ const API_KEY_METADATA: i16 = 3;
 const API_KEY_OFFSET_COMMIT: i16 = 8;
 const API_KEY_OFFSET_FETCH: i16 = 9;
 const API_KEY_GROUP_COORDINATOR: i16 = 10;
+// 11-17 reserved for other kafka api services
+pub(crate) const API_KEY_API_VERSIONS: i16 = 18;
 
 // the default version of Kafka API we are requesting
+// This is used as a fallback for backward compatibility.
+// Modern code should use dynamically negotiated versions from ClientState.
 const API_VERSION: i16 = 0;
 
 // --------------------------------------------------------------------
@@ -120,6 +126,22 @@ pub struct HeaderRequest<'a> {
 
 impl<'a> HeaderRequest<'a> {
     fn new(
+        api_key: i16,
+        api_version: i16,
+        correlation_id: i32,
+        client_id: &'a str,
+    ) -> HeaderRequest<'a> {
+        HeaderRequest {
+            api_key,
+            api_version,
+            correlation_id,
+            client_id,
+        }
+    }
+
+    /// Creates a new header with explicit API version.
+    /// This is the preferred way to create headers when using negotiated API versions.
+    pub fn with_version(
         api_key: i16,
         api_version: i16,
         correlation_id: i32,
