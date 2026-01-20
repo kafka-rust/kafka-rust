@@ -27,9 +27,25 @@ fn test_consumer_poll() {
         ))
         .unwrap();
 
-    messages = consumer.poll().unwrap();
-    let mut messages_iter = messages.iter();
-    let message_set = messages_iter.next().unwrap();
+    // Give Kafka time to process the message
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    // Retry polling a few times to handle timing issues
+    let mut attempts = 0;
+    let message_set = loop {
+        messages = consumer.poll().unwrap();
+        if !messages.is_empty() {
+            let mut messages_iter = messages.iter();
+            if let Some(ms) = messages_iter.next() {
+                break ms;
+            }
+        }
+        attempts += 1;
+        if attempts > 20 {
+            panic!("Message not received after 20 poll attempts (waited {} seconds). Consumer may not be properly configured.", attempts as f64 * 0.2);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    };
 
     assert_eq!(
         1,
@@ -79,7 +95,7 @@ fn test_consumer_commit_messageset() {
         for ms in consumer.poll().unwrap().iter() {
             let messages = ms.messages();
             num_messages += messages.len();
-            consumer.consume_messageset(ms).unwrap();
+            consumer.consume_messageset(&ms).unwrap();
         }
 
         consumer.commit_consumed().unwrap();
