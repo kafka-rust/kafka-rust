@@ -132,18 +132,6 @@ Docker (1.10.0+) and docker-compose (1.6.0+) installed and run the tests via the
 included `run-all-tests` script in the `tests` directory. See the `run-all-tests`
 script itself for details on its usage.
 
-## Creating a topic
-
-You can create topics directly via `KafkaClient`:
-
-```rust,no_run
-use std::time::Duration;
-use kafka::client::KafkaClient;
-
-let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
-client.create_topic("my-topic", 1, 1, Duration::from_secs(5)).unwrap();
-```
-
 Note unless otherwise explicitly stated in the documentation, this
 library will ignore requests to topics which it doesn't know about for
 operations that require topic metadata (for example fetching or producing
