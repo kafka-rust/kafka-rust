@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use kafka::error::Error as KafkaError;
 use kafka::producer::{Producer, Record, RequiredAcks};
+#[cfg(feature = "producer_timestamp")]
+use kafka::producer::TimestampedRecord;
 
 /// This program demonstrates sending single message through a
 /// `Producer`.  This is a convenient higher-level client that will
@@ -16,6 +18,15 @@ fn main() {
 
     if let Err(e) = produce_message(data, topic, vec![broker.to_owned()]) {
         println!("Failed producing messages: {}", e);
+    }
+
+    #[cfg(feature = "producer_timestamp")]
+    {
+        let timestamp_ms = 1_700_000_000_000;
+        if let Err(e) = produce_message_with_timestamp(data, topic, vec![broker.to_owned()], timestamp_ms)
+        {
+            println!("Failed producing timestamped message: {}", e);
+        }
     }
 }
 
@@ -52,6 +63,23 @@ fn produce_message(data: &[u8], topic: &str, brokers: Vec<String>) -> Result<(),
     // ~ we can achieve exactly the same as above in a shorter way with
     // the following call
     producer.send(&Record::from_value(topic, data))?;
+
+    Ok(())
+}
+
+#[cfg(feature = "producer_timestamp")]
+fn produce_message_with_timestamp(
+    data: &[u8],
+    topic: &str,
+    brokers: Vec<String>,
+    timestamp_ms: i64,
+) -> Result<(), KafkaError> {
+    let mut producer = Producer::from_hosts(brokers)
+        .with_ack_timeout(Duration::from_secs(1))
+        .with_required_acks(RequiredAcks::One)
+        .create()?;
+
+    producer.send_timestamped(&TimestampedRecord::from_value(topic, data, timestamp_ms))?;
 
     Ok(())
 }

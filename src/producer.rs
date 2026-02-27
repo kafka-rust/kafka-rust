@@ -153,6 +153,28 @@ pub struct Record<'a, K, V> {
     pub partition: i32,
 }
 
+#[cfg(feature = "producer_timestamp")]
+/// A structure representing a message with an explicit timestamp to be
+/// sent to Kafka through the `Producer` API.
+pub struct TimestampedRecord<'a, K, V> {
+    /// Key data of this (message) record.
+    pub key: K,
+
+    /// Value data of this (message) record.
+    pub value: V,
+
+    /// Name of the topic this message is supposed to be delivered to.
+    pub topic: &'a str,
+
+    /// The partition id of the topic to deliver this message to.
+    /// This partition may be `< 0` in which case it is considered
+    /// "unspecified".
+    pub partition: i32,
+
+    /// Message timestamp in milliseconds since Unix epoch.
+    pub timestamp: i64,
+}
+
 impl<'a, K, V> Record<'a, K, V> {
     /// Convenience function to create a new key/value record with an
     /// "unspecified" partition - this is, a partition set to a negative
@@ -164,6 +186,35 @@ impl<'a, K, V> Record<'a, K, V> {
             value,
             topic,
             partition: -1,
+        }
+    }
+
+    /// Convenience method to set the partition.
+    #[inline]
+    #[must_use]
+    pub fn with_partition(mut self, partition: i32) -> Self {
+        self.partition = partition;
+        self
+    }
+}
+
+#[cfg(feature = "producer_timestamp")]
+impl<'a, K, V> TimestampedRecord<'a, K, V> {
+    /// Convenience function to create a new key/value timestamped record
+    /// with an "unspecified" partition.
+    #[inline]
+    pub fn from_key_value(
+        topic: &'a str,
+        key: K,
+        value: V,
+        timestamp: i64,
+    ) -> TimestampedRecord<'a, K, V> {
+        TimestampedRecord {
+            key,
+            value,
+            topic,
+            partition: -1,
+            timestamp,
         }
     }
 
@@ -191,12 +242,39 @@ impl<'a, V> Record<'a, (), V> {
     }
 }
 
+#[cfg(feature = "producer_timestamp")]
+impl<'a, V> TimestampedRecord<'a, (), V> {
+    /// Convenience function to create a new value-only timestamped record
+    /// with an "unspecified" partition.
+    #[inline]
+    pub fn from_value(topic: &'a str, value: V, timestamp: i64) -> TimestampedRecord<'a, (), V> {
+        TimestampedRecord {
+            key: (),
+            value,
+            topic,
+            partition: -1,
+            timestamp,
+        }
+    }
+}
+
 impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for Record<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Record {{ topic: {}, partition: {}, key: {:?}, value: {:?} }}",
             self.topic, self.partition, self.key, self.value
+        )
+    }
+}
+
+#[cfg(feature = "producer_timestamp")]
+impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for TimestampedRecord<'_, K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "TimestampedRecord {{ topic: {}, partition: {}, timestamp: {}, key: {:?}, value: {:?} }}",
+            self.topic, self.partition, self.timestamp, self.key, self.value
         )
     }
 }
@@ -313,6 +391,70 @@ impl<P: Partitioner> Producer<P> {
                 };
                 partitioner.partition(Topics::new(partitions), &mut m);
                 m
+            }),
+        )
+    }
+
+    #[cfg(feature = "producer_timestamp")]
+    /// Synchronously send the specified timestamped message to Kafka.
+    pub fn send_timestamped<K, V>(&mut self, rec: &TimestampedRecord<K, V>) -> Result<()>
+    where
+        K: AsBytes,
+        V: AsBytes,
+    {
+        let mut rs = self.send_all_timestamped(from_ref(rec))?;
+
+        if self.config.required_acks == 0 {
+            Ok(())
+        } else {
+            assert_eq!(1, rs.len());
+            let mut produce_confirm = rs.pop().unwrap();
+
+            assert_eq!(1, produce_confirm.partition_confirms.len());
+            produce_confirm
+                .partition_confirms
+                .pop()
+                .unwrap()
+                .offset
+                .map_err(Error::Kafka)?;
+            Ok(())
+        }
+    }
+
+    #[cfg(feature = "producer_timestamp")]
+    /// Synchronously send all of the specified timestamped messages to Kafka.
+    pub fn send_all_timestamped<K, V>(
+        &mut self,
+        recs: &[TimestampedRecord<'_, K, V>],
+    ) -> Result<Vec<ProduceConfirm>>
+    where
+        K: AsBytes,
+        V: AsBytes,
+    {
+        let partitioner = &mut self.state.partitioner;
+        let partitions = &self.state.partitions;
+        let client = &mut self.client;
+        let config = &self.config;
+
+        client.internal_produce_messages_with_timestamps(
+            config.required_acks,
+            config.ack_timeout,
+            recs.iter().map(|r| {
+                let mut partition_message = client::ProduceMessage {
+                    key: to_option(r.key.as_bytes()),
+                    value: to_option(r.value.as_bytes()),
+                    topic: r.topic,
+                    partition: r.partition,
+                };
+                partitioner.partition(Topics::new(partitions), &mut partition_message);
+
+                client::TimestampedProduceMessage {
+                    key: partition_message.key,
+                    value: partition_message.value,
+                    topic: partition_message.topic,
+                    partition: partition_message.partition,
+                    timestamp: r.timestamp,
+                }
             }),
         )
     }

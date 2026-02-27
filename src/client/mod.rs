@@ -316,6 +316,58 @@ impl<'a, 'b> ProduceMessage<'a, 'b> {
     }
 }
 
+#[cfg(feature = "producer_timestamp")]
+/// Message data to be sent/produced to a particular topic partition
+/// with an explicit message timestamp in milliseconds since Unix epoch.
+/// See `KafkaClient::produce_messages_with_timestamps`.
+#[derive(Debug)]
+pub struct TimestampedProduceMessage<'a, 'b> {
+    /// The "key" data of this message.
+    pub key: Option<&'b [u8]>,
+
+    /// The "value" data of this message.
+    pub value: Option<&'b [u8]>,
+
+    /// The topic to produce this message to.
+    pub topic: &'a str,
+
+    /// The partition (of the corresponding topic) to produce this
+    /// message to.
+    pub partition: i32,
+
+    /// Message timestamp in milliseconds since Unix epoch.
+    pub timestamp: i64,
+}
+
+#[cfg(feature = "producer_timestamp")]
+impl<'a, 'b> AsRef<TimestampedProduceMessage<'a, 'b>> for TimestampedProduceMessage<'a, 'b> {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+#[cfg(feature = "producer_timestamp")]
+impl<'a, 'b> TimestampedProduceMessage<'a, 'b> {
+    /// A convenient constructor method to create a new timestamped
+    /// produce message with all attributes specified.
+    #[must_use]
+    pub fn new(
+        topic: &'a str,
+        partition: i32,
+        key: Option<&'b [u8]>,
+        value: Option<&'b [u8]>,
+        timestamp: i64,
+    ) -> Self {
+        TimestampedProduceMessage {
+            key,
+            value,
+            topic,
+            partition,
+            timestamp,
+        }
+    }
+}
+
 // --------------------------------------------------------------------
 
 /// Partition related request data for fetching messages.
@@ -1264,6 +1316,28 @@ impl KafkaClient {
         self.internal_produce_messages(acks as i16, protocol::to_millis_i32(ack_timeout)?, messages)
     }
 
+    #[cfg(feature = "producer_timestamp")]
+    /// Produces timestamped messages to Kafka.
+    ///
+    /// This API allows setting an arbitrary message timestamp (`CreateTime`)
+    /// per produced message.
+    pub fn produce_messages_with_timestamps<'a, 'b, I, J>(
+        &mut self,
+        acks: RequiredAcks,
+        ack_timeout: Duration,
+        messages: I,
+    ) -> Result<Vec<ProduceConfirm>>
+    where
+        J: AsRef<TimestampedProduceMessage<'a, 'b>>,
+        I: IntoIterator<Item = J>,
+    {
+        self.internal_produce_messages_with_timestamps(
+            acks as i16,
+            protocol::to_millis_i32(ack_timeout)?,
+            messages,
+        )
+    }
+
     /// Commit offset for a topic partitions on behalf of a consumer group.
     ///
     /// # Examples
@@ -1480,7 +1554,51 @@ impl KafkaClientInternals for KafkaClient {
                             config.producer_timestamp,
                         )
                     })
-                    .add(msg.topic, msg.partition, msg.key, msg.value),
+                    .add(msg.topic, msg.partition, msg.key, msg.value, None),
+            }
+        }
+        __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
+    }
+
+    #[cfg(feature = "producer_timestamp")]
+    fn internal_produce_messages_with_timestamps<'a, 'b, I, J>(
+        &mut self,
+        required_acks: i16,
+        ack_timeout: i32,
+        messages: I,
+    ) -> Result<Vec<ProduceConfirm>>
+    where
+        J: AsRef<TimestampedProduceMessage<'a, 'b>>,
+        I: IntoIterator<Item = J>,
+    {
+        let state = &mut self.state;
+        let correlation = state.next_correlation_id();
+
+        let config = &self.config;
+        let mut reqs: HashMap<&str, protocol::ProduceRequest<'_, '_>> = HashMap::new();
+        for msg in messages {
+            let msg = msg.as_ref();
+            match state.find_broker(msg.topic, msg.partition) {
+                None => return Err(Error::Kafka(KafkaCode::UnknownTopicOrPartition)),
+                Some(broker) => reqs
+                    .entry(broker)
+                    .or_insert_with(|| {
+                        protocol::ProduceRequest::new(
+                            required_acks,
+                            ack_timeout,
+                            correlation,
+                            &config.client_id,
+                            config.compression,
+                            Some(ProducerTimestamp::CreateTime),
+                        )
+                    })
+                    .add(
+                        msg.topic,
+                        msg.partition,
+                        msg.key,
+                        msg.value,
+                        Some(msg.timestamp),
+                    ),
             }
         }
         __produce_messages(&mut self.conn_pool, reqs, required_acks == 0)
