@@ -15,6 +15,7 @@ macro_rules! try_multi {
 }
 
 pub mod consumer;
+pub mod create_topics;
 pub mod list_offset;
 pub mod metadata;
 pub mod offset;
@@ -29,6 +30,7 @@ pub use self::consumer::{
     GroupCoordinatorRequest, GroupCoordinatorResponse, OffsetCommitRequest, OffsetCommitResponse,
     OffsetCommitVersion, OffsetFetchRequest, OffsetFetchResponse, OffsetFetchVersion,
 };
+pub use self::create_topics::{CreateTopicsRequest, CreateTopicsResponse};
 pub use self::fetch::FetchRequest;
 pub use self::list_offset::{ListOffsetsRequest, ListOffsetsResponse};
 pub use self::metadata::{MetadataRequest, MetadataResponse};
@@ -45,6 +47,7 @@ const API_KEY_METADATA: i16 = 3;
 const API_KEY_OFFSET_COMMIT: i16 = 8;
 const API_KEY_OFFSET_FETCH: i16 = 9;
 const API_KEY_GROUP_COORDINATOR: i16 = 10;
+const API_KEY_CREATE_TOPICS: i16 = 19;
 
 // the default version of Kafka API we are requesting
 const API_VERSION: i16 = 0;
@@ -61,11 +64,11 @@ pub trait ResponseParser {
 // --------------------------------------------------------------------
 
 impl KafkaCode {
-    fn from_protocol(n: i16) -> Option<KafkaCode> {
+    pub(crate) fn from_protocol(n: i16) -> Option<KafkaCode> {
         if n == 0 {
             return None;
         }
-        if n >= KafkaCode::OffsetOutOfRange as i16 && n <= KafkaCode::UnsupportedVersion as i16 {
+        if n >= KafkaCode::OffsetOutOfRange as i16 && n <= KafkaCode::TopicAlreadyExists as i16 {
             return Some(unsafe { mem::transmute(n as i8) });
         }
         Some(KafkaCode::Unknown)
@@ -90,8 +93,8 @@ fn test_kafka_code_from_protocol() {
         KafkaCode::IllegalGeneration as i16
     );
     assert_kafka_code!(
-        KafkaCode::UnsupportedVersion,
-        KafkaCode::UnsupportedVersion as i16
+        KafkaCode::TopicAlreadyExists,
+        KafkaCode::TopicAlreadyExists as i16
     );
     assert_kafka_code!(KafkaCode::Unknown, KafkaCode::Unknown as i16);
     // ~ test some un mapped non-zero codes; should all map to "unknown"

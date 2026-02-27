@@ -105,6 +105,7 @@ to use the already mentioned `Consumer` and `Producer`.
 Nevertheless, the main features or `KafkaClient` are:
 
 - Loading metadata
+- Creating topics
 - Fetching topic offsets
 - Sending messages
 - Fetching messages
@@ -133,11 +134,20 @@ script itself for details on its usage.
 
 ## Creating a topic
 
+You can create topics directly via `KafkaClient`:
+
+```rust,no_run
+use std::time::Duration;
+use kafka::client::KafkaClient;
+
+let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+client.create_topic("my-topic", 1, 1, Duration::from_secs(5)).unwrap();
+```
+
 Note unless otherwise explicitly stated in the documentation, this
-library will ignore requests to topics which it doesn't know about.
-In particular it will not try to retrieve messages from
-non-existing/unknown topics. (This behavior is very likely to change
-in future version of this library.)
+library will ignore requests to topics which it doesn't know about for
+operations that require topic metadata (for example fetching or producing
+without a known topic/partition mapping).
 
 Given a local kafka server installation you can create topics with the
 following command (where `kafka-topics.sh` is part of the Kafka

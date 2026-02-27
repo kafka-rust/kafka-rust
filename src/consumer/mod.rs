@@ -438,7 +438,7 @@ impl Consumer {
         let topic_ref = self
             .state
             .topic_ref(topic)
-            .ok_or_else(|| Error::Kafka(KafkaCode::UnknownTopicOrPartition))?;
+            .ok_or(Error::Kafka(KafkaCode::UnknownTopicOrPartition))?;
 
         let tp = state::TopicPartition {
             topic_ref,

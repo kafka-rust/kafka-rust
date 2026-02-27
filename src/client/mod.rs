@@ -391,6 +391,47 @@ pub struct ProducePartitionConfirm {
     pub partition: i32,
 }
 
+/// Topic data to be created.
+/// See `KafkaClient::create_topics`.
+#[derive(Debug)]
+pub struct CreateTopic<'a> {
+    /// The topic name.
+    pub topic: &'a str,
+
+    /// Number of partitions to create.
+    pub num_partitions: i32,
+
+    /// Replication factor for the new topic.
+    pub replication_factor: i16,
+}
+
+impl<'a> CreateTopic<'a> {
+    #[must_use]
+    pub fn new(topic: &'a str, num_partitions: i32, replication_factor: i16) -> Self {
+        CreateTopic {
+            topic,
+            num_partitions,
+            replication_factor,
+        }
+    }
+}
+
+impl<'a> AsRef<CreateTopic<'a>> for CreateTopic<'a> {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+/// A confirmation for each create-topic request item.
+#[derive(Debug)]
+pub struct CreateTopicConfirm {
+    /// The topic name.
+    pub topic: String,
+
+    /// Broker result code for this topic creation.
+    pub error: Option<KafkaCode>,
+}
+
 // --------------------------------------------------------------------
 
 impl KafkaClient {
@@ -1262,6 +1303,91 @@ impl KafkaClient {
         I: IntoIterator<Item = J>,
     {
         self.internal_produce_messages(acks as i16, protocol::to_millis_i32(ack_timeout)?, messages)
+    }
+
+    /// Create a single topic.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use kafka::client::KafkaClient;
+    ///
+    /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
+    /// client.create_topic("my-topic", 3, 1, Duration::from_secs(5)).unwrap();
+    /// ```
+    pub fn create_topic(
+        &mut self,
+        topic: &str,
+        num_partitions: i32,
+        replication_factor: i16,
+        timeout: Duration,
+    ) -> Result<()> {
+        let confirms = self.create_topics(
+            timeout,
+            [CreateTopic::new(topic, num_partitions, replication_factor)],
+        )?;
+        match confirms.into_iter().next() {
+            Some(confirm) => match confirm.error {
+                None => Ok(()),
+                Some(code) => Err(Error::Kafka(code)),
+            },
+            None => Ok(()),
+        }
+    }
+
+    /// Create multiple topics.
+    pub fn create_topics<'a, I, J>(
+        &mut self,
+        timeout: Duration,
+        topics: I,
+    ) -> Result<Vec<CreateTopicConfirm>>
+    where
+        J: AsRef<CreateTopic<'a>>,
+        I: IntoIterator<Item = J>,
+    {
+        let correlation = self.state.next_correlation_id();
+        let timeout = protocol::to_millis_i32(timeout)?;
+        let mut req = protocol::CreateTopicsRequest::new(correlation, &self.config.client_id, timeout);
+
+        for topic in topics {
+            let topic = topic.as_ref();
+            req.add(topic.topic, topic.num_partitions, topic.replication_factor);
+        }
+
+        if req.topic_requests.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let now = Instant::now();
+        for host in &self.config.hosts {
+            debug!("create_topics: sending create topics request to {}", host);
+            match __send_receive::<_, protocol::CreateTopicsResponse>(
+                &mut self.conn_pool,
+                host,
+                now,
+                &req,
+            ) {
+                Ok(resp) => {
+                    let confirms = resp
+                        .topic_errors
+                        .into_iter()
+                        .map(|topic_error| CreateTopicConfirm {
+                            topic: topic_error.topic,
+                            error: KafkaCode::from_protocol(topic_error.error_code),
+                        })
+                        .collect();
+                    let _ = self.load_metadata_all();
+                    return Ok(confirms);
+                }
+                Err(e) => debug!(
+                    "create_topics: failed request to {} (correlation {}): {}",
+                    host, correlation, e
+                ),
+            }
+        }
+
+        Err(Error::NoHostReachable)
     }
 
     /// Commit offset for a topic partitions on behalf of a consumer group.

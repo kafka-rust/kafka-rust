@@ -6,10 +6,12 @@ use super::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use kafka::client::fetch::Response;
 use kafka::client::{
-    CommitOffset, FetchOffset, FetchPartition, PartitionOffset, ProduceMessage, RequiredAcks,
+    CommitOffset, CreateTopic, FetchOffset, FetchPartition, KafkaClient, KafkaCode,
+    PartitionOffset, ProduceMessage, RequiredAcks,
 };
 
 fn flatten_fetched_messages(resps: &Vec<Response>) -> Vec<(&str, i32, &[u8])> {
@@ -26,6 +28,14 @@ fn flatten_fetched_messages(resps: &Vec<Response>) -> Vec<(&str, i32, &[u8])> {
     }
 
     messages
+}
+
+fn unique_topic_name(prefix: &str) -> String {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after unix epoch")
+        .as_nanos();
+    format!("{prefix}-{ts}")
 }
 
 #[test]
@@ -260,4 +270,51 @@ fn test_commit_offsets() {
 
         assert_eq!(correct_partition_offsets, partition_offsets);
     }
+}
+
+#[test]
+fn test_create_topic_and_duplicate() {
+    let mut client = new_kafka_client();
+    let topic = unique_topic_name("kafka-rust-create-topic");
+
+    client
+        .create_topic(&topic, 1, 1, Duration::from_secs(10))
+        .unwrap();
+
+    assert!(client.topics().contains(&topic));
+
+    let err = client
+        .create_topic(&topic, 1, 1, Duration::from_secs(10))
+        .unwrap_err();
+
+    match err {
+        kafka::error::Error::Kafka(KafkaCode::TopicAlreadyExists) => {}
+        other => panic!("expected TopicAlreadyExists but got {other:?}"),
+    }
+}
+
+#[test]
+fn test_create_topics_batch_confirm() {
+    let mut client = new_kafka_client();
+    let topic = unique_topic_name("kafka-rust-create-topics-batch");
+
+    let confirms = client
+        .create_topics(
+            Duration::from_secs(10),
+            [CreateTopic::new(&topic, 1, 1)],
+        )
+        .unwrap();
+    assert_eq!(confirms.len(), 1);
+    assert_eq!(confirms[0].topic, topic);
+    assert!(confirms[0].error.is_none());
+
+    let duplicate_confirms = client
+        .create_topics(
+            Duration::from_secs(10),
+            [CreateTopic::new(&topic, 1, 1)],
+        )
+        .unwrap();
+    assert_eq!(duplicate_confirms.len(), 1);
+    assert_eq!(duplicate_confirms[0].topic, topic);
+    assert_eq!(duplicate_confirms[0].error, Some(KafkaCode::TopicAlreadyExists));
 }
