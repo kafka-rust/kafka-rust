@@ -5,7 +5,18 @@
 //! `kafka::client`.
 
 use crate::error::Result;
+#[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
+use crate::codecs::{FromByte, ToByte};
+#[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
+use crate::protocol::{
+    sasl_plain_auth_bytes, SaslAuthenticateRequest, SaslAuthenticateResponse,
+    SaslHandshakeRequest, SaslHandshakeResponse,
+};
+#[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
+use byteorder::{BigEndian, WriteBytesExt};
 use std::collections::HashMap;
+#[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
+use std::io::Cursor;
 use std::fmt;
 use std::io::{Read, Write};
 use std::mem;
@@ -25,6 +36,18 @@ use crate::tls::OpenSslConnector;
 
 // --------------------------------------------------------------------
 
+/// SASL mechanism and credentials for authentication.
+///
+/// Used with SASL_SSL or SASL_PLAINTEXT security protocols.
+#[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
+#[derive(Debug, Clone)]
+pub struct SaslConfig {
+    /// SASL mechanism name (e.g. "PLAIN")
+    pub mechanism: String,
+    pub username: String,
+    pub password: String,
+}
+
 /// Security relevant configuration options for `KafkaClient`.
 ///
 /// This configuration is now backend-agnostic and works with both
@@ -32,6 +55,7 @@ use crate::tls::OpenSslConnector;
 #[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
 pub struct SecurityConfig {
     tls_config: TlsConfig,
+    sasl_config: Option<SaslConfig>,
 }
 
 #[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
@@ -46,13 +70,37 @@ impl SecurityConfig {
     pub fn new() -> Self {
         SecurityConfig {
             tls_config: TlsConfig::new(),
+            sasl_config: None,
         }
     }
 
     /// Create a `SecurityConfig` from a `TlsConfig`
     #[must_use]
     pub fn from_tls_config(tls_config: TlsConfig) -> Self {
-        SecurityConfig { tls_config }
+        SecurityConfig {
+            tls_config,
+            sasl_config: None,
+        }
+    }
+
+    /// Enable SASL/PLAIN authentication.
+    ///
+    /// Works with SASL_SSL (TLS + SASL) or SASL_PLAINTEXT. Typically used
+    /// with Confluent Cloud, AWS MSK, and other managed Kafka services.
+    #[must_use]
+    pub fn with_sasl_plain(mut self, username: String, password: String) -> SecurityConfig {
+        self.sasl_config = Some(SaslConfig {
+            mechanism: "PLAIN".to_owned(),
+            username,
+            password,
+        });
+        self
+    }
+
+    /// Returns the SASL config if configured
+    #[must_use]
+    pub fn sasl_config(&self) -> Option<&SaslConfig> {
+        self.sasl_config.as_ref()
     }
 
     /// Initiates a client-side TLS session with/without performing hostname verification.
@@ -98,6 +146,7 @@ impl SecurityConfig {
         warn!("Using deprecated OpenSSL SecurityConfig. Please migrate to rustls.");
         SecurityConfig {
             tls_config: TlsConfig::new(),
+            sasl_config: None,
         }
     }
 }
@@ -114,8 +163,9 @@ impl fmt::Debug for SecurityConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SecurityConfig {{ verify_hostname: {} }}",
-            self.tls_config.verify_hostname
+            "SecurityConfig {{ verify_hostname: {}, sasl: {} }}",
+            self.tls_config.verify_hostname,
+            self.sasl_config.is_some()
         )
     }
 }
@@ -170,6 +220,9 @@ impl Config {
             host,
             self.rw_timeout,
             self.security_config.as_ref().map(|c| &c.tls_config),
+            self.security_config
+                .as_ref()
+                .and_then(|c| c.sasl_config()),
         )
         .map(|c| {
             debug!("Established: {:?}", c);
@@ -465,10 +518,11 @@ impl KafkaConnection {
         host: &str,
         rw_timeout: Option<Duration>,
         tls_config: Option<&TlsConfig>,
+        sasl_config: Option<&SaslConfig>,
     ) -> Result<KafkaConnection> {
         let tcp_stream = TcpStream::connect(host)?;
 
-        let stream = match tls_config {
+        let mut stream = match tls_config {
             Some(config) => {
                 // Extract domain from host:port
                 let domain = match host.rfind(':') {
@@ -498,6 +552,72 @@ impl KafkaConnection {
             }
         };
 
+        if let Some(sasl) = sasl_config {
+            perform_sasl_auth(&mut stream, sasl, rw_timeout)?;
+        }
+
         KafkaConnection::from_stream(stream, id, host, rw_timeout)
     }
+}
+
+/// Perform SASL handshake and authentication on an established stream.
+#[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
+fn perform_sasl_auth(
+    stream: &mut KafkaStream,
+    sasl: &SaslConfig,
+    rw_timeout: Option<Duration>,
+) -> Result<()> {
+    use std::io::{Read, Write};
+
+    if let Some(t) = rw_timeout {
+        stream.set_read_timeout(Some(t))?;
+        stream.set_write_timeout(Some(t))?;
+    }
+
+    let client_id = "kafka-rust";
+    let correlation_handshake: i32 = 1;
+    let correlation_auth: i32 = 2;
+
+    // SaslHandshake
+    let handshake_req =
+        SaslHandshakeRequest::new(correlation_handshake, client_id, &sasl.mechanism);
+    let mut buf = Vec::with_capacity(64);
+    buf.extend_from_slice(&[0, 0, 0, 0]);
+    handshake_req.encode(&mut buf)?;
+    let size = (buf.len() - 4) as i32;
+    let mut size_buf = [0u8; 4];
+    size_buf.as_mut_slice().write_i32::<BigEndian>(size)?;
+    buf[..4].copy_from_slice(&size_buf);
+    stream.write_all(&buf).map_err(crate::error::Error::from)?;
+    stream.flush().map_err(crate::error::Error::from)?;
+
+    let mut size_buf = [0u8; 4];
+    stream.read_exact(&mut size_buf).map_err(crate::error::Error::from)?;
+    let resp_size = i32::decode_new(&mut Cursor::new(&size_buf))?;
+    let mut resp = vec![0; resp_size as usize];
+    stream.read_exact(&mut resp).map_err(crate::error::Error::from)?;
+    let handshake_resp = SaslHandshakeResponse::decode_new(&mut Cursor::new(resp))?;
+    handshake_resp.into_result()?;
+
+    // SaslAuthenticate (PLAIN sends auth in one shot)
+    let auth_bytes = sasl_plain_auth_bytes(&sasl.username, &sasl.password);
+    let auth_req = SaslAuthenticateRequest::new(correlation_auth, client_id, &auth_bytes);
+    buf.clear();
+    buf.extend_from_slice(&[0, 0, 0, 0]);
+    auth_req.encode(&mut buf)?;
+    let size = (buf.len() - 4) as i32;
+    size_buf.as_mut_slice().write_i32::<BigEndian>(size)?;
+    buf[..4].copy_from_slice(&size_buf);
+    stream.write_all(&buf).map_err(crate::error::Error::from)?;
+    stream.flush().map_err(crate::error::Error::from)?;
+
+    stream.read_exact(&mut size_buf).map_err(crate::error::Error::from)?;
+    let resp_size = i32::decode_new(&mut Cursor::new(&size_buf))?;
+    let mut resp = vec![0; resp_size as usize];
+    stream.read_exact(&mut resp).map_err(crate::error::Error::from)?;
+    let auth_resp = SaslAuthenticateResponse::decode_new(&mut Cursor::new(resp))?;
+    auth_resp.into_result()?;
+
+    debug!("SASL {} authentication successful", sasl.mechanism);
+    Ok(())
 }

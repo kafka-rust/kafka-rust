@@ -26,7 +26,7 @@ pub use crate::protocol::produce::ProducerTimestamp;
 use crate::protocol::produce::ProducerTimestamp;
 
 #[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
-pub use self::network::SecurityConfig;
+pub use self::network::{SaslConfig, SecurityConfig};
 
 use crate::codecs::{FromByte, ToByte};
 use crate::error::{Error, KafkaCode, Result};
@@ -435,6 +435,8 @@ impl KafkaClient {
     ///
     /// # Examples
     ///
+    /// TLS with client certificates:
+    ///
     /// ```no_run
     /// use kafka::client::{KafkaClient, SecurityConfig};
     ///
@@ -443,6 +445,21 @@ impl KafkaClient {
     ///     SecurityConfig::new()
     ///         .with_ca_cert("ca.pem".to_owned())
     ///         .with_client_cert("client.crt".to_owned(), "client.key".to_owned())
+    /// );
+    /// client.load_metadata_all().unwrap();
+    /// ```
+    ///
+    /// TLS with SASL/PLAIN (e.g. Confluent Cloud, AWS MSK):
+    ///
+    /// ```no_run
+    /// use kafka::client::{KafkaClient, SecurityConfig};
+    ///
+    /// let mut client = KafkaClient::new_secure(
+    ///     vec!["pkc-xxxxx.us-east-1.aws.confluent.cloud:9092".to_owned()],
+    ///     SecurityConfig::new().with_sasl_plain(
+    ///         "username".to_owned(),
+    ///         "password".to_owned(),
+    ///     )
     /// );
     /// client.load_metadata_all().unwrap();
     /// ```

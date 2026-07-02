@@ -1,47 +1,73 @@
 use super::*;
 
+use std::time::{Duration, Instant};
+
+use kafka::consumer::Consumer;
 use kafka::error;
 use kafka::producer::Record;
 
-/// Tests that consuming one message works
+/// Tests that consuming one message works.
+/// Uses a dedicated topic to avoid interference from other tests sharing the same consumer group.
 #[test]
 fn test_consumer_poll() {
     tracing_subscriber::fmt::try_init();
 
-    // poll once to set a position in the topic
-    let mut consumer = test_consumer();
-    let mut messages = consumer.poll().unwrap();
-    assert!(
-        messages.is_empty(),
-        "messages was not empty: {:?}",
-        messages
-    );
+    const POLL_TEST_TOPIC: &str = "kafka-rust-test-poll";
 
-    // send a message and then poll it and ensure it is the correct message
+    // Produce first so the message is at a known offset (0 on one partition) before
+    // the consumer initialises its fetch offsets.  Using FetchOffset::Earliest on a
+    // dedicated topic guarantees the consumer starts at offset 0 and will always see
+    // the message, regardless of how the broker reports "latest" for a new partition.
     let correct_message_contents = "test_consumer_poll".as_bytes();
     let mut producer = test_producer();
     producer
-        .send(&Record::from_value(
-            TEST_TOPIC_NAME,
-            correct_message_contents,
-        ))
+        .send(&Record::from_value(POLL_TEST_TOPIC, correct_message_contents))
         .unwrap();
 
-    messages = consumer.poll().unwrap();
-    let mut messages_iter = messages.iter();
-    let message_set = messages_iter.next().unwrap();
-
-    assert_eq!(
-        1,
-        message_set.messages().len(),
-        "should only be one message"
+    // Use a unique group name each run so there are never stale committed offsets.
+    let poll_test_group = format!(
+        "kafka-rust-test-poll-group-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
     );
 
-    let message_content = message_set.messages()[0].value;
-    assert_eq!(
-        correct_message_contents, message_content,
-        "incorrect message contents"
-    );
+    let mut consumer = Consumer::from_client(new_ready_kafka_client())
+        .with_topic_partitions(POLL_TEST_TOPIC.to_owned(), &[0, 1])
+        .with_group(poll_test_group)
+        .with_fallback_offset(kafka::consumer::FetchOffset::Earliest)
+        .with_offset_storage(Some(kafka::consumer::GroupOffsetStorage::Kafka))
+        .create()
+        .unwrap();
+
+    // Retry polling until the message is visible (handles Kafka propagation delay)
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut messages;
+    loop {
+        messages = consumer.poll().unwrap();
+        let msgs_count: usize = messages.iter().map(|ms| ms.messages().len()).sum();
+        println!(
+            "consumer poll: is_empty={}, msgs_count={}",
+            messages.is_empty(),
+            msgs_count
+        );
+        let mut messages_iter = messages.iter();
+        if let Some(message_set) = messages_iter.next() {
+            println!("got message_set with {} messages", message_set.messages().len());
+            assert_eq!(1, message_set.messages().len(), "should only be one message");
+            let message_content = message_set.messages()[0].value;
+            assert_eq!(
+                correct_message_contents, message_content,
+                "incorrect message contents"
+            );
+            return;
+        }
+        if Instant::now() > deadline {
+            panic!("timed out waiting for message after produce");
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 /// Test Consumer::commit_messageset

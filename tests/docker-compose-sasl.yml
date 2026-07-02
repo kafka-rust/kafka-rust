@@ -1,0 +1,41 @@
+services:
+  zookeeper-sasl:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka-sasl:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on: [zookeeper-sasl]
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./sasl-server-jaas.conf:/etc/kafka/sasl-server-jaas.conf:ro
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-sasl:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-sasl:9092,SASL_PLAINTEXT://localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,SASL_PLAINTEXT://:9093
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_INTER_BROKER_LISTENER_NAME: SASL_PLAINTEXT
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/sasl-server-jaas.conf"
+
+  kafka-sasl-init:
+    image: confluentinc/cp-kafka:7.5.0
+    network_mode: "service:kafka-sasl"
+    depends_on: [kafka-sasl]
+    command: >
+      bash -c "
+        echo 'Waiting for Kafka to be ready...'
+        for i in $$(seq 1 30); do
+          kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1 && break
+          sleep 2
+        done
+        echo 'Creating topics...'
+        kafka-topics --create --if-not-exists --topic kafka-rust-test --partitions 2 --replication-factor 1 --bootstrap-server kafka-sasl:9092
+        kafka-topics --create --if-not-exists --topic kafka-rust-test2 --partitions 2 --replication-factor 1 --bootstrap-server kafka-sasl:9092
+        echo 'Topics created'
+      "

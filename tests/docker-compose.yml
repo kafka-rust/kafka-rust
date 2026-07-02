@@ -15,5 +15,5 @@ services:
     links:
       - zookeeper
     environment:
-      KAFKA_CREATE_TOPICS: kafka-rust-test:2:1,kafka-rust-test2:2:1
+      KAFKA_CREATE_TOPICS: kafka-rust-test:2:1,kafka-rust-test2:2:1,kafka-rust-test-poll:2:1
       KAFKA_CLIENT_SECURE: ${KAFKA_CLIENT_SECURE}

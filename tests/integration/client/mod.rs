@@ -51,6 +51,7 @@ fn test_kafka_client_load_metadata() {
     let mut correct_topic_names: HashSet<&str> = HashSet::new();
     correct_topic_names.insert(TEST_TOPIC_NAME);
     correct_topic_names.insert(TEST_TOPIC_NAME_2);
+    correct_topic_names.insert(TEST_TOPIC_NAME_POLL);
 
     assert_eq!(correct_topic_names, topic_names);
 

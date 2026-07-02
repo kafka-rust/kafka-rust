@@ -19,6 +19,7 @@ pub mod list_offset;
 pub mod metadata;
 pub mod offset;
 pub mod produce;
+pub mod sasl;
 
 pub mod fetch;
 mod zreader;
@@ -30,6 +31,10 @@ pub use self::consumer::{
     OffsetCommitVersion, OffsetFetchRequest, OffsetFetchResponse, OffsetFetchVersion,
 };
 pub use self::fetch::FetchRequest;
+pub use self::sasl::{
+    SaslAuthenticateRequest, SaslAuthenticateResponse, SaslHandshakeRequest, SaslHandshakeResponse,
+    sasl_plain_auth_bytes,
+};
 pub use self::list_offset::{ListOffsetsRequest, ListOffsetsResponse};
 pub use self::metadata::{MetadataRequest, MetadataResponse};
 pub use self::offset::{OffsetRequest, OffsetResponse};

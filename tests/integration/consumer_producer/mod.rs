@@ -69,7 +69,7 @@ pub fn test_consumer_with_client(mut client: KafkaClient) -> Consumer {
     client.load_metadata_all(); // Why unwrap ?
     let partition_offsets: HashSet<PartitionOffset> = client
         .fetch_group_topic_offset(TEST_GROUP_NAME, TEST_TOPIC_NAME)
-        .unwrap()
+        .unwrap_or_default()
         .into_iter()
         .collect();
 

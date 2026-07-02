@@ -19,6 +19,7 @@ ENV PATH ${PATH}:${KAFKA_HOME}/bin
 
 COPY start-kafka.sh /usr/bin/start-kafka.sh
 COPY create-topics.sh /usr/bin/create-topics.sh
+RUN chmod +x /usr/bin/start-kafka.sh /usr/bin/create-topics.sh
 
 ENV KAFKA_ZOOKEEPER_CONNECT zookeeper
 COPY server.properties secure.server.properties client-ssl.properties /opt/kafka/config/
@@ -41,4 +42,4 @@ RUN keytool -list -v -keystore client.truststore.jks -storepass xxxxxx -noprompt
 EXPOSE 9092
 
 # Use "exec" form so that it runs as PID 1 (useful for graceful shutdown)
-CMD ["start-kafka.sh"]
+CMD ["/usr/bin/start-kafka.sh"]

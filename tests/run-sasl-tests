@@ -1,0 +1,48 @@
+#!/bin/bash
+#
+# Run SASL integration tests against a Confluent Kafka with SASL_PLAINTEXT.
+#
+# Usage: ./run-sasl-tests
+#
+# Run from the tests/ directory (or project root - script will cd as needed).
+# Starts docker-compose-sasl.yml, waits for Kafka, runs sasl_integration tests,
+# then tears down.
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+stop_docker() {
+  (cd "$SCRIPT_DIR" && docker compose -f docker-compose-sasl.yml down)
+}
+
+start_docker() {
+  (cd "$SCRIPT_DIR" && docker compose -f docker-compose-sasl.yml up -d zookeeper-sasl kafka-sasl)
+}
+
+wait_for_kafka() {
+  # Wait for port 9093 to accept connections (SASL_PLAINTEXT)
+  # If stuck, run: docker compose -f docker-compose-sasl.yml logs kafka-sasl
+  (cd "$SCRIPT_DIR" && ./do_until_success "nc -z localhost 9093 2>/dev/null")
+}
+
+create_topics() {
+  (cd "$SCRIPT_DIR" && docker compose -f docker-compose-sasl.yml run --rm kafka-sasl-init)
+}
+
+# Ensure we tear down on exit
+trap 'stop_docker' EXIT
+
+echo "Starting SASL Kafka..."
+stop_docker
+start_docker
+
+echo "Waiting for Kafka to be ready..."
+wait_for_kafka
+
+echo "Creating test topics..."
+create_topics
+
+echo "Running SASL integration tests..."
+(cd "$ROOT_DIR" && KAFKA_SASL_BOOTSTRAP=localhost:9093 cargo test sasl_integration --features integration_tests -- --ignored)
