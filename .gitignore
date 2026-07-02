@@ -1,2 +1,4 @@
 target
 src/main.rs
+.DS_Store
+.cursor/
