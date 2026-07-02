@@ -35,7 +35,7 @@ pub struct TopicPartition {
 pub struct ConsumedOffset {
     /// ~ the consumed offset
     pub offset: i64,
-    /// ~ true if the consumed offset is chnaged but not committed to
+    /// ~ true if the consumed offset is changed but not committed to
     /// kafka yet
     pub dirty: bool,
 }
@@ -203,7 +203,7 @@ fn load_consumed_offsets(
         return Ok(offs);
     }
     // ~ otherwise try load them for the group
-    let tpos = client.fetch_group_offsets(
+    let topic_offsets = client.fetch_group_offsets(
         group,
         subscriptions.iter().flat_map(|s| {
             let topic = s.assignment.topic();
@@ -212,7 +212,7 @@ fn load_consumed_offsets(
                 .map(move |&p| FetchGroupOffset::new(topic, p))
         }),
     )?;
-    for (topic, pos) in tpos {
+    for (topic, pos) in topic_offsets {
         for po in pos {
             if po.offset != -1 {
                 offs.insert(

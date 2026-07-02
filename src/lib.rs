@@ -1,4 +1,4 @@
-//! Clients for comunicating with a [Kafka](http://kafka.apache.org/)
+//! Clients for communicating with a [Kafka](http://kafka.apache.org/)
 //! cluster.  These are:
 //!
 //! - `kafka::producer::Producer` - for sending message to Kafka

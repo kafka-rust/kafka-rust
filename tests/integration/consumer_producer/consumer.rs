@@ -21,7 +21,10 @@ fn test_consumer_poll() {
     let correct_message_contents = "test_consumer_poll".as_bytes();
     let mut producer = test_producer();
     producer
-        .send(&Record::from_value(POLL_TEST_TOPIC, correct_message_contents))
+        .send(&Record::from_value(
+            POLL_TEST_TOPIC,
+            correct_message_contents,
+        ))
         .unwrap();
 
     // Use a unique group name each run so there are never stale committed offsets.
@@ -54,8 +57,15 @@ fn test_consumer_poll() {
         );
         let mut messages_iter = messages.iter();
         if let Some(message_set) = messages_iter.next() {
-            println!("got message_set with {} messages", message_set.messages().len());
-            assert_eq!(1, message_set.messages().len(), "should only be one message");
+            println!(
+                "got message_set with {} messages",
+                message_set.messages().len()
+            );
+            assert_eq!(
+                1,
+                message_set.messages().len(),
+                "should only be one message"
+            );
             let message_content = message_set.messages()[0].value;
             assert_eq!(
                 correct_message_contents, message_content,

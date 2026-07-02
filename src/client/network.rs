@@ -4,20 +4,20 @@
 //! through re-exports of individual items from within
 //! `kafka::client`.
 
-use crate::error::Result;
 #[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
 use crate::codecs::{FromByte, ToByte};
+use crate::error::Result;
 #[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
 use crate::protocol::{
-    sasl_plain_auth_bytes, SaslAuthenticateRequest, SaslAuthenticateResponse,
-    SaslHandshakeRequest, SaslHandshakeResponse,
+    SaslAuthenticateRequest, SaslAuthenticateResponse, SaslHandshakeRequest, SaslHandshakeResponse,
+    sasl_plain_auth_bytes,
 };
 #[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
 use byteorder::{BigEndian, WriteBytesExt};
 use std::collections::HashMap;
+use std::fmt;
 #[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
 use std::io::Cursor;
-use std::fmt;
 use std::io::{Read, Write};
 use std::mem;
 use std::net::{Shutdown, TcpStream};
@@ -38,7 +38,7 @@ use crate::tls::OpenSslConnector;
 
 /// SASL mechanism and credentials for authentication.
 ///
-/// Used with SASL_SSL or SASL_PLAINTEXT security protocols.
+/// Used with `SASL_SSL` or `SASL_PLAINTEXT` security protocols.
 #[cfg(any(feature = "security-rustls", feature = "security-openssl"))]
 #[derive(Debug, Clone)]
 pub struct SaslConfig {
@@ -85,7 +85,7 @@ impl SecurityConfig {
 
     /// Enable SASL/PLAIN authentication.
     ///
-    /// Works with SASL_SSL (TLS + SASL) or SASL_PLAINTEXT. Typically used
+    /// Works with `SASL_SSL` (TLS + SASL) or `SASL_PLAINTEXT`. Typically used
     /// with Confluent Cloud, AWS MSK, and other managed Kafka services.
     #[must_use]
     pub fn with_sasl_plain(mut self, username: String, password: String) -> SecurityConfig {
@@ -220,9 +220,7 @@ impl Config {
             host,
             self.rw_timeout,
             self.security_config.as_ref().map(|c| &c.tls_config),
-            self.security_config
-                .as_ref()
-                .and_then(|c| c.sasl_config()),
+            self.security_config.as_ref().and_then(|c| c.sasl_config()),
         )
         .map(|c| {
             debug!("Established: {:?}", c);
@@ -592,10 +590,14 @@ fn perform_sasl_auth(
     stream.flush().map_err(crate::error::Error::from)?;
 
     let mut size_buf = [0u8; 4];
-    stream.read_exact(&mut size_buf).map_err(crate::error::Error::from)?;
+    stream
+        .read_exact(&mut size_buf)
+        .map_err(crate::error::Error::from)?;
     let resp_size = i32::decode_new(&mut Cursor::new(&size_buf))?;
     let mut resp = vec![0; resp_size as usize];
-    stream.read_exact(&mut resp).map_err(crate::error::Error::from)?;
+    stream
+        .read_exact(&mut resp)
+        .map_err(crate::error::Error::from)?;
     let handshake_resp = SaslHandshakeResponse::decode_new(&mut Cursor::new(resp))?;
     handshake_resp.into_result()?;
 
@@ -611,10 +613,14 @@ fn perform_sasl_auth(
     stream.write_all(&buf).map_err(crate::error::Error::from)?;
     stream.flush().map_err(crate::error::Error::from)?;
 
-    stream.read_exact(&mut size_buf).map_err(crate::error::Error::from)?;
+    stream
+        .read_exact(&mut size_buf)
+        .map_err(crate::error::Error::from)?;
     let resp_size = i32::decode_new(&mut Cursor::new(&size_buf))?;
     let mut resp = vec![0; resp_size as usize];
-    stream.read_exact(&mut resp).map_err(crate::error::Error::from)?;
+    stream
+        .read_exact(&mut resp)
+        .map_err(crate::error::Error::from)?;
     let auth_resp = SaslAuthenticateResponse::decode_new(&mut Cursor::new(resp))?;
     auth_resp.into_result()?;
 

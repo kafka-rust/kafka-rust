@@ -118,9 +118,9 @@ impl State {
         group: &str,
     ) -> Result<()> {
         // ~ get the latest topic offsets
-        let latests = client.fetch_topic_offsets(topic, FetchOffset::Latest)?;
+        let latest = client.fetch_topic_offsets(topic, FetchOffset::Latest)?;
 
-        for l in latests {
+        for l in latest {
             let off = self
                 .offsets
                 .get_mut(l.partition as usize)

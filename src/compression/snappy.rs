@@ -31,7 +31,7 @@ fn uncompress_to(src: &[u8], dst: &mut Vec<u8>) -> Result<()> {
 
 const MAGIC: &[u8] = &[0x82, b'S', b'N', b'A', b'P', b'P', b'Y', 0];
 
-// ~ reads a i32 valud and "advances" the given slice by four bytes;
+// ~ reads a i32 value and "advances" the given slice by four bytes;
 // assumes "slice" is a mutable reference to a &[u8].
 macro_rules! next_i32 {
     ($slice:expr) => {{

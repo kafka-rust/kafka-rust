@@ -328,7 +328,7 @@ pub struct FetchPartition<'a> {
     /// The offset as of which to fetch messages.
     pub offset: i64,
 
-    /// The partition to fetch messasges from.
+    /// The partition to fetch messages from.
     pub partition: i32,
 
     /// Specifies the max. amount of data to fetch (for this
@@ -1522,7 +1522,7 @@ fn __get_group_coordinator<'a>(
     let req = protocol::GroupCoordinatorRequest::new(group, correlation_id, &config.client_id);
     let mut attempt = 1;
     loop {
-        // ~ idealy we'd make this work even if `load_metadata` has not
+        // ~ ideally we'd make this work even if `load_metadata` has not
         // been called yet; if there are no connections available we can
         // try connecting to the user specified bootstrap server similar
         // to the way `load_metadata` works.

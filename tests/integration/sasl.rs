@@ -17,9 +17,8 @@ fn sasl_bootstrap_host() -> Option<String> {
 }
 
 fn new_sasl_client() -> KafkaClient {
-    let host = sasl_bootstrap_host().expect(
-        "KAFKA_SASL_BOOTSTRAP must be set (e.g. localhost:9093). Run via ./run-sasl-tests",
-    );
+    let host = sasl_bootstrap_host()
+        .expect("KAFKA_SASL_BOOTSTRAP must be set (e.g. localhost:9093). Run via ./run-sasl-tests");
     let mut client = KafkaClient::new_secure(
         vec![host.clone()],
         SecurityConfig::new().with_sasl_plain("alice".to_owned(), "alice-secret".to_owned()),

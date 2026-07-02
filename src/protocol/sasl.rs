@@ -1,4 +1,4 @@
-//! SASL authentication protocol (API 17 SaslHandshake, API 36 SaslAuthenticate).
+//! SASL authentication protocol (API 17 `SaslHandshake`, API 36 `SaslAuthenticate`).
 //!
 //! Used for SASL/PLAIN and other SASL mechanisms. The handshake negotiates the
 //! mechanism; the authenticate request sends the actual auth bytes.
@@ -146,7 +146,9 @@ impl FromByte for SaslAuthenticateResponse {
 
 /// Decode a Kafka nullable string: -1 (i16) means null, else length + bytes
 fn decode_nullable_string<T: Read>(buffer: &mut T, dest: &mut Option<String>) -> Result<()> {
-    let length = buffer.read_i16::<BigEndian>().map_err(|_| Error::CodecError)?;
+    let length = buffer
+        .read_i16::<BigEndian>()
+        .map_err(|_| Error::CodecError)?;
     if length == -1 {
         *dest = None;
         return Ok(());
@@ -189,7 +191,12 @@ mod tests {
     #[test]
     fn test_sasl_plain_auth_bytes() {
         let b = sasl_plain_auth_bytes("alice", "secret");
-        assert_eq!(b, &[0, b'a', b'l', b'i', b'c', b'e', 0, b's', b'e', b'c', b'r', b'e', b't']);
+        assert_eq!(
+            b,
+            &[
+                0, b'a', b'l', b'i', b'c', b'e', 0, b's', b'e', b'c', b'r', b'e', b't'
+            ]
+        );
     }
 
     #[test]

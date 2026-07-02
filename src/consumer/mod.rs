@@ -107,7 +107,7 @@ impl Consumer {
         builder::new(Some(client), Vec::new())
     }
 
-    /// Starts building a consumer bootstraping internally a new kafka
+    /// Starts building a consumer bootstrapping internally a new kafka
     /// client from the given kafka hosts.
     #[must_use]
     pub fn from_hosts(hosts: Vec<String>) -> Builder {
@@ -200,10 +200,10 @@ impl Consumer {
     /// let mut client = KafkaClient::new(vec!["localhost:9092".to_owned()]);
     /// client.load_metadata_all().unwrap();
     /// let topics = vec!["test-topic".to_string()];
-    /// let tpos = client.list_offsets(&topics, FetchOffset::ByTime(1698425676797)).unwrap();
+    /// let topic_offsets = client.list_offsets(&topics, FetchOffset::ByTime(1698425676797)).unwrap();
     ///
     /// // Seek to the offsets
-    /// for (topic, partition_offsets) in tpos {
+    /// for (topic, partition_offsets) in topic_offsets {
     ///     for po in partition_offsets {
     ///         consumer.seek(&topic, po.partition, po.offset).unwrap();
     ///     }
@@ -237,7 +237,7 @@ impl Consumer {
         }
     }
 
-    // ~ returns (number partitions queried, fecth responses)
+    // ~ returns (number partitions queried, fetch responses)
     fn fetch_messages(&mut self) -> (u32, Result<Vec<fetch::Response>>) {
         // ~ if there's a retry partition ... fetch messages just for
         // that one. Otherwise try to fetch messages for all assigned

@@ -235,7 +235,7 @@ impl Producer {
         Builder::new(Some(client), Vec::new())
     }
 
-    /// Starts building a producer bootstraping internally a new kafka
+    /// Starts building a producer bootstrapping internally a new kafka
     /// client from the given kafka hosts.
     #[must_use]
     pub fn from_hosts(hosts: Vec<String>) -> Builder<DefaultPartitioner> {
