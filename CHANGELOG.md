@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.11.0] 2026-07-02
+
 ### Added
 
+- **SASL/PLAIN authentication over TLS (SASL_SSL)**: New `SaslConfig` type and `SecurityConfig::with_sasl_plain()` builder method. After the TLS handshake, the client performs a `SaslHandshake` (API 17) + `SaslAuthenticate` (API 36) exchange before entering normal Kafka protocol traffic. Useful for Confluent Cloud, AWS MSK, and other managed Kafka services that require SASL/PLAIN.
 - **rustls TLS backend (default)**: kafka-rust now uses rustls as the default TLS implementation, providing a pure-Rust, secure, and portable solution for TLS connections.
   - New `security-rustls` feature flag (enabled by default via `security` feature)
   - **Updated to rustls 0.23.35** with latest improvements and optimizations
@@ -41,14 +44,14 @@ For most users, no changes are required. The default build will now use rustls i
 
 If you explicitly need OpenSSL (not recommended):
 ```toml
-kafka = { version = "0.10", default-features = false, features = ["snappy", "gzip", "security-openssl"] }
+kafka = { version = "0.11", default-features = false, features = ["snappy", "gzip", "security-openssl"] }
 ```
 
 To use rustls explicitly (recommended):
 ```toml
-kafka = { version = "0.10", features = ["security"] }
+kafka = { version = "0.11", features = ["security"] }
 # or
-kafka = { version = "0.10", features = ["security-rustls"] }
+kafka = { version = "0.11", features = ["security-rustls"] }
 ```
 
 Benefits of migrating to rustls:
