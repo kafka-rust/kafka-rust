@@ -53,6 +53,8 @@ pub struct PartitionProduceRequest<'a> {
 pub struct MessageProduceRequest<'a> {
     key: Option<&'a [u8]>,
     value: Option<&'a [u8]>,
+    #[cfg_attr(not(feature = "producer_timestamp"), allow(dead_code))]
+    timestamp: Option<i64>,
 }
 
 #[allow(unused)]
@@ -91,15 +93,16 @@ impl<'a, 'b> ProduceRequest<'a, 'b> {
         partition: i32,
         key: Option<&'b [u8]>,
         value: Option<&'b [u8]>,
+        timestamp: Option<i64>,
     ) {
         for tp in &mut self.topic_partitions {
             if tp.topic == topic {
-                tp.add(partition, key, value);
+                tp.add(partition, key, value, timestamp);
                 return;
             }
         }
         let mut tp = TopicPartitionProduceRequest::new(topic, self.compression, self.timestamp);
-        tp.add(partition, key, value);
+        tp.add(partition, key, value, timestamp);
         self.topic_partitions.push(tp);
     }
 }
@@ -118,18 +121,24 @@ impl<'a> TopicPartitionProduceRequest<'a> {
         }
     }
 
-    pub fn add(&mut self, partition: i32, key: Option<&'a [u8]>, value: Option<&'a [u8]>) {
+    pub fn add(
+        &mut self,
+        partition: i32,
+        key: Option<&'a [u8]>,
+        value: Option<&'a [u8]>,
+        timestamp: Option<i64>,
+    ) {
         if let Some(pp) = self
             .partitions
             .iter_mut()
             .find(|pp| pp.partition == partition)
         {
-            pp.add(key, value);
+            pp.add(key, value, timestamp);
             return;
         }
 
         self.partitions
-            .push(PartitionProduceRequest::new(partition, key, value));
+            .push(PartitionProduceRequest::new(partition, key, value, timestamp));
     }
 }
 
@@ -138,17 +147,19 @@ impl<'a> PartitionProduceRequest<'a> {
         partition: i32,
         key: Option<&'b [u8]>,
         value: Option<&'b [u8]>,
+        timestamp: Option<i64>,
     ) -> PartitionProduceRequest<'b> {
         let mut r = PartitionProduceRequest {
             partition,
             messages: Vec::new(),
         };
-        r.add(key, value);
+        r.add(key, value, timestamp);
         r
     }
 
-    pub fn add(&mut self, key: Option<&'a [u8]>, value: Option<&'a [u8]>) {
-        self.messages.push(MessageProduceRequest::new(key, value));
+    pub fn add(&mut self, key: Option<&'a [u8]>, value: Option<&'a [u8]>, timestamp: Option<i64>) {
+        self.messages
+            .push(MessageProduceRequest::new(key, value, timestamp));
     }
 }
 
@@ -174,11 +185,20 @@ impl ToByte for TopicPartitionProduceRequest<'_> {
 
             #[cfg(feature = "producer_timestamp")]
             {
-                match self.timestamp {
-                    Some(timestamp) => {
-                        e._encode_with_timestamp(buffer, self.compression, timestamp)?;
+                let has_explicit_message_timestamps =
+                    e.messages.iter().any(|message| message.timestamp.is_some());
+                match (self.timestamp, has_explicit_message_timestamps) {
+                    (Some(timestamp), _) => {
+                        e._encode_with_timestamp(buffer, self.compression, Some(timestamp))?;
                     }
-                    None => e._encode(buffer, self.compression)?,
+                    (None, true) => {
+                        e._encode_with_timestamp(
+                            buffer,
+                            self.compression,
+                            Some(ProducerTimestamp::CreateTime),
+                        )?;
+                    }
+                    (None, false) => e._encode(buffer, self.compression)?,
                 }
             }
         }
@@ -222,19 +242,28 @@ impl PartitionProduceRequest<'_> {
         &self,
         out: &mut W,
         compression: Compression,
-        timestamp: ProducerTimestamp,
+        timestamp_mode: Option<ProducerTimestamp>,
     ) -> Result<()> {
         self.partition.encode(out)?;
 
+        let timestamp_attributes = timestamp_mode.map_or(0, |timestamp| timestamp as i8);
         // ~ render the whole MessageSet first to a temporary buffer
         let mut buf = Vec::new();
+        let mut wrapper_timestamp: Option<i64> = None;
         for msg in &self.messages {
-            let now = chrono::Utc::now().timestamp_millis(); // ~ get current timestamp
+            let now = chrono::Utc::now().timestamp_millis();
+            let timestamp = msg.timestamp.unwrap_or(now);
+            wrapper_timestamp = Some(wrapper_timestamp.map_or(timestamp, |current| current.max(timestamp)));
+            let attributes = if msg.timestamp.is_some() {
+                ProducerTimestamp::CreateTime as i8
+            } else {
+                timestamp_attributes
+            };
             msg._encode_to_buf_with_timestamp(
                 &mut buf,
                 MESSAGE_MAGIC_BYTE_WITH_TIMESTAMP,
-                timestamp as i8,
-                now,
+                attributes,
+                timestamp,
             )?;
         }
         match compression {
@@ -244,12 +273,22 @@ impl PartitionProduceRequest<'_> {
             #[cfg(feature = "gzip")]
             Compression::GZIP => {
                 let cdata = gzip::compress(&buf)?;
-                render_compressed_with_timestamp(&mut buf, &cdata, compression, timestamp)?;
+                render_compressed_with_timestamp(
+                    &mut buf,
+                    &cdata,
+                    compression as i8 | timestamp_attributes,
+                    wrapper_timestamp.unwrap_or_else(|| chrono::Utc::now().timestamp_millis()),
+                )?;
             }
             #[cfg(feature = "snappy")]
             Compression::SNAPPY => {
                 let cdata = snappy::compress(&buf)?;
-                render_compressed_with_timestamp(&mut buf, &cdata, compression, timestamp)?;
+                render_compressed_with_timestamp(
+                    &mut buf,
+                    &cdata,
+                    compression as i8 | timestamp_attributes,
+                    wrapper_timestamp.unwrap_or_else(|| chrono::Utc::now().timestamp_millis()),
+                )?;
             }
         }
         buf.encode(out)
@@ -261,7 +300,7 @@ impl PartitionProduceRequest<'_> {
 #[cfg(any(feature = "snappy", feature = "gzip"))]
 fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) -> Result<()> {
     out.clear();
-    let cmsg = MessageProduceRequest::new(None, Some(cdata));
+    let cmsg = MessageProduceRequest::new(None, Some(cdata), None);
 
     cmsg._encode_to_buf(out, MESSAGE_MAGIC_BYTE, compression as i8)
 }
@@ -276,24 +315,31 @@ fn render_compressed(out: &mut Vec<u8>, cdata: &[u8], compression: Compression) 
 fn render_compressed_with_timestamp(
     out: &mut Vec<u8>,
     cdata: &[u8],
-    compression: Compression,
-    timestamp: ProducerTimestamp,
+    attributes: i8,
+    timestamp: i64,
 ) -> Result<()> {
     out.clear();
-    let cmsg = MessageProduceRequest::new(None, Some(cdata));
+    let cmsg = MessageProduceRequest::new(None, Some(cdata), None);
 
-    let now = chrono::Utc::now().timestamp_millis(); // ~ get current timestamp
     cmsg._encode_to_buf_with_timestamp(
         out,
         MESSAGE_MAGIC_BYTE_WITH_TIMESTAMP,
-        compression as i8 | timestamp as i8,
-        now,
+        attributes,
+        timestamp,
     )
 }
 
 impl MessageProduceRequest<'_> {
-    fn new<'b>(key: Option<&'b [u8]>, value: Option<&'b [u8]>) -> MessageProduceRequest<'b> {
-        MessageProduceRequest { key, value }
+    fn new<'b>(
+        key: Option<&'b [u8]>,
+        value: Option<&'b [u8]>,
+        timestamp: Option<i64>,
+    ) -> MessageProduceRequest<'b> {
+        MessageProduceRequest {
+            key,
+            value,
+            timestamp,
+        }
     }
 
     // render a single message as: Offset MessageSize Message
@@ -379,6 +425,114 @@ impl MessageProduceRequest<'_> {
         size.encode(&mut &mut buffer[size_pos..size_pos + 4])?;
 
         Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "producer_timestamp"))]
+mod tests {
+    use super::{PartitionProduceRequest, ProducerTimestamp};
+    use crate::compression::Compression;
+    use byteorder::{BigEndian, ReadBytesExt};
+    use std::io::{Cursor, Read};
+
+    fn decode_first_message_attributes_and_timestamp(encoded_partition: &[u8]) -> (i8, i64) {
+        let mut cursor = Cursor::new(encoded_partition);
+
+        let _partition = cursor.read_i32::<BigEndian>().unwrap();
+        let message_set_size = cursor.read_i32::<BigEndian>().unwrap();
+
+        let mut message_set = vec![0u8; message_set_size as usize];
+        cursor.read_exact(&mut message_set).unwrap();
+
+        let mut message_cursor = Cursor::new(message_set);
+        let _offset = message_cursor.read_i64::<BigEndian>().unwrap();
+        let _message_size = message_cursor.read_i32::<BigEndian>().unwrap();
+        let _crc = message_cursor.read_i32::<BigEndian>().unwrap();
+        let _magic = message_cursor.read_i8().unwrap();
+        let attributes = message_cursor.read_i8().unwrap();
+        let timestamp = message_cursor.read_i64::<BigEndian>().unwrap();
+
+        (attributes, timestamp)
+    }
+
+    #[test]
+    fn explicit_message_timestamp_forces_create_time_attributes() {
+        let mut request = PartitionProduceRequest::new(0, Some(b"k"), Some(b"v"), Some(12345));
+        request.add(Some(b"k2"), Some(b"v2"), Some(23456));
+
+        let mut encoded = Vec::new();
+        request
+            ._encode_with_timestamp(
+                &mut encoded,
+                Compression::NONE,
+                Some(ProducerTimestamp::LogAppendTime),
+            )
+            .unwrap();
+
+        let (attributes, timestamp) = decode_first_message_attributes_and_timestamp(&encoded);
+        assert_eq!(ProducerTimestamp::CreateTime as i8, attributes);
+        assert_eq!(12345, timestamp);
+    }
+
+    #[test]
+    fn global_log_append_time_is_used_without_explicit_timestamp() {
+        let request = PartitionProduceRequest::new(0, Some(b"k"), Some(b"v"), None);
+
+        let mut encoded = Vec::new();
+        request
+            ._encode_with_timestamp(
+                &mut encoded,
+                Compression::NONE,
+                Some(ProducerTimestamp::LogAppendTime),
+            )
+            .unwrap();
+
+        let (attributes, timestamp) = decode_first_message_attributes_and_timestamp(&encoded);
+        assert_eq!(ProducerTimestamp::LogAppendTime as i8, attributes);
+        assert!(timestamp > 0);
+    }
+
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn compressed_wrapper_uses_max_timestamp_in_batch() {
+        let mut request = PartitionProduceRequest::new(0, Some(b"k1"), Some(b"v1"), Some(12345));
+        request.add(Some(b"k2"), Some(b"v2"), Some(23456));
+
+        let mut encoded = Vec::new();
+        request
+            ._encode_with_timestamp(
+                &mut encoded,
+                Compression::GZIP,
+                Some(ProducerTimestamp::LogAppendTime),
+            )
+            .unwrap();
+
+        let (attributes, timestamp) = decode_first_message_attributes_and_timestamp(&encoded);
+        assert_eq!(Compression::GZIP as i8 | ProducerTimestamp::LogAppendTime as i8, attributes);
+        assert_eq!(23456, timestamp);
+    }
+
+    #[cfg(feature = "snappy")]
+    #[test]
+    fn snappy_compressed_wrapper_uses_max_timestamp_in_batch() {
+        let mut request = PartitionProduceRequest::new(0, Some(b"k1"), Some(b"v1"), Some(12345));
+        request.add(Some(b"k2"), Some(b"v2"), Some(23456));
+
+        let mut encoded = Vec::new();
+        request
+            ._encode_with_timestamp(
+                &mut encoded,
+                Compression::SNAPPY,
+                Some(ProducerTimestamp::LogAppendTime),
+            )
+            .unwrap();
+
+        let (attributes, timestamp) = decode_first_message_attributes_and_timestamp(&encoded);
+        assert_eq!(
+            Compression::SNAPPY as i8 | ProducerTimestamp::LogAppendTime as i8,
+            attributes
+        );
+        assert_eq!(23456, timestamp);
     }
 }
 
