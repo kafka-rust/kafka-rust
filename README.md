@@ -105,6 +105,7 @@ to use the already mentioned `Consumer` and `Producer`.
 Nevertheless, the main features or `KafkaClient` are:
 
 - Loading metadata
+- Creating topics
 - Fetching topic offsets
 - Sending messages
 - Fetching messages
@@ -131,13 +132,10 @@ Docker (1.10.0+) and docker-compose (1.6.0+) installed and run the tests via the
 included `run-all-tests` script in the `tests` directory. See the `run-all-tests`
 script itself for details on its usage.
 
-## Creating a topic
-
 Note unless otherwise explicitly stated in the documentation, this
-library will ignore requests to topics which it doesn't know about.
-In particular it will not try to retrieve messages from
-non-existing/unknown topics. (This behavior is very likely to change
-in future version of this library.)
+library will ignore requests to topics which it doesn't know about for
+operations that require topic metadata (for example fetching or producing
+without a known topic/partition mapping).
 
 Given a local kafka server installation you can create topics with the
 following command (where `kafka-topics.sh` is part of the Kafka
